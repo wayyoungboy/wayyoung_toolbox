@@ -280,6 +280,11 @@ func inspectEmptyDirectories(root string, minimumAge time.Duration, remove bool)
 	}
 	result := EmptyDirectoryResult{Directory: canonicalRoot, Directories: []string{}, Errors: []string{}}
 	directories := make([]maintenanceDirectory, 0, 1024)
+	rootInfo, err := os.Lstat(canonicalRoot)
+	if err != nil {
+		return EmptyDirectoryResult{}, err
+	}
+	knownDirectories := map[string]os.FileInfo{canonicalRoot: rootInfo}
 	visited := 0
 	err = filepath.WalkDir(canonicalRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -309,6 +314,7 @@ func inspectEmptyDirectories(root string, minimumAge time.Duration, remove bool)
 			return infoErr
 		}
 		directories = append(directories, maintenanceDirectory{path: path, info: info})
+		knownDirectories[path] = info
 		return nil
 	})
 	if err != nil {
@@ -357,7 +363,13 @@ func inspectEmptyDirectories(root string, minimumAge time.Duration, remove bool)
 		return result, nil
 	}
 	for _, directory := range selected {
-		removed, removeErr := safeRemoveEmptyDirectory(canonicalRoot, directory.path, directory.info)
+		parent := filepath.Dir(directory.path)
+		removed, parentInfo, removeErr := safeRemoveEmptyDirectory(
+			canonicalRoot,
+			directory.path,
+			knownDirectories[directory.path],
+			knownDirectories[parent],
+		)
 		if removeErr != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, directory.path+"："+removeErr.Error())
@@ -365,6 +377,7 @@ func inspectEmptyDirectories(root string, minimumAge time.Duration, remove bool)
 		}
 		if removed {
 			result.Removed++
+			knownDirectories[parent] = parentInfo
 		}
 	}
 	return result, nil

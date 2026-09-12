@@ -176,7 +176,11 @@ func TestSafeRemoveEmptyDirectoryRefusesReplacedDirectoryAndSymlinkedAncestor(t 
 	if err := os.Mkdir(replaced, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	removed, err := safeRemoveEmptyDirectory(root, replaced, expected)
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, _, err := safeRemoveEmptyDirectory(root, replaced, expected, rootInfo)
 	if err != nil || removed {
 		t.Fatalf("replaced directory removed=%v err=%v", removed, err)
 	}
@@ -187,6 +191,10 @@ func TestSafeRemoveEmptyDirectoryRefusesReplacedDirectoryAndSymlinkedAncestor(t 
 		t.Fatal(err)
 	}
 	expectedChild, err := os.Stat(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedParent, err := os.Stat(parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +212,7 @@ func TestSafeRemoveEmptyDirectoryRefusesReplacedDirectoryAndSymlinkedAncestor(t 
 	if err := os.Symlink(outside, parent); err != nil {
 		t.Fatal(err)
 	}
-	removed, err = safeRemoveEmptyDirectory(root, child, expectedChild)
+	removed, _, err = safeRemoveEmptyDirectory(root, child, expectedChild, expectedParent)
 	if err != nil || removed {
 		t.Fatalf("symlinked ancestor removed=%v err=%v", removed, err)
 	}
