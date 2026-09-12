@@ -10,19 +10,27 @@ const moduleVersionNode = document.querySelector('#module-version');
 const moduleDescriptionNode = document.querySelector('#module-description');
 const moduleStatusNode = document.querySelector('#module-status');
 const moduleIconNode = document.querySelector('#module-icon');
+const toggleLabelNode = document.querySelector('#toggle-label');
+const refreshNode = document.querySelector('#refresh');
+const ha500Dialog = document.querySelector('#ha500-dialog');
+const ha500Form = document.querySelector('#ha500-form');
+const ha500Input = document.querySelector('#ha500-confirmation');
+const ha500Error = document.querySelector('#ha500-error');
 
 const presentation = {
-  backup: { short: '备', accent: '#3478f6', tint: '#eaf2ff' },
-  ha500: { short: '硬', accent: '#e96b36', tint: '#fff0e9' },
-  integrity: { short: '检', accent: '#0f8a63', tint: '#e6f7f1' },
-  media: { short: '影', accent: '#7657d5', tint: '#f0edff' },
-  music: { short: '乐', accent: '#1397a9', tint: '#e7f7f8' }
+  backup: { short: '备', mobile: '备份' },
+  ha500: { short: '硬', mobile: '硬件' },
+  integrity: { short: '检', mobile: '检查' },
+  media: { short: '影', mobile: '影片' },
+  music: { short: '乐', mobile: '音乐' }
 };
 
 let modules = [];
 let selectedID = '';
 let busyID = '';
+let busyEnabled = false;
 let frameID = '';
+let loadPromise;
 
 async function request(path, options = {}) {
   const response = await fetch(`${APP_BASE}${path}`, {
@@ -35,18 +43,29 @@ async function request(path, options = {}) {
 }
 
 function showNotice(message, error = false) {
+  clearTimeout(showNotice.timeout);
   noticeNode.hidden = !message;
   noticeNode.textContent = message || '';
   noticeNode.className = error ? 'notice error' : 'notice';
+  if (message && !error) {
+    showNotice.timeout = setTimeout(() => {
+      noticeNode.hidden = true;
+    }, 3200);
+  }
 }
 
 function escapeHTML(value) {
   return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
 
+function themeClass(id) {
+  return Object.hasOwn(presentation, id) ? `module-${id}` : 'module-backup';
+}
+
 function moduleState(module) {
-	if (module.running) return { label: '已启用', className: 'running' };
-	if (module.enabled) return { label: '启用异常', className: 'failed' };
+  if (module.id === busyID) return { label: busyEnabled ? '正在启用…' : '正在关闭…', className: 'busy' };
+  if (module.running) return { label: '已启用', className: 'running' };
+  if (module.enabled) return { label: '启用异常', className: 'failed' };
   return { label: '已关闭', className: 'stopped' };
 }
 
@@ -59,15 +78,18 @@ function renderTabs() {
     const style = presentation[module.id] || presentation.backup;
     const state = moduleState(module);
     const selected = module.id === selectedID;
-    return `<button type="button" class="module-tab ${selected ? 'selected' : ''}" data-module="${escapeHTML(module.id)}" role="tab" aria-selected="${selected}" style="--accent:${style.accent};--tint:${style.tint}">
+    return `<button type="button" id="module-tab-${escapeHTML(module.id)}" class="module-tab ${themeClass(module.id)} ${selected ? 'selected' : ''}" data-module="${escapeHTML(module.id)}" role="tab" aria-selected="${selected}" aria-controls="module-content" tabindex="${selected ? '0' : '-1'}" title="${escapeHTML(`${module.name} · ${state.label}`)}">
       <span class="tab-icon">${style.short}</span>
       <span class="tab-copy"><strong>${escapeHTML(module.name)}</strong><small>${escapeHTML(state.label)}</small></span>
+      <span class="tab-mobile-name">${escapeHTML(style.mobile || style.short)}</span>
+      <span class="tab-assist">${escapeHTML(module.name)}，${escapeHTML(state.label)}</span>
       <span class="tab-status ${state.className}" aria-hidden="true"></span>
     </button>`;
   }).join('');
 }
 
 function renderContent(module) {
+  const pending = module.id === busyID;
   if (module.running) {
     if (frameID === module.id && contentNode.querySelector('iframe')) return;
     frameID = module.id;
@@ -82,18 +104,18 @@ function renderContent(module) {
   contentNode.className = 'module-content';
   const state = moduleState(module);
   const style = presentation[module.id] || presentation.backup;
-  contentNode.innerHTML = `<div class="module-empty" style="--accent:${style.accent}">
+  contentNode.innerHTML = `<div class="module-empty ${themeClass(module.id)}">
     <div class="empty-symbol">${style.short}</div>
     <h2>${escapeHTML(state.label)}</h2>
-		<p>${module.enabled ? '模块没有成功启用，请查看上方提示或重新切换开关。' : '这个模块当前不提供服务，需要时可独立启用。'}</p>
+    <p>${pending ? '请稍候，工具箱正在更新模块状态。' : (module.enabled ? '模块没有成功启用，请查看上方提示或重新切换开关。' : '这个模块当前不提供服务，需要时可独立启用。')}</p>
     ${module.last_error ? `<pre>${escapeHTML(module.last_error)}</pre>` : ''}
-    ${module.enabled ? '' : '<button type="button" class="primary-button" id="enable-active">启用此模块</button>'}
+    ${module.enabled || pending ? '' : '<button type="button" class="primary-button" id="enable-active">启用此模块</button>'}
   </div>`;
 }
 
 function render() {
   const module = activeModule();
-	countNode.textContent = `单进程 · ${modules.filter(item => item.running).length} / ${modules.length} 个模块已启用`;
+  countNode.textContent = `单进程 · ${modules.filter(item => item.running).length} / ${modules.length} 个模块已启用`;
   if (!module) {
     headerNode.hidden = true;
     tabsNode.innerHTML = '<div class="nav-loading">没有可用模块</div>';
@@ -107,15 +129,17 @@ function render() {
   const state = moduleState(module);
   headerNode.hidden = false;
   moduleIconNode.textContent = style.short;
-  moduleIconNode.style.setProperty('--accent', style.accent);
-  moduleIconNode.style.setProperty('--tint', style.tint);
+  moduleIconNode.className = `module-icon ${themeClass(module.id)}`;
   moduleNameNode.textContent = module.name;
   moduleVersionNode.textContent = `v${module.version}`;
   moduleDescriptionNode.textContent = module.description;
   moduleStatusNode.className = `status-pill ${state.className}`;
   moduleStatusNode.innerHTML = `<span class="status-dot"></span><span>${escapeHTML(state.label)}</span>`;
-  toggleNode.checked = module.enabled;
+  const pending = busyID === module.id;
+  toggleNode.checked = pending ? busyEnabled : module.enabled;
   toggleNode.disabled = busyID === module.id;
+  toggleLabelNode.textContent = pending ? state.label : (module.enabled ? '关闭模块' : '启用模块');
+  contentNode.setAttribute('aria-labelledby', `module-tab-${module.id}`);
   renderContent(module);
 }
 
@@ -126,64 +150,121 @@ function initialSelection(nextModules) {
   return nextModules[0]?.id || '';
 }
 
-async function load({ quiet = false } = {}) {
-  try {
-    const payload = await request('/api/modules');
-    const nextModules = payload.modules || [];
-    selectedID = initialSelection(nextModules);
-    modules = nextModules;
-    render();
-    if (!quiet) showNotice('');
-  } catch (error) {
-    showNotice(error.message, true);
-  }
+function load({ quiet = false, fresh = false } = {}) {
+  if (loadPromise) return fresh ? loadPromise.then(() => load({ quiet })) : loadPromise;
+  refreshNode.disabled = true;
+  refreshNode.classList.add('loading');
+  loadPromise = (async () => {
+    try {
+      const payload = await request('/api/modules');
+      const nextModules = payload.modules || [];
+      selectedID = initialSelection(nextModules);
+      modules = nextModules;
+      render();
+      if (!quiet) showNotice('');
+    } catch (error) {
+      showNotice(error.message, true);
+    } finally {
+      refreshNode.disabled = false;
+      refreshNode.classList.remove('loading');
+      loadPromise = undefined;
+    }
+  })();
+  return loadPromise;
+}
+
+function confirmHA500() {
+  ha500Input.value = '';
+  ha500Error.hidden = true;
+  ha500Dialog.showModal();
+  requestAnimationFrame(() => ha500Input.focus());
+  return new Promise(resolve => {
+    const finish = approved => {
+      ha500Dialog.close();
+      ha500Form.onsubmit = null;
+      document.querySelector('#ha500-cancel').onclick = null;
+      ha500Dialog.oncancel = null;
+      resolve(approved);
+    };
+    ha500Form.onsubmit = event => {
+      event.preventDefault();
+      if (ha500Input.value.trim().toUpperCase() !== 'HA500') {
+        ha500Error.textContent = '请输入 HA500 后再确认。';
+        ha500Error.hidden = false;
+        ha500Input.focus();
+        return;
+      }
+      finish(true);
+    };
+    document.querySelector('#ha500-cancel').onclick = () => finish(false);
+    ha500Dialog.oncancel = event => {
+      event.preventDefault();
+      finish(false);
+    };
+  });
 }
 
 async function setEnabled(id, enabled) {
   let confirmation = '';
   if (enabled && id === 'ha500') {
-    confirmation = window.prompt('硬件控制仅适用于奥睿科 HA500。请输入 HA500 确认型号：') || '';
-    if (confirmation !== 'HA500') {
-      showNotice('未确认 HA500 型号，硬件模块没有启动。', true);
+    if (!await confirmHA500()) {
       render();
       return;
     }
+    confirmation = 'HA500';
   }
 
   busyID = id;
+  busyEnabled = enabled;
   render();
   try {
     const payload = await request(`/api/modules/${encodeURIComponent(id)}`, {
       method: 'PUT', body: JSON.stringify({ enabled, confirmation })
     });
     modules = payload.modules || [];
-		showNotice(enabled ? '模块已启用。' : '模块已关闭。');
+    showNotice(enabled ? '模块已启用。' : '模块已关闭。');
   } catch (error) {
     showNotice(error.message, true);
   } finally {
     busyID = '';
-    await load({ quiet: true });
+    await load({ quiet: true, fresh: true });
   }
+}
+
+function selectModule(id, { focus = false } = {}) {
+  if (!modules.some(module => module.id === id)) return;
+  selectedID = id;
+  history.replaceState(null, '', `#${encodeURIComponent(selectedID)}`);
+  showNotice('');
+  render();
+  if (focus) document.querySelector(`#module-tab-${id}`)?.focus();
 }
 
 tabsNode.addEventListener('click', event => {
   const tab = event.target.closest('[data-module]');
   if (!tab || tab.dataset.module === selectedID) return;
-  selectedID = tab.dataset.module;
-  history.replaceState(null, '', `#${encodeURIComponent(selectedID)}`);
-  showNotice('');
-  render();
+  selectModule(tab.dataset.module);
+});
+
+tabsNode.addEventListener('keydown', event => {
+  if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+  const ids = modules.map(module => module.id);
+  let index = ids.indexOf(selectedID);
+  if (event.key === 'Home') index = 0;
+  else if (event.key === 'End') index = ids.length - 1;
+  else index = (index + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1) + ids.length) % ids.length;
+  event.preventDefault();
+  selectModule(ids[index], { focus: true });
 });
 
 toggleNode.addEventListener('change', () => setEnabled(selectedID, toggleNode.checked));
 contentNode.addEventListener('click', event => {
   if (event.target.closest('#enable-active')) setEnabled(selectedID, true);
 });
-document.querySelector('#refresh').addEventListener('click', () => load());
+refreshNode.addEventListener('click', () => load());
 window.addEventListener('hashchange', () => {
   selectedID = initialSelection(modules);
   render();
 });
-
 load();
 setInterval(() => load({ quiet: true }), 15000);

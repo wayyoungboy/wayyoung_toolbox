@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="按路径检查 NAS 文件可读性和常见格式结构，并导出分类报告。" />
     <title>文件完整性检查</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -20,7 +21,8 @@
         <form id="scan-form">
           <label class="field grow">
             <span>NAS 绝对路径</span>
-            <input id="scan-path" name="path" type="text" autocomplete="off" spellcheck="false" placeholder="/vol1/shared" required />
+            <input id="scan-path" name="path" type="text" autocomplete="off" spellcheck="false" placeholder="/vol1/shared" aria-describedby="path-help path-error" required />
+            <small class="field-error" id="path-error" hidden aria-live="polite"></small>
           </label>
           <label class="field mode-field">
             <span>检查方式</span>
@@ -32,7 +34,7 @@
           <button class="primary" id="start-scan" type="submit">开始检查</button>
           <button class="secondary danger" id="cancel-scan" type="button" hidden>停止</button>
         </form>
-        <div class="root-hints" id="root-hints"></div>
+        <div class="root-hints" id="root-hints"><span id="path-help">可检查的根目录：</span></div>
         <p class="mode-help" id="mode-help">快速检查会读取文件头尾，并检查常见格式的基础结构。</p>
       </section>
 
@@ -44,8 +46,8 @@
           </div>
           <b id="progress-percent">0%</b>
         </div>
-        <div class="progress-track" aria-hidden="true"><span id="progress-bar"></span></div>
-        <div class="current-path" id="current-path"></div>
+        <div class="progress-track" id="progress-track" role="progressbar" aria-labelledby="progress-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress-bar"></span></div>
+        <div class="current-path" id="current-path" title=""></div>
         <div class="metrics">
           <div><span>已检查</span><strong id="metric-checked">0</strong></div>
           <div class="healthy"><span>正常</span><strong id="metric-healthy">0</strong></div>
@@ -57,12 +59,12 @@
 
       <section class="results-card">
         <div class="results-head">
-          <div class="filters" id="filters">
-            <button type="button" class="selected" data-status="">全部</button>
-            <button type="button" data-status="damaged">疑似损坏</button>
-            <button type="button" data-status="warning">需复核</button>
-            <button type="button" data-status="healthy">正常</button>
-            <button type="button" data-status="skipped">已跳过</button>
+          <div class="filters" id="filters" aria-label="按检查状态筛选结果">
+            <button type="button" class="selected" data-status="" aria-pressed="true">全部</button>
+            <button type="button" data-status="damaged" aria-pressed="false">疑似损坏</button>
+            <button type="button" data-status="warning" aria-pressed="false">需复核</button>
+            <button type="button" data-status="healthy" aria-pressed="false">正常</button>
+            <button type="button" data-status="skipped" aria-pressed="false">已跳过</button>
           </div>
           <div class="downloads" id="downloads" hidden>
             <a id="download-json" href="./api/report?format=json">JSON 报告</a>
@@ -71,6 +73,7 @@
         </div>
         <div class="table-wrap">
           <table>
+            <caption class="visually-hidden">文件完整性检查结果</caption>
             <thead><tr><th>状态</th><th>类型</th><th>文件</th><th>大小</th><th>说明</th></tr></thead>
             <tbody id="results-body"><tr><td colspan="5" class="empty">检查结果会显示在这里</td></tr></tbody>
           </table>
@@ -78,7 +81,7 @@
         <div class="pager"><span id="result-count">0 个结果</span><button type="button" id="load-more" hidden>加载更多</button></div>
       </section>
     </main>
-    <div class="toast" id="toast" hidden></div>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

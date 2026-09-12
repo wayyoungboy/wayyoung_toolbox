@@ -88,7 +88,7 @@ func DefaultDefinitions(appDir string) []Definition {
 			Prefix:      prefix + "ha500", RequiresHA500: true,
 		},
 		{
-			ID: "integrity", Name: "文件完整性检查", Version: "0.1.0",
+			ID: "integrity", Name: "文件完整性检查", Version: "0.1.1",
 			Description: "按路径检查文件可读性与常见格式结构，生成分类报告。",
 			Prefix:      prefix + "integrity", PublicDir: modulePath("integrity", "public"),
 		},

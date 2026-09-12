@@ -33,7 +33,7 @@ npm test
 npm run build
 ```
 
-产物为 `dist/wayyoung_toolbox_0.5.1_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
+产物为 `dist/wayyoung_toolbox_0.5.2_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
 
 ```bash
 SKIP_FNPACK=1 npm run build

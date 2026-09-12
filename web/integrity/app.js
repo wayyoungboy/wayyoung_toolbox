@@ -13,6 +13,10 @@ let resultOffset = 0;
 let resultTotal = 0;
 let loadingResults = false;
 let timer = 0;
+let startPending = false;
+let cancelPending = false;
+let lastRefreshError = '';
+let statusReady = false;
 
 async function api(path, options = {}) {
   const response = await fetch(`${BASE}${path}`, {
@@ -38,6 +42,13 @@ function showToast(message, error = false) {
   showToast.timeout = setTimeout(() => { node.hidden = true; }, 4500);
 }
 
+function showPathError(message) {
+  const node = document.querySelector('#path-error');
+  node.textContent = message;
+  node.hidden = !message;
+  pathInput.setAttribute('aria-invalid', message ? 'true' : 'false');
+}
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 1024) return `${bytes || 0} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
@@ -58,6 +69,7 @@ function phaseLabel(status) {
 }
 
 function renderStatus(status) {
+  const previousStatus = currentStatus;
   currentStatus = status;
   const total = status.total || 0;
   const checked = status.checked || 0;
@@ -70,16 +82,29 @@ function renderStatus(status) {
   document.querySelector('#progress-detail').textContent = status.root || '选择路径后开始检查';
   document.querySelector('#progress-percent').textContent = `${percent}%`;
   document.querySelector('#progress-bar').style.width = `${percent}%`;
-  document.querySelector('#current-path').textContent = status.current ? `当前：${status.current}` : (status.last_error || '');
+  document.querySelector('#progress-track').setAttribute('aria-valuenow', String(percent));
+  const currentMessage = status.current ? `当前：${status.current}` : (status.last_error || '');
+  const currentPath = document.querySelector('#current-path');
+  currentPath.textContent = currentMessage;
+  currentPath.title = currentMessage;
   document.querySelector('#metric-checked').textContent = total ? `${checked} / ${total}` : checked;
   for (const key of ['healthy', 'warning', 'damaged', 'skipped']) {
     document.querySelector(`#metric-${key}`).textContent = status[key] || 0;
   }
-  startButton.disabled = Boolean(status.running);
-  pathInput.disabled = Boolean(status.running);
-  modeSelect.disabled = Boolean(status.running);
+  const controlsBusy = Boolean(status.running) || startPending;
+  form.setAttribute('aria-busy', String(startPending || cancelPending));
+  startButton.disabled = controlsBusy;
+  startButton.textContent = startPending ? '正在启动…' : '开始检查';
+  pathInput.disabled = controlsBusy;
+  modeSelect.disabled = controlsBusy;
   cancelButton.hidden = !status.running;
+  cancelButton.disabled = cancelPending;
+  cancelButton.textContent = cancelPending ? '正在停止…' : '停止';
   document.querySelector('#downloads').hidden = !status.report_json;
+  if (statusReady && previousStatus.running && !status.running && status.phase === 'completed') {
+    showToast(`检查完成：${status.healthy || 0} 个正常，${status.warning || 0} 个需复核，${status.damaged || 0} 个疑似损坏`);
+  }
+  statusReady = true;
 }
 
 function resultRow(result) {
@@ -88,11 +113,11 @@ function resultRow(result) {
     : result.path;
   const checksum = result.checksum ? `<small title="SHA-256">${escapeHTML(result.checksum)}</small>` : '';
   return `<tr>
-    <td><span class="result-state ${escapeHTML(result.status)}">${escapeHTML(statusLabel(result.status))}</span></td>
-    <td>${escapeHTML(result.kind)}</td>
-    <td class="file-cell" title="${escapeHTML(result.path)}"><strong>${escapeHTML(relative)}</strong>${checksum}</td>
-    <td>${escapeHTML(formatBytes(result.size))}</td>
-    <td class="message-cell"><span>${escapeHTML(result.message)}</span><small>${escapeHTML(result.method)}</small></td>
+    <td data-label="状态"><span class="result-state ${escapeHTML(result.status)}">${escapeHTML(statusLabel(result.status))}</span></td>
+    <td data-label="类型">${escapeHTML(result.kind)}</td>
+    <td data-label="文件" class="file-cell" title="${escapeHTML(result.path)}"><strong>${escapeHTML(relative)}</strong>${checksum}</td>
+    <td data-label="大小">${escapeHTML(formatBytes(result.size))}</td>
+    <td data-label="说明" class="message-cell"><span>${escapeHTML(result.message)}</span><small>${escapeHTML(result.method)}</small></td>
   </tr>`;
 }
 
@@ -119,14 +144,16 @@ async function loadResults({ append = false } = {}) {
 async function refresh() {
   try {
     const wasRunning = Boolean(currentStatus.running);
-		const previousChecked = currentStatus.checked || 0;
+    const previousChecked = currentStatus.checked || 0;
     const status = await api('/api/status');
+    lastRefreshError = '';
     renderStatus(status);
-		if (status.checked !== previousChecked || wasRunning !== status.running) await loadResults();
+    if (status.checked !== previousChecked || wasRunning !== status.running) await loadResults();
     clearTimeout(timer);
     timer = setTimeout(refresh, status.running ? 1200 : 5000);
   } catch (error) {
-    showToast(error.message, true);
+    if (error.message !== lastRefreshError) showToast(`状态更新失败：${error.message}`, true);
+    lastRefreshError = error.message;
     clearTimeout(timer);
     timer = setTimeout(refresh, 5000);
   }
@@ -136,7 +163,8 @@ async function loadConfig() {
   try {
     const config = await api('/api/config');
     const hints = document.querySelector('#root-hints');
-    hints.innerHTML = (config.roots || []).map(root => `<button type="button" data-root="${escapeHTML(root)}">${escapeHTML(root)}</button>`).join('');
+    const rootButtons = (config.roots || []).map(root => `<button type="button" data-root="${escapeHTML(root)}">${escapeHTML(root)}</button>`).join('');
+    hints.innerHTML = `<span id="path-help">可检查的根目录：</span>${rootButtons || '<small>未配置可检查目录</small>'}`;
     if (!pathInput.value && config.roots?.length === 1) pathInput.value = config.roots[0];
   } catch (error) {
     showToast(error.message, true);
@@ -145,21 +173,38 @@ async function loadConfig() {
 
 form.addEventListener('submit', async event => {
   event.preventDefault();
+  const path = pathInput.value.trim();
+  if (!path.startsWith('/')) {
+    showPathError('请输入以 / 开头的 NAS 绝对路径。');
+    pathInput.focus();
+    return;
+  }
+  showPathError('');
+  startPending = true;
+  renderStatus(currentStatus);
   try {
-    await api('/api/scans', { method: 'POST', body: JSON.stringify({ path: pathInput.value.trim(), mode: modeSelect.value }) });
+    await api('/api/scans', { method: 'POST', body: JSON.stringify({ path, mode: modeSelect.value }) });
     showToast('检查任务已启动');
     await refresh();
   } catch (error) {
     showToast(error.message, true);
+  } finally {
+    startPending = false;
+    renderStatus(currentStatus);
   }
 });
 
 cancelButton.addEventListener('click', async () => {
+  cancelPending = true;
+  renderStatus(currentStatus);
   try {
     await api('/api/scans/current', { method: 'DELETE' });
     showToast('正在停止检查');
   } catch (error) {
     showToast(error.message, true);
+  } finally {
+    cancelPending = false;
+    renderStatus(currentStatus);
   }
 });
 
@@ -171,17 +216,26 @@ modeSelect.addEventListener('change', () => {
 
 document.querySelector('#root-hints').addEventListener('click', event => {
   const button = event.target.closest('[data-root]');
-  if (button) pathInput.value = button.dataset.root;
+  if (button) {
+    pathInput.value = button.dataset.root;
+    showPathError('');
+    pathInput.focus();
+  }
 });
 
 document.querySelector('#filters').addEventListener('click', event => {
   const button = event.target.closest('[data-status]');
   if (!button) return;
   resultFilter = button.dataset.status;
-  document.querySelectorAll('#filters button').forEach(item => item.classList.toggle('selected', item === button));
+  document.querySelectorAll('#filters button').forEach(item => {
+    const selected = item === button;
+    item.classList.toggle('selected', selected);
+    item.setAttribute('aria-pressed', String(selected));
+  });
   loadResults();
 });
 
+pathInput.addEventListener('input', () => showPathError(''));
 loadMoreButton.addEventListener('click', () => loadResults({ append: true }));
 loadConfig();
 refresh();
