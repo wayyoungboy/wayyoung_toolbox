@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>HA500 飞牛工具箱</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="app-header">
+      <div class="brand"><div class="app-icon" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div><h1>HA500 飞牛工具箱</h1><p>奥睿科 HA500 原生硬件控制与诊断</p></div></div>
+      <div class="header-actions"><span id="service-pill" class="pill neutral"><b></b>读取中</span><button id="refresh" class="icon-button" aria-label="刷新">↻</button></div>
+    </header>
+    <nav class="tabs" aria-label="主导航">
+      <button class="tab active" data-page="overview">概览</button>
+      <button class="tab" data-page="led">硬盘灯</button>
+      <button class="tab" data-page="fans">风扇控制</button>
+      <button class="tab" data-page="logs">运行日志</button>
+    </nav>
+
+    <main>
+      <section id="page-overview" class="page active">
+        <div class="layout">
+          <article class="card main-card"><div class="section-heading"><div><span class="eyebrow">硬件实时状态</span><h2>五盘位与风扇</h2></div><span id="updated-at" class="muted"></span></div><div class="hardware-panel"><div id="overview-bays" class="bay-grid"></div><div id="overview-fans" class="fan-summary"></div><div class="temperature"><span>🌡</span><strong>CPU Package</strong><b id="cpu-temperature">--°C</b><small>coretemp</small></div></div></article>
+          <aside class="card status-card"><span class="eyebrow">运行状态</span><h2>硬件与服务</h2><div id="hardware-rows" class="status-rows"></div><div class="safety-note">🛡 只控制已验证的硬盘灯与风扇通道。</div></aside>
+        </div>
+        <article class="card feature-card"><span class="eyebrow">功能状态</span><h2>统一控制</h2><div id="feature-rows"></div></article>
+      </section>
+
+      <section id="page-led" class="page">
+        <div class="layout">
+          <article class="card main-card"><div class="section-heading"><div><span class="eyebrow">实时前面板</span><h2>五盘位状态</h2></div><span id="led-mode-pill" class="pill neutral">自动模式</span></div><div class="hardware-panel"><div id="led-bays" class="bay-grid"></div><div class="legend"><i class="dot on"></i>有硬盘，蓝灯亮　<i class="dot"></i>空盘，灯灭</div></div></article>
+          <aside class="card status-card"><span class="eyebrow">端口映射</span><h2>物理盘位</h2><form id="mapping-form" class="mapping-form"></form><button class="primary full" form="mapping-form">保存端口映射</button></aside>
+        </div>
+        <article class="card"><div class="section-heading"><div><span class="eyebrow">灯光控制</span><h2>自动模式与手动模式</h2><p class="muted">手动模式用于核对物理灯位；服务重启后自动恢复为自动模式。</p></div></div><div class="mode-grid"><label class="mode-option"><input type="radio" name="led-mode" value="auto" checked><b>自动模式</b><span>灯光跟随硬盘状态</span></label><label class="mode-option"><input type="radio" name="led-mode" value="manual"><b>手动模式</b><span>自行设置五个盘位灯</span></label></div><div id="manual-leds" class="manual-grid"></div><button id="save-led" class="primary">应用灯光模式</button></article>
+      </section>
+
+      <section id="page-fans" class="page">
+        <article class="card"><span class="eyebrow">独立控制</span><h2>风扇通道与策略</h2><p class="muted">每个风扇分别选择模式、温度源和安全阈值。</p><div id="fan-list" class="fan-list"></div></article>
+        <div class="layout fan-layout"><article class="card main-card"><form id="fan-policy-form"><div class="section-heading"><div><span class="eyebrow">当前通道</span><h2 id="fan-policy-title">请选择风扇</h2></div></div><div id="fan-policy-editor" class="empty-state">尚未识别到可控风扇</div></form></article><aside class="card status-card"><span class="eyebrow">硬件与服务状态</span><h2>控制前提</h2><div id="fan-safety-rows" class="status-rows"></div><button id="verify-fan" class="secondary full" disabled>重新验证所选风扇</button></aside></div>
+      </section>
+
+      <section id="page-logs" class="page">
+        <article class="card"><div class="section-heading"><div><span class="eyebrow">诊断</span><h2>运行日志</h2><p id="log-retention" class="muted">日志会自动轮转，不会无限增长。</p></div><div class="button-row"><button id="refresh-logs" class="secondary">刷新</button><button id="clear-logs" class="danger">一键清空日志</button></div></div><div id="log-list" class="log-list"></div></article>
+      </section>
+    </main>
+    <footer class="app-footer"><span>HA500 飞牛工具箱</span><span id="app-version">版本读取中</span></footer>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

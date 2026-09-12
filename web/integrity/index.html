@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>文件完整性检查</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="scan-card">
+        <div class="section-heading">
+          <div>
+            <h2>检查路径</h2>
+            <p>只读取文件，不修改、移动或删除内容。</p>
+          </div>
+          <span class="state idle" id="scan-state">待检查</span>
+        </div>
+
+        <form id="scan-form">
+          <label class="field grow">
+            <span>NAS 绝对路径</span>
+            <input id="scan-path" name="path" type="text" autocomplete="off" spellcheck="false" placeholder="/vol1/shared" required />
+          </label>
+          <label class="field mode-field">
+            <span>检查方式</span>
+            <select id="scan-mode" name="mode">
+              <option value="quick">快速检查</option>
+              <option value="deep">深度检查</option>
+            </select>
+          </label>
+          <button class="primary" id="start-scan" type="submit">开始检查</button>
+          <button class="secondary danger" id="cancel-scan" type="button" hidden>停止</button>
+        </form>
+        <div class="root-hints" id="root-hints"></div>
+        <p class="mode-help" id="mode-help">快速检查会读取文件头尾，并检查常见格式的基础结构。</p>
+      </section>
+
+      <section class="progress-card">
+        <div class="progress-head">
+          <div>
+            <strong id="progress-title">尚未开始</strong>
+            <span id="progress-detail">选择路径后开始检查</span>
+          </div>
+          <b id="progress-percent">0%</b>
+        </div>
+        <div class="progress-track" aria-hidden="true"><span id="progress-bar"></span></div>
+        <div class="current-path" id="current-path"></div>
+        <div class="metrics">
+          <div><span>已检查</span><strong id="metric-checked">0</strong></div>
+          <div class="healthy"><span>正常</span><strong id="metric-healthy">0</strong></div>
+          <div class="warning"><span>需复核</span><strong id="metric-warning">0</strong></div>
+          <div class="damaged"><span>疑似损坏</span><strong id="metric-damaged">0</strong></div>
+          <div><span>已跳过</span><strong id="metric-skipped">0</strong></div>
+        </div>
+      </section>
+
+      <section class="results-card">
+        <div class="results-head">
+          <div class="filters" id="filters">
+            <button type="button" class="selected" data-status="">全部</button>
+            <button type="button" data-status="damaged">疑似损坏</button>
+            <button type="button" data-status="warning">需复核</button>
+            <button type="button" data-status="healthy">正常</button>
+            <button type="button" data-status="skipped">已跳过</button>
+          </div>
+          <div class="downloads" id="downloads" hidden>
+            <a id="download-json" href="./api/report?format=json">JSON 报告</a>
+            <a id="download-csv" href="./api/report?format=csv">CSV 报告</a>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>状态</th><th>类型</th><th>文件</th><th>大小</th><th>说明</th></tr></thead>
+            <tbody id="results-body"><tr><td colspan="5" class="empty">检查结果会显示在这里</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pager"><span id="result-count">0 个结果</span><button type="button" id="load-more" hidden>加载更多</button></div>
+      </section>
+    </main>
+    <div class="toast" id="toast" hidden></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

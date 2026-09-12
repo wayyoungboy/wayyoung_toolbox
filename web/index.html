@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>wayyoung的飞牛工具箱</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">W</span>
+          <div>
+            <strong>wayyoung</strong>
+            <span>飞牛工具箱</span>
+          </div>
+        </div>
+
+        <div class="nav-label">模块</div>
+        <nav class="module-tabs" id="module-tabs" role="tablist" aria-label="工具箱模块">
+          <div class="nav-loading">正在读取模块…</div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="module-total">
+            <span class="pulse" aria-hidden="true"></span>
+            <span id="running-count">—</span>
+          </div>
+          <button type="button" class="icon-button" id="refresh" aria-label="刷新模块状态" title="刷新模块状态">↻</button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="module-header" id="module-header" hidden>
+          <div class="module-heading">
+            <div class="module-icon" id="module-icon" aria-hidden="true"></div>
+            <div>
+              <div class="heading-line">
+                <h1 id="module-name"></h1>
+                <span class="version" id="module-version"></span>
+              </div>
+              <p id="module-description"></p>
+            </div>
+          </div>
+          <div class="module-controls">
+            <div class="status-pill" id="module-status"><span class="status-dot"></span><span>读取中</span></div>
+            <label class="switch" title="独立启停当前模块">
+              <input type="checkbox" id="module-toggle" aria-label="启用当前模块" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </header>
+
+        <section class="notice" id="notice" hidden aria-live="polite"></section>
+        <section class="module-content" id="module-content" aria-live="polite">
+          <div class="initial-loading"><span class="spinner"></span><span>正在连接工具箱…</span></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

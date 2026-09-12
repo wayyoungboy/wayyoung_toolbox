@@ -1,0 +1,8 @@
+{
+  "api-scope": ["trim.file.sharedAccess"],
+  "data-share": {
+    "shares": [
+      {"name": "wayyoung_toolbox/local"}
+    ]
+  }
+}

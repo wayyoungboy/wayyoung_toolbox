@@ -1,0 +1,138 @@
+# JavSP Go 运行时配置。
+# data/image 资源以本文件所在目录为基准；相对输出模板以扫描目录为基准。
+# 命令行 -o 覆盖环境变量，环境变量覆盖本文件。
+
+scanner:
+  # 识别番号前要忽略的正则表达式（不区分大小写）。
+  ignored_id_pattern:
+    - '(144|240|360|480|720|1080)[Pp]'
+    - '[24][Kk]'
+    - '\w+2048\.com'
+    - 'Carib(beancom)?'
+    - '[^a-z\d](f?hd|lt)[^a-z\d]'
+  # 要扫描的目录；null 时按 interactive 设置询问，或用 -input 指定。
+  input_directory: null
+  # 视为影片的扩展名。
+  filename_extensions: [.3gp, .avi, .f4v, .flv, .iso, .m2ts, .m4v, .mkv, .mov, .mp4, .mpeg, .mpg, .rm, .rmvb, .strm, .ts, .vob, .webm, .wmv]
+  # 扫描时忽略的目录名正则表达式。
+  ignored_folder_name_pattern: ['^\.', '^#recycle$', '^#整理完成$', '^#不要扫描$']
+  # 小于此大小的文件不参与番号识别；支持 B、KB、KiB、MB、MiB、GB、GiB 等。
+  minimum_size: 1GiB
+  # 是否跳过已含 NFO 的目录；默认不跳过。
+  skip_nfo_dir: false
+  # 是否在整理前人工确认识别到的番号；默认关闭。
+  manual: false
+
+network:
+  # HTTP/HTTPS/SOCKS5(SOCKS5H) 代理地址；null 表示不使用代理。
+  proxy_server: null
+  # 可按站点设置免代理入口，键为爬虫 ID；地址可能随站点变更而失效。
+  proxy_free:
+    avsox: 'https://avsox.click'
+    javbus: 'https://www.seedmm.help'
+    javdb: 'https://javdb368.com'
+    javlib: 'https://www.y78k.com'
+  # 单次抓取失败后的重试次数。
+  retry: 3
+  # 请求超时；支持 ISO 8601（如 PT10S）或 Go duration（如 10s）。
+  timeout: PT10S
+
+crawler:
+  # 各类别按顺序尝试的爬虫 ID。完整 ID 列表见 docs/CONFIGURATION.md。
+  selection:
+    normal: [faleno, airav, avsox, javbus, javdb, javlib, jav321, mgstage, prestige]
+    fc2: [fc2, avsox, javdb, javmenu, fc2ppvdb]
+    cid: [fanza]
+    getchu: [dl_getchu]
+    gyutto: [gyutto]
+  # 满足这些信息字段才认定抓取成功。
+  required_keys: [cover, title]
+  # 同时处理的影片数量；单部影片内部的站点请求仍会并发。
+  movie_concurrency: 3
+  # 获取更完整信息；可能增加部分站点的耗时。
+  hardworking: true
+  # 使用网站返回的番号规范化最终番号。
+  respect_site_avid: true
+  # 可选的本地 fc2fan 镜像目录，null 表示不用。
+  fc2fan_local_path: null
+  # 并发任务之间的全局抓取启动间隔；PT0S 或 0s 可禁用。
+  sleep_after_scraping: PT1S
+  # javdb 封面策略：fallback、yes 或 no。
+  use_javdb_cover: fallback
+  # 使用 data/actress_alias.json 规范女优别名。
+  normalize_actress_name: true
+
+summarizer:
+  # true 移动媒体文件至输出目录；false 则在原目录生成资料文件。
+  move_files: true
+  path:
+    # 可使用影片字段的输出目录模板；相对路径以扫描目录为基准并按系统路径规则解析。
+    output_folder_pattern: '#整理完成/{actress}/[{num}] {title}'
+    # 媒体、封面和 NFO 的基础文件名模板。
+    basename_pattern: '{num}'
+    # 超出时会截短标题的最大路径长度。
+    length_maximum: 250
+    # true 按字节计数路径长度；false 按字符计数。
+    length_by_byte: true
+    # {actress} 最多保留的女优人数。
+    max_actress_count: 10
+    # 尽量以硬链接整理，节省磁盘空间。
+    hard_link: false
+  title:
+    # 删除标题末尾疑似女优姓名。
+    remove_trailing_actor_name: true
+  # 相应影片字段缺失时使用的占位值。
+  default:
+    title: '#未知标题'
+    actress: '#未知女优'
+    series: '#未知系列'
+    director: '#未知导演'
+    producer: '#未知制作商'
+    publisher: '#未知发行商'
+  nfo:
+    basename_pattern: movie
+    title_pattern: '{num} {title}'
+    custom_genres_fields: ['{genre}', '{censor}']
+    custom_tags_fields: ['{genre}', '{censor}']
+  # {censor} 对应：无码、有码、未知。
+  censor_options_representation: ['无码', '有码', '打码情况未知']
+  cover:
+    basename_pattern: poster
+    highres: true
+    # 为字幕或无码影片叠加本地标记图片。
+    add_label: false
+    crop:
+      # 对匹配番号启用人脸优先裁剪。
+      on_id_pattern:
+        - '^\d{6}[-_]\d{3}$'
+        - '^ARA'
+        - '^SIRO'
+        - '^GANA'
+        - '^MIUM'
+        - '^HHL'
+      # 纯 Go 的 Pigo 人脸检测，使用 data/facefinder；不依赖外部运行时。
+      engine:
+        name: pigo
+  fanart:
+    basename_pattern: fanart
+  extra_fanarts:
+    # 是否下载额外剧照。
+    enabled: true
+    # 剧照请求间隔；支持 ISO 8601 或 Go duration。
+    scrap_interval: PT1.5S
+
+translator:
+  # 默认使用 Google 翻译；网络请求使用 network.proxy_server。
+  engine:
+    name: google
+  fields:
+    title: true
+    plot: true
+
+other:
+  # 是否使用 stdin/stdout 提问确认。
+  interactive: true
+  # 仅检查是否有新版本，不下载或安装更新。
+  check_update: false
+  # 本 Go 项目不自动更新；保留此键以兼容配置。
+  auto_update: false

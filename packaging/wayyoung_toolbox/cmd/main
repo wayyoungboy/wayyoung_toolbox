@@ -1,0 +1,76 @@
+#!/bin/bash
+set -u
+umask 077
+
+APP_NAME="wayyoung_toolbox"
+DAEMON="${TRIM_APPDEST}/bin/wayyoung-toolbox"
+PID_FILE="${TRIM_PKGVAR}/${APP_NAME}.pid"
+LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
+SOCKET_PATH="${TRIM_APPDEST}/app.sock"
+
+read_pid() {
+    [ -r "${PID_FILE}" ] || return 1
+    head -n 1 "${PID_FILE}" | tr -d '[:space:]'
+}
+
+owns_process() {
+    local pid="${1:-}" command
+    case "${pid}" in ''|*[!0-9]*) return 1 ;; esac
+    [ "${pid}" -gt 1 ] 2>/dev/null || return 1
+    [ -r "/proc/${pid}/cmdline" ] || return 1
+    IFS= read -r -d '' command < "/proc/${pid}/cmdline" || true
+    [ "${command:-}" = "${DAEMON}" ]
+}
+
+status_app() {
+    local pid
+    pid="$(read_pid)" || return 3
+    owns_process "${pid}" || return 3
+}
+
+start_app() {
+    local pid count=0
+    status_app && return 0
+    [ -x "${DAEMON}" ] || return 1
+    mkdir -p -- "${TRIM_PKGVAR}"
+    chmod 700 -- "${TRIM_PKGVAR}"
+    if [ -e "${SOCKET_PATH}" ] && [ ! -S "${SOCKET_PATH}" ]; then
+        echo "拒绝覆盖非 Socket 路径：${SOCKET_PATH}" >&2
+        return 1
+    fi
+    TRIM_APPDEST="${TRIM_APPDEST}" TRIM_PKGVAR="${TRIM_PKGVAR}" \
+        "${DAEMON}" >> "${LOG_FILE}" 2>&1 &
+    pid=$!
+    printf '%s\n' "${pid}" > "${PID_FILE}"
+    while [ "${count}" -lt 30 ]; do
+        if owns_process "${pid}" && [ -S "${SOCKET_PATH}" ]; then
+            return 0
+        fi
+        kill -0 "${pid}" 2>/dev/null || return 1
+        sleep 1
+        count=$((count + 1))
+    done
+    kill -TERM "${pid}" 2>/dev/null || true
+    return 1
+}
+
+stop_app() {
+    local pid count=0
+    pid="$(read_pid)" || return 0
+    owns_process "${pid}" || return 0
+    kill -TERM "${pid}" 2>/dev/null || true
+    while owns_process "${pid}" && [ "${count}" -lt 30 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+    owns_process "${pid}" && kill -KILL "${pid}" 2>/dev/null || true
+    rm -f -- "${PID_FILE}"
+}
+
+case "${1:-}" in
+    start) start_app ;;
+    stop) stop_app ;;
+    restart) stop_app && start_app ;;
+    status) status_app ;;
+    *) echo "Usage: $0 {start|stop|restart|status}" >&2; exit 1 ;;
+esac

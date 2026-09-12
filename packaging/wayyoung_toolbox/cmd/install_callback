@@ -1,0 +1,4 @@
+#!/bin/bash
+mkdir -p -- "${TRIM_PKGVAR}"
+chmod 700 -- "${TRIM_PKGVAR}"
+exit 0

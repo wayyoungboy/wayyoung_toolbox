@@ -1,0 +1,12 @@
+{
+  "name": "wayyoung-toolbox",
+  "version": "0.5.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/test.mjs",
+    "test:go": "node scripts/test.mjs --go",
+    "test:frontend": "node scripts/test.mjs --frontend",
+    "build": "node scripts/build.mjs"
+  }
+}

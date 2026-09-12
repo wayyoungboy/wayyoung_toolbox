@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            modules/**/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            modules/backup/frontend/package-lock.json
+            modules/media/package-lock.json
+            modules/music/package-lock.json
+
+      - name: Verify Go modules
+        run: npm run test:go
+
+      - name: Verify frontends
+        run: npm run test:frontend
+
+      - name: Build package staging directory
+        run: SKIP_FNPACK=1 npm run build

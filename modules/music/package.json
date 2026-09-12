@@ -1,0 +1,19 @@
+{
+  "name": "fnos-music-converter",
+  "version": "0.0.4",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm --workspace frontend run dev",
+    "build:frontend": "npm --workspace frontend run build",
+    "build": "node scripts/build.mjs",
+    "test:go": "go test -race ./cmd/... ./internal/... && cd third_party/ncmdump-go && go test -race ./...",
+    "test:go:coverage": "go test -race -cover ./cmd/... ./internal/... && cd third_party/ncmdump-go && go test -race -cover ./...",
+    "test:frontend": "npm --workspace frontend run test",
+    "test:frontend:coverage": "npm --workspace frontend run test:coverage",
+    "test": "npm run test:go && npm run test:frontend"
+  }
+}

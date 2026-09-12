@@ -1,0 +1,24 @@
+# Local builds and release artifacts
+/bin/
+/dist/
+/javsp
+/javsp.exe
+
+# Local integration-test inputs, backups, outputs, logs, and temporary files
+/run_test/
+/run_test_back/
+/integration-output/
+/test-output/
+/coverage.out
+/tmp/
+/temp/
+/*.log
+
+# Operating-system and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

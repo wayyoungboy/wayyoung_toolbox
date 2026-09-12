@@ -1,0 +1,17 @@
+{
+  ".url": {
+    "wayyoung_toolbox.main": {
+      "title": "wayyoung的飞牛工具箱",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/wayyoung_toolbox",
+      "gatewaySocket": "app.sock",
+      "url": "/app/wayyoung_toolbox/",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "readonly"
+      }
+    }
+  }
+}
