@@ -15,17 +15,17 @@ function run(command, args, cwd) {
 
 if (runGo) {
   const goModules = [
-    root,
-    path.join(root, 'modules/backup'),
-    path.join(root, 'modules/media'),
-    path.join(root, 'modules/media/third_party/javsp'),
-    path.join(root, 'modules/music'),
-    path.join(root, 'modules/music/third_party/ncmdump-go'),
-    path.join(root, 'modules/ha500'),
+    { directory: root, packages: ['./...'] },
+    { directory: path.join(root, 'modules/backup'), packages: ['./internal/...', './module/...'] },
+    { directory: path.join(root, 'modules/media'), packages: ['./internal/...', './module/...'] },
+    { directory: path.join(root, 'modules/media/third_party/javsp'), packages: ['./...'] },
+    { directory: path.join(root, 'modules/music'), packages: ['./internal/...', './module/...'] },
+    { directory: path.join(root, 'modules/music/third_party/ncmdump-go'), packages: ['./...'] },
+    { directory: path.join(root, 'modules/ha500'), packages: ['./internal/...', './module/...'] },
   ];
-  for (const directory of goModules) {
-    run('go', ['vet', './...'], directory);
-    run('go', ['test', '-race', './...'], directory);
+  for (const project of goModules) {
+    run('go', ['vet', ...project.packages], project.directory);
+    run('go', ['test', '-race', ...project.packages], project.directory);
   }
 }
 

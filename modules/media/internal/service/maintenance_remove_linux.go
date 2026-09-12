@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -58,6 +59,17 @@ func safeRemoveEmptyDirectory(root, candidate string, expected os.FileInfo) (boo
 	var opened unix.Stat_t
 	if err := unix.Fstat(childFD, &opened); err != nil {
 		return false, err
+	}
+	expectedStat, ok := expected.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false, errors.New("无法核对空目录身份")
+	}
+	// Device and inode can be reused immediately after deletion. Comparing the
+	// inode change time distinguishes a newly created directory that inherited
+	// the same inode number from the directory seen during the scan.
+	if uint64(expectedStat.Dev) != opened.Dev || expectedStat.Ino != opened.Ino ||
+		expectedStat.Ctim.Sec != opened.Ctim.Sec || expectedStat.Ctim.Nsec != opened.Ctim.Nsec {
+		return false, nil
 	}
 	if names, readErr := child.Readdirnames(1); len(names) != 0 || (readErr != nil && !errors.Is(readErr, io.EOF)) {
 		return false, readErr
