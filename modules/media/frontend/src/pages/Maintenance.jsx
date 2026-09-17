@@ -10,6 +10,7 @@ import Toast from '@douyinfe/semi-ui/lib/es/toast';
 import { IconDelete, IconFolderOpen, IconSave, IconSearch } from '@douyinfe/semi-icons';
 import { api, formatDate, formatDuration } from '../api';
 import FolderPicker from '../components/FolderPicker';
+import OrphanFoldersResults from '../components/OrphanFoldersResults';
 
 function formatBytes(value) {
   if (!Number.isFinite(value)) return '--';
@@ -37,6 +38,8 @@ export default function Maintenance() {
   const [emptyResult, setEmptyResult] = useState(null);
   const [autoResult, setAutoResult] = useState(null);
   const [autoBusy, setAutoBusy] = useState(false);
+  const [orphanResult, setOrphanResult] = useState(null);
+  const [orphanBusy, setOrphanBusy] = useState(false);
 
   const load = async () => {
     try {
@@ -51,6 +54,7 @@ export default function Maintenance() {
     setConfig((current) => ({ ...current, ...changes }));
     setEmptyResult(null);
     setAutoResult(null);
+    setOrphanResult(null);
   };
 
   const save = async (showToast = true) => {
@@ -115,6 +119,25 @@ export default function Maintenance() {
     } catch (error) { Toast.error(error.message); }
     finally { setPreviewing(false); }
   };
+
+  const orphanFolders = async (execute = false) => {
+    setOrphanBusy(true);
+    try {
+      if (!await save(false)) return;
+      const result = execute ? await api.cleanupOrphanFolders() : await api.previewOrphanFolders();
+      setOrphanResult(result);
+      if (execute) Toast.success(`已清理 ${result.removed} 个无视频目录、${result.deleted_files} 个残留附件`);
+      await load();
+    } catch (error) { Toast.error(error.message); await load(); }
+    finally { setOrphanBusy(false); }
+  };
+
+  const confirmOrphanCleanup = () => Modal.confirm({
+    title: '清理无视频残留附件',
+    content: '重新检查维护目录内的影片文件夹，永久删除确认无视频、仅剩 NFO/图片/字幕的附件，再删除已空的影片目录。含视频、未知文件、符号链接或近期修改的目录不会处理。',
+    okText: '永久清理', cancelText: '取消', okButtonProps: { type: 'danger' },
+    onOk: () => orphanFolders(true),
+  });
 
   const cleanupEmpty = () => {
     if (!emptyResult) {
@@ -207,7 +230,7 @@ export default function Maintenance() {
 
   const runColumns = [
     { title: '开始时间', dataIndex: 'started_at', width: 145, render: formatDate },
-    { title: '任务', dataIndex: 'kind', width: 130, render: (value) => value === 'duplicates' ? '重复视频扫描' : value === 'duplicate_cleanup' ? '按大小自动去重' : value === 'duplicate_delete' ? '永久删除重复视频' : value === 'intake' ? '下载完成入库' : '空目录清理' },
+    { title: '任务', dataIndex: 'kind', width: 130, render: (value) => value === 'orphan_cleanup' ? '无视频残留清理' : value === 'duplicates' ? '重复视频扫描' : value === 'duplicate_cleanup' ? '按大小自动去重' : value === 'duplicate_delete' ? '永久删除重复视频' : value === 'intake' ? '下载完成入库' : '空目录清理' },
     { title: '触发', dataIndex: 'trigger_type', width: 90, render: (value) => value === 'schedule' ? '定时' : '手动' },
     { title: '状态', dataIndex: 'status', width: 90, render: (value) => <span className={value === 'success' ? 'success-text' : value === 'failed' ? 'danger-text' : ''}>{value === 'success' ? '成功' : value === 'failed' ? '失败' : '运行中'}</span> },
     { title: '扫描/发现/处理', width: 150, render: (_, item) => `${item.scanned_count} / ${item.found_count} / ${item.action_count}` },
@@ -219,7 +242,7 @@ export default function Maintenance() {
   return (
     <section className="page maintenance-page">
       <header className="page-header">
-        <div><h1>媒体维护</h1><p>检查同番号视频，并安全清理长期为空的旧目录</p></div>
+        <div><h1>媒体维护</h1><p>管理成品目录：重复视频、无视频残留附件和空目录</p></div>
         <Button theme="solid" type="primary" icon={<IconSave />} loading={saving} onClick={() => save()}>保存设置</Button>
       </header>
 
@@ -267,11 +290,21 @@ export default function Maintenance() {
       {duplicateResult ? <div className="maintenance-results"><div className="section-heading"><div><h2>重复视频结果</h2><span className="muted-text">已选择 {selectedDuplicateFiles.length} 个；删除不可恢复</span></div><div className="inline-actions"><Button onClick={selectFingerprintCopies}>选择指纹相同副本</Button><Button type="danger" icon={<IconDelete />} loading={deleting} disabled={!selectedDuplicateFiles.length} onClick={deleteDuplicates}>永久删除所选</Button></div></div><Table rowKey="row_key" columns={duplicateColumns} dataSource={duplicateFiles} rowSelection={{ selectedRowKeys: selectedDuplicateKeys, onChange: setSelectedDuplicateKeys }} pagination={{ pageSize: 30 }} scroll={{ x: 850 }} empty="未发现同番号视频" /></div> : null}
       {emptyResult?.directories?.length ? <div className="maintenance-empty-list"><div className="section-heading"><h2>{emptyResult.removed ? '本次处理目录' : '待清理空目录'}</h2><span className="muted-text">{emptyResult.directory}</span></div><ul>{emptyResult.directories.map((path) => <li key={path}>{path}</li>)}</ul></div> : null}
 
+      <section className="maintenance-card">
+        <div className="section-heading"><div><h2>无视频残留附件清理</h2><p>处理只删了视频、还剩 NFO 和海报的影片目录。目录及子目录均无视频，且只含允许的图片、NFO、字幕时才可清理。不会单独删除 .actors 或 extrafanart。</p></div></div>
+        <div className="inline-actions">
+          <Button icon={<IconSearch />} loading={orphanBusy} onClick={() => orphanFolders(false)}>预览残留目录</Button>
+          <Button type="danger" icon={<IconDelete />} loading={orphanBusy} disabled={!orphanResult?.found} onClick={confirmOrphanCleanup}>清理无视频残留</Button>
+        </div>
+        {orphanResult ? <OrphanFoldersResults result={orphanResult} /> : null}
+      </section>
+
       <section className="maintenance-schedule">
-        <div className="section-heading"><div><h2>定时媒体维护</h2><p>两个功能独立开关，共用执行时间；修改后点击「保存设置」生效。</p></div></div>
+        <div className="section-heading"><div><h2>定时媒体维护</h2><p>三个功能独立开关，共用执行时间；修改后点击「保存设置」生效。</p></div></div>
         <div className="settings-grid">
           <label className="settings-field"><span>自动删除重复视频（保留最大的一份）</span><Switch aria-label="自动删除重复视频" checked={Boolean(config.duplicate_cleanup_enabled)} onChange={(enabled) => updateConfig({ duplicate_cleanup_enabled: enabled })} /></label>
           <label className="settings-field"><span>自动清理空目录</span><Switch aria-label="自动清理空目录" checked={config.cleanup_enabled} onChange={(enabled) => updateConfig({ cleanup_enabled: enabled })} /></label>
+          <label className="settings-field"><span>自动清理无视频残留附件</span><Switch aria-label="自动清理无视频残留附件" checked={Boolean(config.orphan_cleanup_enabled)} onChange={(enabled) => updateConfig({ orphan_cleanup_enabled: enabled })} /></label>
           <label className="settings-field"><span>文件/目录至少多久未修改才可清理</span><InputNumber min={1} max={8760} value={config.minimum_age_hours} onChange={(value) => updateConfig({ minimum_age_hours: value })} suffix="小时" /></label>
         </div>
         <div className="settings-grid">
@@ -280,7 +313,7 @@ export default function Maintenance() {
             ? <label className="settings-field"><span>每天执行时间</span><Input value={config.schedule_time} onChange={(scheduleTime) => updateConfig({ schedule_time: scheduleTime })} placeholder="05:00" /></label>
             : <label className="settings-field"><span>执行间隔</span><InputNumber min={15} max={10080} value={config.schedule_minutes} onChange={(scheduleMinutes) => updateConfig({ schedule_minutes: scheduleMinutes })} suffix="分钟" style={{ width: '100%' }} /></label>}
           <div className="settings-field"><span>上次执行</span><div>{formatDate(config.last_run_at)}</div></div>
-          <div className="settings-field"><span>下次执行</span><div>{config.cleanup_enabled || config.duplicate_cleanup_enabled ? formatDate(config.next_run_at) : '未启用'}</div></div>
+          <div className="settings-field"><span>下次执行</span><div>{config.cleanup_enabled || config.duplicate_cleanup_enabled || config.orphan_cleanup_enabled ? formatDate(config.next_run_at) : '未启用'}</div></div>
         </div>
       </section>
 

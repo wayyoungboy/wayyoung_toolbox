@@ -181,3 +181,80 @@ func TestOrphanFoldersAPIAndIndependentSchedule(t *testing.T) {
 		t.Fatalf("not due: %v %v", due, err)
 	}
 }
+
+func TestOrphanFoldersEndpointsHandleBusyAndMissingRoot(t *testing.T) {
+	s := testService(t)
+	root := t.TempDir()
+	cfg := defaultMaintenanceConfig()
+	cfg.RootDirectory = root
+	if _, err := s.db.UpdateMaintenanceConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	request := func(route string, want int) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodPost, "/api/maintenance/orphan-folders/"+route, nil)
+		r.Header.Set("X-Trim-Isadmin", "true")
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("%s: %d %s", route, w.Code, w.Body.String())
+		}
+	}
+	autoVideo(t, root, "ABC-123/movie.nfo", "<movie/>")
+	autoVideo(t, root, "ABC-123/.DS_Store", "os metadata")
+	oldOrphanTree(t, root)
+	request("preview", 200)
+	s.maintenanceLock.Lock()
+	request("preview", 409)
+	request("cleanup", 409)
+	s.maintenanceLock.Unlock()
+	if !s.acquireMediaFileWriter() {
+		t.Fatal("lock")
+	}
+	request("cleanup", 409)
+	s.mediaFiles.Unlock()
+	request("cleanup", 200)
+	if _, err := os.Stat(filepath.Join(root, "ABC-123")); !os.IsNotExist(err) {
+		t.Fatal("not removed", err)
+	}
+	if err := os.Remove(root); err != nil {
+		t.Fatal(err)
+	}
+	request("preview", 400)
+	request("cleanup", 400)
+	if err := s.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request("preview", 500)
+	request("cleanup", 409)
+}
+
+func TestOrphanFoldersRejectInvalidInputsAndChangedRoot(t *testing.T) {
+	if _, err := planOrphanFolders("/", time.Hour); err == nil {
+		t.Fatal("root allowed")
+	}
+	if _, err := planOrphanFolders(t.TempDir(), time.Minute); err == nil {
+		t.Fatal("unsafe minimum age")
+	}
+	root := t.TempDir()
+	autoVideo(t, root, "ABC-123/movie.nfo", "<movie/>")
+	oldOrphanTree(t, root)
+	plan, err := planOrphanFolders(root, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(root, root+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Rename(root+"-old", root) })
+	if err := os.Symlink(root+"-old", root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(root) })
+	if result, err := executeOrphanFolders(plan); err == nil || result.DeletedFiles != 0 {
+		t.Fatalf("changed root deleted: %+v %v", result, err)
+	}
+	if isMovieNFO(filepath.Join(root, "missing.nfo")) {
+		t.Fatal("missing NFO accepted")
+	}
+}

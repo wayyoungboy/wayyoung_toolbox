@@ -3,6 +3,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { api } from '../api';
 import OrphanFoldersResults from './OrphanFoldersResults';
 
+// Semi UI imports browser-only CSS through CJS; exercise our column renderers
+// with a lightweight table host in the server-rendered unit tests.
+vi.mock('@douyinfe/semi-ui/lib/es/table', () => ({
+  default: ({ dataSource, columns, empty }) => dataSource.length
+    ? <div>{dataSource.map((row) => <div key={row.path}>{columns.map((column) => <div key={column.title}>{column.render ? column.render(row[column.dataIndex], row) : row[column.dataIndex]}</div>)}</div>)}</div>
+    : <div>{empty}</div>,
+}));
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('orphan folder maintenance', () => {
