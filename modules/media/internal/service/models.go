@@ -65,14 +65,15 @@ func defaultAnimeConfig() AnimeConfig {
 }
 
 type MaintenanceConfig struct {
-	RootDirectory   string  `json:"root_directory"`
-	CleanupEnabled  bool    `json:"cleanup_enabled"`
-	ScheduleType    string  `json:"schedule_type"`
-	ScheduleMinutes int     `json:"schedule_minutes"`
-	ScheduleTime    string  `json:"schedule_time"`
-	MinimumAgeHours int     `json:"minimum_age_hours"`
-	LastRunAt       *string `json:"last_run_at"`
-	NextRunAt       *string `json:"next_run_at"`
+	RootDirectory           string  `json:"root_directory"`
+	CleanupEnabled          bool    `json:"cleanup_enabled"`
+	DuplicateCleanupEnabled bool    `json:"duplicate_cleanup_enabled"`
+	ScheduleType            string  `json:"schedule_type"`
+	ScheduleMinutes         int     `json:"schedule_minutes"`
+	ScheduleTime            string  `json:"schedule_time"`
+	MinimumAgeHours         int     `json:"minimum_age_hours"`
+	LastRunAt               *string `json:"last_run_at"`
+	NextRunAt               *string `json:"next_run_at"`
 }
 
 type IntakeConfig struct {

@@ -24,6 +24,7 @@ type DuplicateVideoFile struct {
 	Name        string `json:"name"`
 	Size        int64  `json:"size"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	snapshot    os.FileInfo
 }
 
 type DuplicateVideoGroup struct {
@@ -167,7 +168,7 @@ func scanDuplicateVideos(root string) (DuplicateScanResult, error) {
 		if !ok {
 			return nil
 		}
-		candidates[mediaID] = append(candidates[mediaID], DuplicateVideoFile{Path: path, Name: entry.Name(), Size: info.Size()})
+		candidates[mediaID] = append(candidates[mediaID], DuplicateVideoFile{Path: path, Name: entry.Name(), Size: info.Size(), snapshot: info})
 		return nil
 	})
 	if err != nil {

@@ -178,6 +178,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/maintenance/config", s.handleMaintenanceConfig)
 	mux.HandleFunc("POST /api/maintenance/duplicates/scan", s.handleDuplicateScan)
 	mux.HandleFunc("POST /api/maintenance/duplicates/delete", s.handleDuplicateDelete)
+	mux.HandleFunc("POST /api/maintenance/duplicates/preview", s.handleAutomaticDuplicatePreview)
+	mux.HandleFunc("POST /api/maintenance/duplicates/cleanup", s.handleAutomaticDuplicateCleanup)
 	mux.HandleFunc("POST /api/maintenance/empty-directories/preview", s.handleEmptyDirectoryPreview)
 	mux.HandleFunc("POST /api/maintenance/empty-directories/cleanup", s.handleEmptyDirectoryCleanup)
 	mux.HandleFunc("GET /api/intake", s.handleIntake)
@@ -410,7 +412,7 @@ func (s *Service) handleMaintenance(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	runs, err := s.db.ListMaintenanceRunsByKinds(100, "duplicates", "duplicate_delete", "empty_directories")
+	runs, err := s.db.ListMaintenanceRunsByKinds(100, "duplicates", "duplicate_delete", "duplicate_cleanup", "empty_directories")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -550,6 +552,10 @@ func (s *Service) runMaintenanceCleanup(trigger string) (EmptyDirectoryResult, e
 	if err := s.db.MarkMaintenanceStarted(config); err != nil {
 		return EmptyDirectoryResult{}, err
 	}
+	return s.emptyDirectoryCleanupLocked(config, trigger)
+}
+
+func (s *Service) emptyDirectoryCleanupLocked(config MaintenanceConfig, trigger string) (EmptyDirectoryResult, error) {
 	runID, err := s.db.StartMaintenanceRun("empty_directories", trigger)
 	if err != nil {
 		return EmptyDirectoryResult{}, err
@@ -1277,8 +1283,8 @@ func (s *Service) scheduler(ctx context.Context) {
 			if err != nil {
 				slog.Error("check media maintenance schedule", "error", err)
 			} else if maintenanceDue {
-				if _, err := s.runMaintenanceCleanup("schedule"); err != nil && !errors.Is(err, errMaintenanceBusy) {
-					slog.Warn("run scheduled empty-directory cleanup", "error", err)
+				if err := s.runScheduledMaintenance(); err != nil && !errors.Is(err, errMaintenanceBusy) {
+					slog.Warn("run scheduled media cleanup", "error", err)
 				}
 			}
 			intakeDue, err := s.db.IntakeDue()
