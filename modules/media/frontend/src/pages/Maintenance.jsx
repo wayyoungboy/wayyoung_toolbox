@@ -40,6 +40,7 @@ export default function Maintenance() {
   const [autoBusy, setAutoBusy] = useState(false);
   const [orphanResult, setOrphanResult] = useState(null);
   const [orphanBusy, setOrphanBusy] = useState(false);
+  const [orphanConfirmVisible, setOrphanConfirmVisible] = useState(false);
 
   const load = async () => {
     try {
@@ -131,13 +132,6 @@ export default function Maintenance() {
     } catch (error) { Toast.error(error.message); await load(); }
     finally { setOrphanBusy(false); }
   };
-
-  const confirmOrphanCleanup = () => Modal.confirm({
-    title: '清理无视频残留附件',
-    content: '重新检查维护目录内的影片文件夹，永久删除确认无视频、仅剩 NFO/图片/字幕的附件，再删除已空的影片目录。含视频、未知文件、符号链接或近期修改的目录不会处理。',
-    okText: '永久清理', cancelText: '取消', okButtonProps: { type: 'danger' },
-    onOk: () => orphanFolders(true),
-  });
 
   const cleanupEmpty = () => {
     if (!emptyResult) {
@@ -294,7 +288,7 @@ export default function Maintenance() {
         <div className="section-heading"><div><h2>无视频残留附件清理</h2><p>处理只删了视频、还剩 NFO 和海报的影片目录。目录及子目录均无视频，且只含允许的图片、NFO、字幕时才可清理。不会单独删除 .actors 或 extrafanart。</p></div></div>
         <div className="inline-actions">
           <Button icon={<IconSearch />} loading={orphanBusy} onClick={() => orphanFolders(false)}>预览残留目录</Button>
-          <Button type="danger" icon={<IconDelete />} loading={orphanBusy} disabled={!orphanResult?.found} onClick={confirmOrphanCleanup}>清理无视频残留</Button>
+          <Button type="danger" icon={<IconDelete />} loading={orphanBusy} disabled={!orphanResult?.found} onClick={() => setOrphanConfirmVisible(true)}>清理无视频残留</Button>
         </div>
         {orphanResult ? <OrphanFoldersResults result={orphanResult} /> : null}
       </section>
@@ -318,6 +312,12 @@ export default function Maintenance() {
       </section>
 
       <div className="maintenance-results"><div className="section-heading"><h2>媒体维护运行记录</h2><span className="muted-text">最多保留最近 100 次</span></div><Table rowKey="id" columns={runColumns} dataSource={data?.runs || []} expandedRowRender={(item) => <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{(item.details || []).join('\n') || '无详细记录'}</pre>} pagination={{ pageSize: 20 }} empty="暂无运行记录" /></div>
+
+      <Modal title="清理无视频残留附件" visible={orphanConfirmVisible} confirmLoading={orphanBusy}
+        okText="永久清理" cancelText="取消" okButtonProps={{ type: 'danger' }}
+        onCancel={() => setOrphanConfirmVisible(false)} onOk={async () => { await orphanFolders(true); setOrphanConfirmVisible(false); }}>
+        重新检查维护目录内的影片文件夹，永久删除确认无视频、仅剩 NFO/图片/字幕的附件，再删除已空的影片目录。含视频、未知文件、符号链接或近期修改的目录不会处理。
+      </Modal>
 
       <FolderPicker
         visible={pickerVisible}

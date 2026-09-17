@@ -156,6 +156,7 @@ button, input, select { font: inherit; }
 .maintenance-directory-bar > div > span { color: var(--muted); font-size: 12px; }
 .maintenance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .maintenance-card, .maintenance-schedule { border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.maintenance-card .inline-actions { flex-wrap: wrap; }
 .maintenance-card .section-heading, .maintenance-schedule .section-heading { align-items: flex-start; }
 .maintenance-card .section-heading > div, .maintenance-schedule .section-heading > div { display: grid; gap: 5px; }
 .maintenance-card .section-heading p, .maintenance-schedule .section-heading p { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
