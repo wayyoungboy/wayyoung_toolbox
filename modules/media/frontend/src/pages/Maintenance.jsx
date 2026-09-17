@@ -35,6 +35,8 @@ export default function Maintenance() {
   const [duplicateResult, setDuplicateResult] = useState(null);
   const [selectedDuplicateKeys, setSelectedDuplicateKeys] = useState([]);
   const [emptyResult, setEmptyResult] = useState(null);
+  const [autoResult, setAutoResult] = useState(null);
+  const [autoBusy, setAutoBusy] = useState(false);
 
   const load = async () => {
     try {
@@ -48,6 +50,7 @@ export default function Maintenance() {
   const updateConfig = (changes) => {
     setConfig((current) => ({ ...current, ...changes }));
     setEmptyResult(null);
+    setAutoResult(null);
   };
 
   const save = async (showToast = true) => {
@@ -77,6 +80,29 @@ export default function Maintenance() {
     } catch (error) { Toast.error(error.message); }
     finally { setScanning(false); }
   };
+
+  const automaticDuplicates = async (execute = false) => {
+    setAutoBusy(true);
+    try {
+      if (!await save(false)) return;
+      const result = execute ? await api.cleanupAutomaticDuplicates() : await api.previewAutomaticDuplicates();
+      setAutoResult(result);
+      if (execute) {
+        setDuplicateResult(null);
+        setSelectedDuplicateKeys([]);
+        Toast.success(`已永久删除 ${result.deleted} 个重复视频，合计 ${formatBytes(result.reclaimed_bytes)}`);
+      }
+      await load();
+    } catch (error) { Toast.error(error.message); await load(); }
+    finally { setAutoBusy(false); }
+  };
+
+  const confirmAutomaticCleanup = () => Modal.confirm({
+    title: '按番号保留最大文件',
+    content: '将重新扫描当前维护目录，永久删除同番号较小或同大小的多余视频，每组保留一份最大文件。分段影片及近期修改的文件跳过；不删除 NFO 和图片。',
+    okText: '立即清理', cancelText: '取消',
+    onOk: () => automaticDuplicates(true),
+  });
 
   const previewEmpty = async () => {
     setPreviewing(true);
@@ -181,7 +207,7 @@ export default function Maintenance() {
 
   const runColumns = [
     { title: '开始时间', dataIndex: 'started_at', width: 145, render: formatDate },
-    { title: '任务', dataIndex: 'kind', width: 130, render: (value) => value === 'duplicates' ? '重复视频扫描' : value === 'duplicate_delete' ? '永久删除重复视频' : value === 'intake' ? '下载完成入库' : '空目录清理' },
+    { title: '任务', dataIndex: 'kind', width: 130, render: (value) => value === 'duplicates' ? '重复视频扫描' : value === 'duplicate_cleanup' ? '按大小自动去重' : value === 'duplicate_delete' ? '永久删除重复视频' : value === 'intake' ? '下载完成入库' : '空目录清理' },
     { title: '触发', dataIndex: 'trigger_type', width: 90, render: (value) => value === 'schedule' ? '定时' : '手动' },
     { title: '状态', dataIndex: 'status', width: 90, render: (value) => <span className={value === 'success' ? 'success-text' : value === 'failed' ? 'danger-text' : ''}>{value === 'success' ? '成功' : value === 'failed' ? '失败' : '运行中'}</span> },
     { title: '扫描/发现/处理', width: 150, render: (_, item) => `${item.scanned_count} / ${item.found_count} / ${item.action_count}` },
@@ -198,8 +224,8 @@ export default function Maintenance() {
       </header>
 
       <div className="notice-box maintenance-notice">
-        <strong>重复视频只在人工确认后永久删除</strong>
-        <span>扫描会把 MIDA-734、MIDA-734-C 等后缀版本归入同一番号；可批量选择并永久删除，执行前会重新校验且每组至少保留一个文件。此操作不可恢复。</span>
+        <strong>同番号保留最大文件，大小相同只留一份</strong>
+        <span>例如 MIDA-734、MIDA-734-C 视为同一番号。自动去重按体积选择，不要求内容指纹相同；同大小按路径顺序保留一份。删除不可恢复，NFO 和图片保留。</span>
       </div>
 
       <div className="maintenance-directory-bar">
@@ -225,22 +251,40 @@ export default function Maintenance() {
         </section>
       </div>
 
+      <section className="maintenance-card">
+        <div className="section-heading"><div><h2>自动删除重复视频</h2><p>仅处理完整番号的普通视频；分段影片、STRM、空文件、近期修改的文件跳过。执行前再次验证保留文件。</p></div></div>
+        <div className="inline-actions">
+          <Button icon={<IconSearch />} loading={autoBusy} onClick={() => automaticDuplicates(false)}>预览保留与删除</Button>
+          <Button type="danger" icon={<IconDelete />} loading={autoBusy} onClick={confirmAutomaticCleanup}>保留最大文件并立即清理</Button>
+        </div>
+        {autoResult ? <Table rowKey="media_id" dataSource={autoResult.groups} pagination={{ pageSize: 10 }} columns={[
+          { title: '番号', dataIndex: 'media_id', width: 140 },
+          { title: '保留文件', render: (_, group) => <span className="maintenance-path">{group.keep.path}（{formatBytes(group.keep.size)}）</span> },
+          { title: '删除候选 / 跳过原因', render: (_, group) => group.skip_reason || group.remove.map((file) => <div className="maintenance-path" key={file.path}>{file.path}（{formatBytes(file.size)}）{autoResult.files.includes(file.path) ? ' · 已删除' : ''}</div>) },
+        ]} empty="未发现符合条件的同番号重复影片" /> : null}
+      </section>
+
       {duplicateResult ? <div className="maintenance-results"><div className="section-heading"><div><h2>重复视频结果</h2><span className="muted-text">已选择 {selectedDuplicateFiles.length} 个；删除不可恢复</span></div><div className="inline-actions"><Button onClick={selectFingerprintCopies}>选择指纹相同副本</Button><Button type="danger" icon={<IconDelete />} loading={deleting} disabled={!selectedDuplicateFiles.length} onClick={deleteDuplicates}>永久删除所选</Button></div></div><Table rowKey="row_key" columns={duplicateColumns} dataSource={duplicateFiles} rowSelection={{ selectedRowKeys: selectedDuplicateKeys, onChange: setSelectedDuplicateKeys }} pagination={{ pageSize: 30 }} scroll={{ x: 850 }} empty="未发现同番号视频" /></div> : null}
       {emptyResult?.directories?.length ? <div className="maintenance-empty-list"><div className="section-heading"><h2>{emptyResult.removed ? '本次处理目录' : '待清理空目录'}</h2><span className="muted-text">{emptyResult.directory}</span></div><ul>{emptyResult.directories.map((path) => <li key={path}>{path}</li>)}</ul></div> : null}
 
       <section className="maintenance-schedule">
-        <div className="section-heading"><div><h2>定时清理空目录</h2><p>默认关闭；开启后仅自动清理空目录，不处理重复视频</p></div><Switch checked={config.cleanup_enabled} onChange={(cleanupEnabled) => updateConfig({ cleanup_enabled: cleanupEnabled })} /></div>
+        <div className="section-heading"><div><h2>定时媒体维护</h2><p>两个功能独立开关，共用执行时间；修改后点击「保存设置」生效。</p></div></div>
+        <div className="settings-grid">
+          <label className="settings-field"><span>自动删除重复视频（保留最大的一份）</span><Switch aria-label="自动删除重复视频" checked={Boolean(config.duplicate_cleanup_enabled)} onChange={(enabled) => updateConfig({ duplicate_cleanup_enabled: enabled })} /></label>
+          <label className="settings-field"><span>自动清理空目录</span><Switch aria-label="自动清理空目录" checked={config.cleanup_enabled} onChange={(enabled) => updateConfig({ cleanup_enabled: enabled })} /></label>
+          <label className="settings-field"><span>文件/目录至少多久未修改才可清理</span><InputNumber min={1} max={8760} value={config.minimum_age_hours} onChange={(value) => updateConfig({ minimum_age_hours: value })} suffix="小时" /></label>
+        </div>
         <div className="settings-grid">
           <label className="settings-field"><span>执行方式</span><Select value={config.schedule_type} onChange={(scheduleType) => updateConfig({ schedule_type: scheduleType })} optionList={[{ value: 'daily', label: '每天定时' }, { value: 'interval', label: '按间隔执行' }]} /></label>
           {config.schedule_type === 'daily'
             ? <label className="settings-field"><span>每天执行时间</span><Input value={config.schedule_time} onChange={(scheduleTime) => updateConfig({ schedule_time: scheduleTime })} placeholder="05:00" /></label>
             : <label className="settings-field"><span>执行间隔</span><InputNumber min={15} max={10080} value={config.schedule_minutes} onChange={(scheduleMinutes) => updateConfig({ schedule_minutes: scheduleMinutes })} suffix="分钟" style={{ width: '100%' }} /></label>}
           <div className="settings-field"><span>上次执行</span><div>{formatDate(config.last_run_at)}</div></div>
-          <div className="settings-field"><span>下次执行</span><div>{config.cleanup_enabled ? formatDate(config.next_run_at) : '未启用'}</div></div>
+          <div className="settings-field"><span>下次执行</span><div>{config.cleanup_enabled || config.duplicate_cleanup_enabled ? formatDate(config.next_run_at) : '未启用'}</div></div>
         </div>
       </section>
 
-      <div className="maintenance-results"><div className="section-heading"><h2>媒体维护运行记录</h2><span className="muted-text">最多保留最近 100 次</span></div><Table rowKey="id" columns={runColumns} dataSource={data?.runs || []} pagination={{ pageSize: 20 }} empty="暂无运行记录" /></div>
+      <div className="maintenance-results"><div className="section-heading"><h2>媒体维护运行记录</h2><span className="muted-text">最多保留最近 100 次</span></div><Table rowKey="id" columns={runColumns} dataSource={data?.runs || []} expandedRowRender={(item) => <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{(item.details || []).join('\n') || '无详细记录'}</pre>} pagination={{ pageSize: 20 }} empty="暂无运行记录" /></div>
 
       <FolderPicker
         visible={pickerVisible}
