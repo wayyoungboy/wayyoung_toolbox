@@ -203,3 +203,106 @@ func TestAutomaticDuplicateScheduleAndAPI(t *testing.T) {
 		t.Fatalf("must not overlap other media writes: %v", err)
 	}
 }
+
+func TestAutomaticDuplicateEndpointsReportBusyAndUnavailableRoot(t *testing.T) {
+	s := testService(t)
+	config := defaultMaintenanceConfig()
+	config.RootDirectory = t.TempDir()
+	if _, err := s.db.UpdateMaintenanceConfig(config); err != nil {
+		t.Fatal(err)
+	}
+	request := func(route string, want int) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodPost, "/api/maintenance/duplicates/"+route, nil)
+		r.Header.Set("X-Trim-Isadmin", "true")
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("%s: got %d want %d: %s", route, w.Code, want, w.Body.String())
+		}
+	}
+	s.maintenanceLock.Lock()
+	request("preview", http.StatusConflict)
+	request("cleanup", http.StatusConflict)
+	if err := s.runScheduledMaintenance(); err != errMaintenanceBusy {
+		t.Fatal(err)
+	}
+	s.maintenanceLock.Unlock()
+	if err := s.runScheduledMaintenance(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(config.RootDirectory); err != nil {
+		t.Fatal(err)
+	}
+	request("preview", http.StatusBadRequest)
+	request("cleanup", http.StatusBadRequest)
+	if err := s.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request("preview", http.StatusInternalServerError)
+	// A closed DB also prevents acquiring the shared media-writer guard.
+	request("cleanup", http.StatusConflict)
+	if err := s.runScheduledMaintenance(); err == nil {
+		t.Fatal("closed database accepted")
+	}
+}
+
+func TestAutomaticDuplicateScheduleRunsBothIndependentJobs(t *testing.T) {
+	s := testService(t)
+	root := t.TempDir()
+	config := defaultMaintenanceConfig()
+	config.RootDirectory, config.CleanupEnabled, config.DuplicateCleanupEnabled = root, true, true
+	if _, err := s.db.UpdateMaintenanceConfig(config); err != nil {
+		t.Fatal(err)
+	}
+	autoVideo(t, root, "a/ABC-123.mp4", "largest")
+	autoVideo(t, root, "b/ABC-123.mp4", "small")
+	empty := filepath.Join(root, "old-empty")
+	if err := os.Mkdir(empty, 0700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(empty, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.runScheduledMaintenance(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(empty); !os.IsNotExist(err) {
+		t.Fatalf("empty cleanup skipped: %v", err)
+	}
+	runs, err := s.db.ListMaintenanceRuns(10)
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("runs=%+v err=%v", runs, err)
+	}
+}
+
+func TestAutomaticDuplicateRemovalRejectsKeeperAndChangedFingerprint(t *testing.T) {
+	root := t.TempDir()
+	autoVideo(t, root, "a/ABC-123.mp4", "largest")
+	autoVideo(t, root, "b/ABC-123.mp4", "small")
+	plan, err := planAutomaticDuplicates(root, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	group := plan.Groups[0]
+	if err := removeAutomaticDuplicate(plan, group.Keep, group.Keep); err == nil {
+		t.Fatal("keeper accepted for deletion")
+	}
+	group.Keep.Fingerprint = "invalid"
+	if err := removeAutomaticDuplicate(plan, group.Keep, group.Remove[0]); err == nil {
+		t.Fatal("bad keeper fingerprint accepted")
+	}
+	if err := os.Remove(group.Remove[0].Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeAutomaticDuplicate(plan, group.Keep, group.Remove[0]); err == nil {
+		t.Fatal("missing candidate accepted")
+	}
+	if err := os.Remove(filepath.Dir(group.Remove[0].Path)); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeAutomaticDuplicate(plan, group.Keep, group.Remove[0]); err == nil {
+		t.Fatal("missing parent accepted")
+	}
+}
