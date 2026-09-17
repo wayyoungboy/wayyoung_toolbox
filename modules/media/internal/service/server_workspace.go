@@ -161,6 +161,8 @@ func maintenanceModule(kind string) (string, string, string) {
 		return "maintenance", "媒体维护", "删除重复视频"
 	case "duplicate_cleanup":
 		return "maintenance", "媒体维护", "按大小自动去重"
+	case "orphan_cleanup":
+		return "maintenance", "媒体维护", "清理无视频残留附件"
 	case "empty_directories":
 		return "maintenance", "媒体维护", "空目录清理"
 	default:

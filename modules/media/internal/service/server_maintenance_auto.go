@@ -91,8 +91,7 @@ func (s *Service) automaticDuplicateCleanupLocked(config MaintenanceConfig, trig
 	return result, errors.Join(cleanupErr, finishErr)
 }
 
-// Both switches share one schedule, but are independent: enabling duplicate
-// cleanup must never implicitly enable empty-directory cleanup (or vice versa).
+// Maintenance actions share one schedule, but each has its own opt-in switch.
 func (s *Service) runScheduledMaintenance() error {
 	if !s.acquireMediaFileWriter() {
 		return errMaintenanceBusy
@@ -106,18 +105,21 @@ func (s *Service) runScheduledMaintenance() error {
 	if err != nil {
 		return err
 	}
-	if !config.CleanupEnabled && !config.DuplicateCleanupEnabled {
+	if !config.CleanupEnabled && !config.DuplicateCleanupEnabled && !config.OrphanCleanupEnabled {
 		return nil
 	}
 	if err := s.db.MarkMaintenanceStarted(config); err != nil {
 		return err
 	}
-	var duplicateErr, emptyErr error
+	var duplicateErr, orphanErr, emptyErr error
 	if config.DuplicateCleanupEnabled {
 		_, duplicateErr = s.automaticDuplicateCleanupLocked(config, "schedule")
+	}
+	if config.OrphanCleanupEnabled {
+		_, orphanErr = s.orphanCleanupLocked(config, "schedule")
 	}
 	if config.CleanupEnabled {
 		_, emptyErr = s.emptyDirectoryCleanupLocked(config, "schedule")
 	}
-	return errors.Join(duplicateErr, emptyErr)
+	return errors.Join(duplicateErr, orphanErr, emptyErr)
 }

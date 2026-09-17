@@ -150,6 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_seen_items_created_at ON seen_items(task_id, crea
 		"maintenance_root_directory":            maintenance.RootDirectory,
 		"maintenance_cleanup_enabled":           maintenance.CleanupEnabled,
 		"maintenance_duplicate_cleanup_enabled": maintenance.DuplicateCleanupEnabled,
+		"maintenance_orphan_cleanup_enabled":    maintenance.OrphanCleanupEnabled,
 		"maintenance_schedule_type":             maintenance.ScheduleType,
 		"maintenance_schedule_minutes":          maintenance.ScheduleMinutes,
 		"maintenance_schedule_time":             maintenance.ScheduleTime,
@@ -238,6 +239,7 @@ func (d *Database) MaintenanceConfig() (MaintenanceConfig, error) {
 		RootDirectory:           decodeSetting(values, "maintenance_root_directory", defaults.RootDirectory),
 		CleanupEnabled:          decodeSetting(values, "maintenance_cleanup_enabled", defaults.CleanupEnabled),
 		DuplicateCleanupEnabled: decodeSetting(values, "maintenance_duplicate_cleanup_enabled", defaults.DuplicateCleanupEnabled),
+		OrphanCleanupEnabled:    decodeSetting(values, "maintenance_orphan_cleanup_enabled", defaults.OrphanCleanupEnabled),
 		ScheduleType:            decodeSetting(values, "maintenance_schedule_type", defaults.ScheduleType),
 		ScheduleMinutes:         decodeSetting(values, "maintenance_schedule_minutes", defaults.ScheduleMinutes),
 		ScheduleTime:            decodeSetting(values, "maintenance_schedule_time", defaults.ScheduleTime),
@@ -368,7 +370,7 @@ func (d *Database) UpdateMaintenanceConfig(config MaintenanceConfig) (Maintenanc
 		return MaintenanceConfig{}, err
 	}
 	validated.LastRunAt = current.LastRunAt
-	if validated.CleanupEnabled || validated.DuplicateCleanupEnabled {
+	if validated.CleanupEnabled || validated.DuplicateCleanupEnabled || validated.OrphanCleanupEnabled {
 		next, nextErr := calculateNextRun(validated.ScheduleType, validated.ScheduleMinutes, validated.ScheduleTime, time.Now())
 		if nextErr != nil {
 			return MaintenanceConfig{}, nextErr
@@ -381,6 +383,7 @@ func (d *Database) UpdateMaintenanceConfig(config MaintenanceConfig) (Maintenanc
 		"maintenance_root_directory":            validated.RootDirectory,
 		"maintenance_cleanup_enabled":           validated.CleanupEnabled,
 		"maintenance_duplicate_cleanup_enabled": validated.DuplicateCleanupEnabled,
+		"maintenance_orphan_cleanup_enabled":    validated.OrphanCleanupEnabled,
 		"maintenance_schedule_type":             validated.ScheduleType,
 		"maintenance_schedule_minutes":          validated.ScheduleMinutes,
 		"maintenance_schedule_time":             validated.ScheduleTime,
@@ -406,13 +409,13 @@ ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_
 
 func (d *Database) MaintenanceDue() (bool, error) {
 	config, err := d.MaintenanceConfig()
-	return err == nil && (config.CleanupEnabled || config.DuplicateCleanupEnabled) && config.NextRunAt != nil && *config.NextRunAt <= nowUTC(), err
+	return err == nil && (config.CleanupEnabled || config.DuplicateCleanupEnabled || config.OrphanCleanupEnabled) && config.NextRunAt != nil && *config.NextRunAt <= nowUTC(), err
 }
 
 func (d *Database) MarkMaintenanceStarted(config MaintenanceConfig) error {
 	started := nowUTC()
 	var next *string
-	if config.CleanupEnabled || config.DuplicateCleanupEnabled {
+	if config.CleanupEnabled || config.DuplicateCleanupEnabled || config.OrphanCleanupEnabled {
 		value, err := calculateNextRun(config.ScheduleType, config.ScheduleMinutes, config.ScheduleTime, time.Now())
 		if err != nil {
 			return err

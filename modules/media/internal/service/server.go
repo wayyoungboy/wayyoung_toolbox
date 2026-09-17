@@ -180,6 +180,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/maintenance/duplicates/delete", s.handleDuplicateDelete)
 	mux.HandleFunc("POST /api/maintenance/duplicates/preview", s.handleAutomaticDuplicatePreview)
 	mux.HandleFunc("POST /api/maintenance/duplicates/cleanup", s.handleAutomaticDuplicateCleanup)
+	mux.HandleFunc("POST /api/maintenance/orphan-folders/preview", s.handleOrphanPreview)
+	mux.HandleFunc("POST /api/maintenance/orphan-folders/cleanup", s.handleOrphanCleanup)
 	mux.HandleFunc("POST /api/maintenance/empty-directories/preview", s.handleEmptyDirectoryPreview)
 	mux.HandleFunc("POST /api/maintenance/empty-directories/cleanup", s.handleEmptyDirectoryCleanup)
 	mux.HandleFunc("GET /api/intake", s.handleIntake)
@@ -412,7 +414,7 @@ func (s *Service) handleMaintenance(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	runs, err := s.db.ListMaintenanceRunsByKinds(100, "duplicates", "duplicate_delete", "duplicate_cleanup", "empty_directories")
+	runs, err := s.db.ListMaintenanceRunsByKinds(100, "duplicates", "duplicate_delete", "duplicate_cleanup", "orphan_cleanup", "empty_directories")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return

@@ -68,6 +68,7 @@ type MaintenanceConfig struct {
 	RootDirectory           string  `json:"root_directory"`
 	CleanupEnabled          bool    `json:"cleanup_enabled"`
 	DuplicateCleanupEnabled bool    `json:"duplicate_cleanup_enabled"`
+	OrphanCleanupEnabled    bool    `json:"orphan_cleanup_enabled"`
 	ScheduleType            string  `json:"schedule_type"`
 	ScheduleMinutes         int     `json:"schedule_minutes"`
 	ScheduleTime            string  `json:"schedule_time"`
