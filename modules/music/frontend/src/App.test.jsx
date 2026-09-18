@@ -44,6 +44,19 @@ function createClient(overrides = {}) {
 }
 
 describe('音乐转换中心', () => {
+  it('shows save failures, keeps the draft, and permits a safe retry', async () => {
+    const user = userEvent.setup();
+    const client = createClient({saveSettings: vi.fn().mockRejectedValue(new Error('保存失败：权限不足'))});
+    render(<App client={client} />);
+    await screen.findByDisplayValue('/vol1/music/ncm');
+    await user.click(screen.getByRole('button', {name: '设置', exact: true}));
+    await user.click(screen.getByRole('button', {name: '保存设置'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('保存失败：权限不足');
+    expect(screen.getByDisplayValue('/vol1/music/ncm')).toBeVisible();
+    client.saveSettings.mockResolvedValue(settings);
+    await user.click(screen.getByRole('button', {name: '保存设置'}));
+    expect(await screen.findByText('设置已保存')).toBeVisible();
+  });
   it('shows configuration load failures and does not allow defaults to overwrite unread settings', async () => {
     const client = createClient({ getSettings: vi.fn().mockRejectedValue(new Error('目录配置读取失败')) });
     const user = userEvent.setup();
