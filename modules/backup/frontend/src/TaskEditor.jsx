@@ -89,6 +89,11 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
                   选择目录
                 </button>
               </div>
+              {!task && <button type="button" className="text-button" disabled={busy}
+                aria-label={`从已授权目录选择${key === 'source' ? '源目录' : '目标目录'}`}
+                onClick={() => choose(key, (path) => directory(key, path), { existing: true })}>
+                从已授权目录选择
+              </button>}
             </div>
           ))}
           <p className="hint">

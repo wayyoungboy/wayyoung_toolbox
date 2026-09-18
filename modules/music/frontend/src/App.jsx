@@ -49,17 +49,26 @@ export default function App({ client = api }) {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [picker, setPicker] = useState(null);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setSettingsReady(false);
+    setLoadError('');
     Promise.allSettled([client.getHealth(), client.getSettings(), client.getCurrentJob()]).then(([healthResult, settingsResult, jobResult]) => {
       if (!active) return;
       if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
-      if (settingsResult.status === 'fulfilled') setSettings(settingsResult.value);
+      else setHealth(current => ({ ...current, status: 'error' }));
+      if (settingsResult.status === 'fulfilled') {
+        setSettings(settingsResult.value);
+        setSettingsReady(true);
+      } else setLoadError(settingsResult.reason?.message || '配置读取失败');
       if (jobResult.status === 'fulfilled') setJob(jobResult.value);
     });
     return () => { active = false; };
-  }, [client]);
+  }, [client, reload]);
 
   useEffect(() => {
     if (!job || job.status !== 'running') return undefined;
@@ -80,6 +89,7 @@ export default function App({ client = api }) {
   };
 
   const save = async (quiet = false) => {
+    if (!settingsReady) throw new Error('配置尚未读取，不能覆盖原有设置。请重新读取配置。');
     const saved = await client.saveSettings(settings);
     setSettings(saved);
     if (!quiet) setNotice('设置已保存');
@@ -186,6 +196,7 @@ export default function App({ client = api }) {
         </aside>
 
         <main className="content">
+          {loadError && <div className="notice error" role="alert">{loadError}。未读取配置前不会保存或扫描。 <button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新读取配置</button></div>}
           {(notice || error) && <div className={error ? 'notice error' : 'notice success'}>{error || notice}</div>}
           {view === 'tasks' && (
             <TasksView
@@ -194,7 +205,7 @@ export default function App({ client = api }) {
               scanItems={scanItems}
               totals={totals}
               job={job}
-              busy={busy}
+              busy={!settingsReady ? 'loading' : busy}
               onScan={scan}
               onStart={start}
               onCancel={cancel}
@@ -202,7 +213,7 @@ export default function App({ client = api }) {
             />
           )}
           {view === 'runs' && <RunsView runs={runs} onClear={async () => { await client.clearRuns(); setRuns([]); }} />}
-          {view === 'settings' && <SettingsView settings={settings} updateSetting={updateSetting} onSave={() => save(false)} onPick={(kind) => setPicker(kind)} busy={busy} />}
+          {view === 'settings' && <SettingsView settings={settings} updateSetting={updateSetting} onSave={() => save(false)} onPick={(kind) => setPicker(kind)} busy={!settingsReady ? 'loading' : busy} />}
           {view === 'about' && <AboutView about={about} />}
         </main>
       </div>

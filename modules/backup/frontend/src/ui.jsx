@@ -283,8 +283,9 @@ export function usePicker(client, reportError) {
     setWaiting(false);
     setPicker(null);
   }
-  async function choose(kind, done) {
+  async function choose(kind, done, { existing = false } = {}) {
     if (inFlight.current) return;
+    if (existing) { reportError(''); setPicker({ kind, done }); return; }
     const current = ++requestID.current;
     inFlight.current = true;
     setWaiting(true);
