@@ -44,6 +44,19 @@ function createClient(overrides = {}) {
 }
 
 describe('音乐转换中心', () => {
+  it('shows configuration load failures and does not allow defaults to overwrite unread settings', async () => {
+    const client = createClient({ getSettings: vi.fn().mockRejectedValue(new Error('目录配置读取失败')) });
+    const user = userEvent.setup();
+    render(<App client={client} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('目录配置读取失败');
+    expect(screen.getByRole('button', { name: '扫描文件' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '设置', exact: true }));
+    expect(screen.getByRole('button', { name: '保存设置' })).toBeDisabled();
+    expect(client.saveSettings).not.toHaveBeenCalled();
+    client.getSettings.mockResolvedValue(settings);
+    await user.click(screen.getByRole('button', { name: '重新读取配置' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存设置' })).toBeEnabled());
+  });
   it('clears the waiting count when the batch started from this scan completes', async () => {
     const user = userEvent.setup();
     const client = createClient({ startJob: vi.fn().mockResolvedValue({ job: { id: 'fast-job', status: 'completed', total: 2, completed: 1, failed: 0, skipped: 1 } }) });

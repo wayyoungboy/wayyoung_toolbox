@@ -19,6 +19,20 @@ afterEach(() => {
 });
 
 describe("directory picker in a toolbox iframe", () => {
+  it("can choose an already authorized directory without requesting another native grant", async () => {
+    const client = {
+      authorize: vi.fn(), saveTask: vi.fn(),
+      directories: vi.fn(async (_kind, path = '') => ({ path, parent: '', roots: [{ name: '已有授权', path: '/data/allowed' }], entries: [] })),
+    };
+    const user = userEvent.setup();
+    render(<TaskEditor client={client} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: '从已授权目录选择源目录' }));
+    await user.click(await screen.findByRole('button', { name: /已有授权/ }));
+    await user.click(screen.getByRole('button', { name: '选择此目录' }));
+    expect(screen.getByLabelText('源目录（只读）')).toHaveValue('/data/allowed');
+    expect(client.authorize).not.toHaveBeenCalled();
+    expect(client.saveTask).not.toHaveBeenCalled();
+  });
   it("uses the toolbox host bridge without starting a second native handshake", async () => {
     const bridge = vi.fn(async () => "/authorized/docs");
     vi.spyOn(window, "parent", "get").mockReturnValue({
