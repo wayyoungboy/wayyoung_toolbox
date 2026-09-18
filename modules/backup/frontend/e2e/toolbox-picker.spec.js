@@ -26,7 +26,7 @@ window.addEventListener('message', event => {
   document.body.append(dialog);dialog.showModal();
 });</script>`;
 
-async function setup(page) {
+async function setup(page, allModules = false) {
   const errors = [], writes = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(message.text()); });
@@ -34,8 +34,8 @@ async function setup(page) {
     const url = new URL(route.request().url()), pathname = url.pathname;
     if (pathname === "/native-desktop") return route.fulfill({ contentType: "text/html", body: desktop });
     if (pathname === "/silent-desktop") return route.fulfill({ contentType: "text/html", body: desktop.split("<script>")[0] });
-    if (pathname === `${prefix}/api/modules`) return route.fulfill({ json: { modules: [{ id: "backup", name: "飞牛备份中心", version: "0.0.1", running: true, enabled: true, description: "目录选择回归测试" }] } });
-    if (pathname.startsWith("/app/backup_center/api/")) {
+    if (pathname === `${prefix}/api/modules`) return route.fulfill({ json: { version: '0.6.0', modules: (allModules ? [['backup','飞牛备份中心'],['music','音乐转换中心'],['media','影片采集任务中心'],['integrity','文件完整性检查'],['ha500','HA500 硬件工具']] : [['backup','飞牛备份中心']]).map(([id,name]) => ({id,name,version:'0.0.1',running:true,enabled:true,started_at:'test'})) } });
+    if (pathname.startsWith("/app/backup_center/api/") || pathname.startsWith(`${prefix}/modules/backup/api/`)) {
       if (route.request().method() !== "GET") writes.push(pathname);
       if (pathname.endsWith("/state")) return route.fulfill({ json: { version: "0.0.1", csrf: "test", state: { tasks: [], runs: [], retain: 100 } } });
       if (pathname.endsWith("/directories")) {
@@ -43,6 +43,15 @@ async function setup(page) {
         return route.fulfill({ json: { path: url.searchParams.get("path") || "", parent: "", roots: [{ name: "已授权测试目录", path: target ? "/mount/example" : "/data/example" }], entries: [] } });
       }
       return route.fulfill({ status: 500, json: { error: "测试禁止写入" } });
+    }
+    if (allModules && pathname.includes('/modules/') && !pathname.includes('/modules/backup/')) {
+      if (route.request().method() !== 'GET') { writes.push(pathname); return route.fulfill({status:500,json:{error:'测试禁止写入'}}); }
+      if (pathname.endsWith('/music/api/settings')) return route.fulfill({json:{source_dir:'',output_dir:''}});
+      if (pathname.endsWith('/media/api/pipeline')) return route.fulfill({json:{stages:[{label:'RSS',status:'warning',summary:'8 条待处理'}],paths:{consistent:true}}});
+      if (pathname.endsWith('/ha500/api/status')) return route.fulfill({json:{hardware:{supported:true,fan_driver:true},fans:[]}});
+      if (pathname.endsWith('/integrity/api/config')) return route.fulfill({json:{roots:['/data/example']}});
+      if (pathname.endsWith('/integrity/api/status')) return route.fulfill({json:{running:false,checked:0}});
+      return route.fulfill({contentType:'text/html',body:'<!doctype html><meta charset="utf-8"><h1>隔离测试模块</h1>'});
     }
     let file;
     if (pathname === `${prefix}/directory-authorization.js`) file = path.join(frontend, "src/directory-authorization.js");
@@ -102,3 +111,36 @@ test("unresponsive desktop falls back to authorized roots without submitting a t
   expect(writes).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+for (const width of [1536, 390]) {
+  test(`toolbox overview and session-preserving navigation (${width}px)`, async ({ page }, info) => {
+    await page.setViewportSize({width,height:1024});
+    const { errors, writes } = await setup(page, true);
+    await page.goto('/native-desktop');
+    const shell = page.frameLocator('iframe[title="工具箱"]');
+    const backup = shell.frameLocator('iframe[title="飞牛备份中心"]');
+    await backup.locator('header').getByRole('button',{name:'新建任务',exact:true}).click();
+    await backup.getByLabel('任务名称',{exact:true}).fill('保留未保存表单');
+    await shell.locator('[data-module="music"]').click();
+    await shell.frameLocator('iframe[title="音乐转换中心"]').getByRole('heading').waitFor();
+    await shell.locator('[data-module="backup"]').click();
+    await expect(backup.getByLabel('任务名称',{exact:true})).toHaveValue('保留未保存表单');
+    // The switch deliberately stays on until the stop confirmation succeeds.
+    await shell.locator('#module-toggle').click();
+    await expect(shell.getByRole('dialog',{name:/关闭飞牛备份中心/})).toBeVisible();
+    await shell.getByRole('button',{name:'保留运行',exact:true}).click();
+    await expect(backup.getByLabel('任务名称',{exact:true})).toHaveValue('保留未保存表单');
+    await shell.locator('[data-module="overview"]').click();
+    await expect(shell.getByRole('heading',{name:'工具箱总览'})).toBeVisible();
+    await expect(shell.locator('#module-version')).toHaveText('v0.6.0');
+    await shell.getByRole('button',{name:'检查配置与连接',exact:true}).click();
+    await expect(shell.getByText('尚未创建备份任务',{exact:true})).toBeVisible();
+    await expect(shell.getByText('请先配置源目录与输出目录',{exact:true})).toBeVisible();
+    await expect(shell.getByText('1 个环节需要关注',{exact:true})).toBeVisible();
+    await expect(shell.getByRole('button',{name:'检查配置与连接',exact:true})).toBeEnabled();
+    expect(await shell.locator('body').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({path:info.outputPath(`overview-${width}.png`)});
+    expect(writes).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}

@@ -113,6 +113,15 @@ export default function App({ client = api }) {
     }
   };
 
+  const saveFromSettings = async () => {
+    setBusy('save');
+    setError('');
+    setNotice('');
+    try { await save(false); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusy(''); }
+  };
+
   const start = async () => {
     setBusy('start');
     setError('');
@@ -180,7 +189,7 @@ export default function App({ client = api }) {
           </div>
         </div>
         <div className="service-meta">
-          <span className={`service-status ${health.status === 'ok' ? 'healthy' : ''}`}><i />{health.status === 'ok' ? '服务正常' : '正在连接'}</span>
+          <span className={`service-status ${health.status === 'ok' ? 'healthy' : ''}`}><i />{health.status === 'ok' ? '服务正常' : health.status === 'error' ? '连接失败' : '正在连接'}</span>
           <span className="version">v{health.version || '0.0.4'}</span>
           <button className="icon-button" type="button" aria-label="刷新状态" onClick={() => window.location.reload()}><IconRefresh /></button>
         </div>
@@ -197,7 +206,7 @@ export default function App({ client = api }) {
 
         <main className="content">
           {loadError && <div className="notice error" role="alert">{loadError}。未读取配置前不会保存或扫描。 <button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新读取配置</button></div>}
-          {(notice || error) && <div className={error ? 'notice error' : 'notice success'}>{error || notice}</div>}
+          {(notice || error) && <div role={error ? 'alert' : 'status'} className={error ? 'notice error' : 'notice success'}>{error || notice}</div>}
           {view === 'tasks' && (
             <TasksView
               settings={settings}
@@ -213,7 +222,7 @@ export default function App({ client = api }) {
             />
           )}
           {view === 'runs' && <RunsView runs={runs} onClear={async () => { await client.clearRuns(); setRuns([]); }} />}
-          {view === 'settings' && <SettingsView settings={settings} updateSetting={updateSetting} onSave={() => save(false)} onPick={(kind) => setPicker(kind)} busy={!settingsReady ? 'loading' : busy} />}
+          {view === 'settings' && <SettingsView settings={settings} updateSetting={updateSetting} onSave={saveFromSettings} onPick={(kind) => setPicker(kind)} busy={!settingsReady ? 'loading' : busy} />}
           {view === 'about' && <AboutView about={about} />}
         </main>
       </div>
@@ -331,7 +340,7 @@ function RunsView({ runs, onClear }) {
   );
 }
 
-function SettingsView({ settings, updateSetting, onSave, onPick }) {
+function SettingsView({ settings, updateSetting, onSave, onPick, busy }) {
   return (
     <section className="page-section settings-page">
       <header className="section-heading"><div><h2>设置</h2><p>源 NCM 不会自动删除；开启 MP3 迁移后，仅在目标保存成功时移除源 MP3。</p></div></header>
@@ -344,7 +353,7 @@ function SettingsView({ settings, updateSetting, onSave, onPick }) {
         </div>
         <label className="switch-row"><span><strong>缺失封面时联网补齐</strong><small>关闭时完全使用 NCM 内嵌元数据；开启后仅访问文件元数据中提供的封面地址。</small></span><input type="checkbox" checked={settings.fetch_remote_art} onChange={(event) => updateSetting('fetch_remote_art', event.target.checked)} /></label>
         <label className="switch-row"><span><strong>同时迁移已有 MP3</strong><small>不转码、不改标签。目标保存成功后移除源 MP3；相同文件跳过，同名冲突按设置处理。输出子目录不会重复扫描。</small></span><input type="checkbox" checked={Boolean(settings.migrate_mp3)} onChange={(event) => updateSetting('migrate_mp3', event.target.checked)} /></label>
-        <button className="primary-button save-button" type="button" onClick={onSave}>保存设置</button>
+        <button className="primary-button save-button" type="button" disabled={Boolean(busy)} onClick={onSave}>保存设置</button>
       </div>
     </section>
   );

@@ -77,3 +77,89 @@ it("requires confirmation to stop, and cancellation sends no mutation", async ()
   expect(request.mock.calls.every(([, opts]) => !opts?.method || opts.method === "GET")).toBe(true);
   expect(document.querySelector("#module-toggle").checked).toBe(true);
 });
+
+it('serializes confirmed mutations and keeps the requested target when navigating', async () => {
+  const { request, modules } = await setup();
+  const dialog = document.querySelector('#stop-dialog');
+  dialog.showModal = () => dialog.setAttribute('open', '');
+  dialog.close = () => dialog.removeAttribute('open');
+  let complete;
+  request.mockImplementation((path, options) => options?.method === 'PUT' ? new Promise(resolve => { complete = resolve; }) : Promise.resolve({modules, version:'0.6.0'}));
+  document.querySelector('#module-toggle').click();
+  document.querySelector('#stop-confirm').click();
+  await Promise.resolve();
+  document.querySelector('[data-module="music"]').click();
+  expect(document.querySelector('#module-toggle').disabled).toBe(true);
+  modules[0].running = false; modules[0].enabled = false;
+  complete({modules,version:'0.6.0'});
+  await vi.waitFor(() => expect(document.querySelector('#module-toggle').disabled).toBe(false));
+  expect(request.mock.calls.filter(([,opts]) => opts?.method === 'PUT')).toHaveLength(1);
+  expect(document.querySelector('iframe[title="backup"]')).toBeNull();
+});
+
+it('supports keyboard navigation and reports invalid/failed reads', async () => {
+  const { app, request } = await setup();
+  document.querySelector('#module-tabs').dispatchEvent(new KeyboardEvent('keydown', {key:'End',bubbles:true}));
+  expect(document.querySelector('#module-name')).toHaveTextContent('music');
+  document.querySelector('#module-tabs').dispatchEvent(new KeyboardEvent('keydown', {key:'Home',bubbles:true}));
+  expect(document.querySelector('#module-name')).toHaveTextContent('总览');
+  request.mockResolvedValue({modules:'invalid'});
+  await app.refresh();
+  expect(document.querySelector('#notice')).toHaveTextContent('响应无效');
+  request.mockRejectedValue(new Error('forbidden'));
+  await app.refresh();
+  expect(document.querySelector('#module-status')).toHaveTextContent('连接异常');
+});
+
+it('explicit checks fail visibly and do not execute a task', async () => {
+  const { request } = await setup('#overview');
+  request.mockRejectedValue(new Error('not authorized'));
+  document.querySelector('[data-check-all]').click();
+  await vi.waitFor(() => expect(document.body).toHaveTextContent('检查失败，状态未知'));
+  expect(document.body).toHaveTextContent('not authorized');
+  expect(request.mock.calls.every(([, options]) => !options?.method)).toBe(true);
+});
+
+it('requires the hardware model confirmation and displays enable failures', async () => {
+  const {app, modules, request} = await setup();
+  modules.push({id:'ha500',name:'hardware',enabled:false,running:false,version:'1'});
+  await app.refresh();
+  document.querySelector('[data-module="ha500"]').click();
+  const dialog = document.querySelector('#ha500-dialog');
+  dialog.showModal = () => dialog.setAttribute('open','');
+  dialog.close = () => dialog.removeAttribute('open');
+  document.querySelector('[data-enable="ha500"]').click();
+  document.querySelector('#ha500-form').dispatchEvent(new Event('submit',{cancelable:true}));
+  expect(document.querySelector('#ha500-error')).toHaveTextContent('请输入 HA500');
+  expect(request.mock.calls.some(([,o]) => o?.method === 'PUT')).toBe(false);
+  request.mockImplementation(async (_path,o) => {
+    if (o?.method === 'PUT') throw new Error('driver unavailable');
+    return {modules,version:'0.6.0'};
+  });
+  document.querySelector('#ha500-confirmation').value = 'ha500';
+  document.querySelector('#ha500-form').dispatchEvent(new Event('submit',{cancelable:true}));
+  await vi.waitFor(() => expect(document.querySelector('#notice')).toHaveTextContent('driver unavailable'));
+  expect(JSON.parse(request.mock.calls.find(([,o]) => o?.method === 'PUT')[1].body)).toMatchObject({confirmation:'HA500',enabled:true});
+  document.querySelector('[data-enable="ha500"]').click();
+  dialog.dispatchEvent(new Event('cancel',{cancelable:true}));
+  await Promise.resolve();
+  expect(dialog.hasAttribute('open')).toBe(false);
+});
+
+it('decorates embedded documents only once and supports hash/back navigation', async () => {
+  await setup();
+  const frame = document.querySelector('iframe');
+  const child = document.implementation.createHTMLDocument('child');
+  Object.defineProperty(frame,'contentDocument',{value:child});
+  frame.dispatchEvent(new Event('load'));
+  frame.dispatchEvent(new Event('load'));
+  expect(child.querySelectorAll('#toolbox-embedded-style')).toHaveLength(1);
+  expect(child.documentElement.dataset.toolboxModule).toBe('backup');
+  history.replaceState(null,'','#music');
+  window.dispatchEvent(new Event('hashchange'));
+  expect(document.querySelector('#module-name')).toHaveTextContent('music');
+  document.querySelector('#module-tabs').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+  expect(document.querySelector('#module-name')).toHaveTextContent('backup');
+  document.querySelector('#module-tabs').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true}));
+  expect(document.querySelector('#module-name')).toHaveTextContent('backup');
+});

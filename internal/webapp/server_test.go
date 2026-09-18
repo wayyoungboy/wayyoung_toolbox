@@ -116,7 +116,7 @@ func TestModuleInventoryRequiresAdminAndExposesPackageVersion(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["version"] == nil || payload["is_admin"] != true {
+	if response.Code != http.StatusOK || payload["version"] != "0.6.0" || payload["is_admin"] != true {
 		t.Fatalf("missing version/admin metadata: %v", payload)
 	}
 }

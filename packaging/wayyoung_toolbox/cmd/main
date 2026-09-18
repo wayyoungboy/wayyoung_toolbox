@@ -59,11 +59,16 @@ stop_app() {
     pid="$(read_pid)" || return 0
     owns_process "${pid}" || return 0
     kill -TERM "${pid}" 2>/dev/null || true
-    while owns_process "${pid}" && [ "${count}" -lt 30 ]; do
+    # HTTP drain (20s) plus five module shutdowns (20s each), with margin.
+    # Never report success or remove the marker while cleanup is still alive.
+    while owns_process "${pid}" && [ "${count}" -lt 150 ]; do
         sleep 1
         count=$((count + 1))
     done
-    owns_process "${pid}" && kill -KILL "${pid}" 2>/dev/null || true
+    if owns_process "${pid}"; then
+        echo "工具箱仍在安全退出，未强制终止。请等待并检查日志，暂勿安装或重启。" >&2
+        return 1
+    fi
     rm -f -- "${PID_FILE}"
 }
 
