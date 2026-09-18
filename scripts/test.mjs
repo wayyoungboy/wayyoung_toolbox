@@ -7,6 +7,8 @@ const requested = new Set(process.argv.slice(2));
 const runGo = requested.size === 0 || requested.has('--go');
 const runFrontend = requested.size === 0 || requested.has('--frontend');
 
+run('node', ['--test', 'scripts/packaging.test.mjs'], root);
+
 function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, stdio: 'inherit' });
   if (result.error) throw result.error;

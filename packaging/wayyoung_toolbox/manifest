@@ -1,5 +1,5 @@
 appname               = wayyoung_toolbox
-version               = 0.5.2
+version               = 0.5.7
 display_name          = wayyoung的飞牛工具箱
 desc                  = 一个进程管理备份、硬件、影片、音乐转换和文件完整性检查。五个模块拥有独立开关和配置目录。
 arch                  = x86_64
@@ -10,8 +10,9 @@ maintainer_url        = https://github.com/wayyoungboy
 distributor_url       = https://github.com/wayyoungboy
 ctl_stop              = true
 checkport             = false
+micro_app             = true
 install_type          = root
 desktop_uidir         = ui
 desktop_applaunchname = wayyoung_toolbox.main
-os_min_version        = 1.2.0302
+os_min_version        = 1.2.0401
 changelog             = 优化窄屏布局、模块切换、操作反馈和无障碍体验；修复空闲状态错误显示报告入口。
