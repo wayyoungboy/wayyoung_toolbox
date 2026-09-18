@@ -5,7 +5,7 @@ afterEach(() => vi.useRealTimers());
 
 it("only forwards directory selection from the active same-origin backup frame", async () => {
   const child = { location: { origin: "http://nas", pathname: "/app/wayyoung_toolbox/modules/backup/" } };
-  const frame = { contentWindow: child };
+  const frame = { contentWindow: child, isConnected: true, hidden: false, dataset: { generation: "first" } };
   const host = { location: { origin: "http://nas" }, document: { querySelector: () => frame } };
   const authorize = vi.fn(async () => "/authorized");
   installToolboxDirectoryBridge(host, authorize);
@@ -22,6 +22,30 @@ it("only forwards directory selection from the active same-origin backup frame",
   host.document.querySelector = () => null;
   await expect(host.wayyoungToolboxPickDirectory(child, "source")).rejects.toThrow("来源无效");
   expect(authorize).toHaveBeenCalledTimes(3);
+});
+
+it("rejects hidden or detached pages and drops results after switching or restarting", async () => {
+  const child = { location: { origin: "http://nas", pathname: "/app/wayyoung_toolbox/modules/backup/" } };
+  const frame = { contentWindow: child, isConnected: true, hidden: false, dataset: { generation: "first" } };
+  const host = { location: { origin: "http://nas" }, document: { querySelector: () => frame } };
+  let finish;
+  const authorize = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+  installToolboxDirectoryBridge(host, authorize);
+  frame.hidden = true;
+  await expect(host.wayyoungToolboxPickDirectory(child, "source")).rejects.toThrow("来源无效");
+  frame.hidden = false;
+  frame.isConnected = false;
+  await expect(host.wayyoungToolboxPickDirectory(child, "source")).rejects.toThrow("来源无效");
+  frame.isConnected = true;
+  const pending = host.wayyoungToolboxPickDirectory(child, "source");
+  frame.hidden = true;
+  finish("/authorized");
+  expect(await pending).toBeNull();
+  frame.hidden = false;
+  const restarted = host.wayyoungToolboxPickDirectory(child, "source");
+  frame.dataset.generation = "second";
+  finish("/authorized");
+  expect(await restarted).toBeNull();
 });
 
 it("does not mistake another parent or a cross-origin desktop for the toolbox", () => {

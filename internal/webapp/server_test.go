@@ -100,3 +100,17 @@ func TestModuleDispatchesToInProcessHandler(t *testing.T) {
 		t.Fatalf("unexpected location: %s", got)
 	}
 }
+
+func TestModuleInventoryRequiresAdminAndExposesPackageVersion(t *testing.T) {
+	server := testServer(t, &fakeManager{})
+	denied := httptest.NewRecorder()
+	server.ServeHTTP(denied, httptest.NewRequest(http.MethodGet, "/app/wayyoung_toolbox/api/modules", nil))
+	if denied.Code != http.StatusForbidden { t.Fatalf("inventory leaked without admin: %d", denied.Code) }
+	request := httptest.NewRequest(http.MethodGet, "/app/wayyoung_toolbox/api/modules", nil)
+	request.Header.Set("X-Trim-Isadmin", "true")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil { t.Fatal(err) }
+	if payload["version"] == nil || payload["is_admin"] != true { t.Fatalf("missing version/admin metadata: %v", payload) }
+}
