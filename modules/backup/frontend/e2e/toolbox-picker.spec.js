@@ -75,6 +75,7 @@ for (const viewport of [{ width: 1536, height: 1024 }, { width: 390, height: 844
     // Cancel must preserve the previous selection, not open a fallback dialog.
     await module.getByRole("button", { name: "选择目录", exact: true }).first().click();
     await page.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(module.getByRole("dialog", { name: "正在打开目录选择" })).toHaveCount(0);
     await expect(module.getByLabel("源目录（只读）")).toHaveValue("/data/example");
     await expect(module.getByRole("dialog", { name: "选择已授权目录" })).toHaveCount(0);
     expect(await page.evaluate(() => window.nativeCalls.length)).toBe(3);

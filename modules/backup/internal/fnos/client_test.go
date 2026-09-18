@@ -2,6 +2,7 @@ package fnos
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -12,6 +13,7 @@ type transportFunc func(*http.Request) (*http.Response, error)
 
 func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func TestSharedFoldersUsesLiveTokenAndOfficialShape(t *testing.T) {
+	t.Setenv("TRIM_APPNAME", "")
 	token := "first-test-token"
 	calls := 0
 	c := NewClient(func() string { return token })
@@ -35,6 +37,35 @@ func TestSharedFoldersUsesLiveTokenAndOfficialShape(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatal(calls)
+	}
+}
+
+func TestSharedFoldersUsesInstalledApplicationIdentity(t *testing.T) {
+	for _, app := range []string{"wayyoung_toolbox", "backup_center", ""} {
+		t.Run("app="+app, func(t *testing.T) {
+			t.Setenv("TRIM_APPNAME", app)
+			want := app
+			if want == "" {
+				want = "backup_center"
+			}
+			c := NewClient(func() string { return "test-token" })
+			c.http = &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+				var request struct {
+					AppName string `json:"appName"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Fatal(err)
+				}
+				if request.AppName != want {
+					t.Errorf("grant query appName = %q, want installed app %q", request.AppName, want)
+					return &http.Response{StatusCode: 403, Body: io.NopCloser(strings.NewReader(`{"code":200003}`))}, nil
+				}
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"code":0,"data":{"paths":[]}}`))}, nil
+			})}
+			if _, err := c.SharedFolders(context.Background()); err != nil {
+				t.Fatalf("installed application cannot query its own grants: %v", err)
+			}
+		})
 	}
 }
 func TestSharedFoldersErrorsNeverExposeToken(t *testing.T) {
