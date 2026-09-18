@@ -10,18 +10,25 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 )
 
 type Client struct {
-	token func() string
-	http  *http.Client
+	token   func() string
+	appName string
+	http    *http.Client
 }
 
 func NewClient(token func() string) *Client {
+	// The desktop grants access to the installed host app, not an embedded module.
+	appName := os.Getenv("TRIM_APPNAME")
+	if appName == "" {
+		appName = "backup_center"
+	}
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
-	return &Client{token: token, http: &http.Client{Timeout: 8 * time.Second, Transport: &http.Transport{
+	return &Client{token: token, appName: appName, http: &http.Client{Timeout: 8 * time.Second, Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return dialer.DialContext(ctx, "unix", "/var/run/trim_open_gateway_apiscope.socket")
 		},
@@ -33,7 +40,7 @@ func (c *Client) SharedFolders(ctx context.Context) ([]string, error) {
 	if token == "" {
 		return nil, errors.New("系统未注入应用 API 授权，请检查系统版本和应用权限")
 	}
-	b, _ := json.Marshal(map[string]any{"req": "trim.file.getSharedAccessibleFolders", "appName": "backup_center", "data": map[string]any{}})
+	b, _ := json.Marshal(map[string]any{"req": "trim.file.getSharedAccessibleFolders", "appName": c.appName, "data": map[string]any{}})
 	r, err := http.NewRequestWithContext(ctx, "POST", "http://localhost/api/v1/trimapp", bytes.NewReader(b))
 	if err != nil {
 		return nil, err
