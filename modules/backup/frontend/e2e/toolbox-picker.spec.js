@@ -8,7 +8,7 @@ const root = path.resolve(frontend, "../../..");
 const prefix = "/app/wayyoung_toolbox";
 const desktop = `<!doctype html><meta charset="utf-8"><title>飞牛桌面测试宿主</title>
 <style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}dialog{z-index:9999}</style>
-<iframe title="工具箱" src="${prefix}/"></iframe><script>
+<iframe title="工具箱" src="${prefix}/#backup"></iframe><script>
 window.nativeCalls=[];
 window.addEventListener('message', event => {
   if (event.source !== document.querySelector('iframe').contentWindow || event.origin !== location.origin) return;

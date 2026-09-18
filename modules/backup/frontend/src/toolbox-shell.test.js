@@ -1,8 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
 import fs from "node:fs";
+import path from "node:path";
 import { startToolbox } from "../../../../web/shell.js";
 
-const markup = fs.readFileSync(new URL("../../../../web/index.html", import.meta.url), "utf8");
+const markup = fs.readFileSync(path.resolve(process.cwd(), '../../../web/index.html'), 'utf8');
+
 let stop;
 afterEach(() => { stop?.(); document.body.innerHTML = ""; history.replaceState(null, "", "/"); vi.useRealTimers(); });
 

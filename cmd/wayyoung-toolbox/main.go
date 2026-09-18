@@ -40,7 +40,7 @@ func run() error {
 	manager.Start(ctx)
 	defer manager.Close()
 
-	application, err := webapp.New("/app/wayyoung_toolbox", filepath.Join(appDir, "public"), manager)
+	application, err := webapp.New("/app/wayyoung_toolbox", filepath.Join(appDir, "public"), manager, version)
 	if err != nil {
 		return err
 	}

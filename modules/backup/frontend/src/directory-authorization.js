@@ -25,7 +25,7 @@ export function createDirectoryAuthorizer(loadSDK, timeoutMs = 5000) {
       sidebarGroup: kind === "target" ? ["remote"] : ["myFiles", "otherShare", "favorites"],
       creatable: false,
     });
-    if (result && result.code !== 0) throw new Error(result.msg || "目录授权未完成");
+    if (result && result.code !== 0) throw new Error(result.msg && result.msg !== 'Operation failed' ? result.msg : '目录授权未完成，请重新选择；如果已授权，可使用已授权目录。');
     return result?.data?.[0] || null;
   };
 }
@@ -43,13 +43,18 @@ export function toolboxParent(child = window) {
 
 export function installToolboxDirectoryBridge(host, authorize) {
   host.wayyoungToolboxPickDirectory = async (requester, kind) => {
-    const frame = host.document.querySelector('#module-content iframe');
+    const activeFrame = () => host.document.querySelector('#module-content iframe[data-active="true"]');
+    const frame = activeFrame();
     // No generic native RPC relay. Only this active, same-origin backup frame
     // can request the fixed shared-directory picker capability.
-    if (!frame || frame.contentWindow !== requester ||
+    if (!frame || frame.hidden || !frame.isConnected || frame.contentWindow !== requester ||
         requester.location.origin !== host.location.origin ||
         requester.location.pathname !== "/app/wayyoung_toolbox/modules/backup/" ||
         !kinds.has(kind)) throw new Error("目录选择请求来源无效");
-    return authorize(kind);
+    const generation = frame.dataset.generation;
+    const activation = frame.dataset.activation;
+    const result = await authorize(kind);
+    if (activeFrame() !== frame || frame.hidden || !frame.isConnected || frame.dataset.generation !== generation || frame.dataset.activation !== activation) return null;
+    return result;
   };
 }

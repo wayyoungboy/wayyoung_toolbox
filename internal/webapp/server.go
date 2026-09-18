@@ -20,13 +20,14 @@ type ModuleManager interface {
 }
 
 type Server struct {
+	version string
 	prefix  string
 	public  string
 	manager ModuleManager
 	handler http.Handler
 }
 
-func New(prefix, public string, manager ModuleManager) (*Server, error) {
+func New(prefix, public string, manager ModuleManager, version string) (*Server, error) {
 	prefix = strings.TrimSuffix(prefix, "/")
 	if prefix == "" || !strings.HasPrefix(prefix, "/app/") {
 		return nil, errors.New("invalid application prefix")
@@ -37,7 +38,7 @@ func New(prefix, public string, manager ModuleManager) (*Server, error) {
 	if info, err := os.Stat(filepath.Join(public, "index.html")); err != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("dashboard assets are unavailable")
 	}
-	server := &Server{prefix: prefix, public: public, manager: manager}
+	server := &Server{prefix: prefix, public: public, manager: manager, version: version}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/modules", server.listModules)
 	mux.HandleFunc("PUT /api/modules/{id}", server.setModule)
@@ -61,8 +62,12 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	server.handler.ServeHTTP(writer, copy)
 }
 
-func (server *Server) listModules(writer http.ResponseWriter, _ *http.Request) {
-	writeJSON(writer, http.StatusOK, map[string]any{"modules": server.manager.List(), "process_model": "single"})
+func (server *Server) listModules(writer http.ResponseWriter, request *http.Request) {
+	if !isAdmin(request) {
+		writeError(writer, http.StatusForbidden, "需要飞牛管理员权限，请使用管理员账户打开工具箱")
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"modules": server.manager.List(), "process_model": "single", "version": server.version, "is_admin": true})
 }
 
 func (server *Server) setModule(writer http.ResponseWriter, request *http.Request) {
@@ -86,7 +91,7 @@ func (server *Server) setModule(writer http.ResponseWriter, request *http.Reques
 		writeError(writer, status, err.Error())
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"modules": server.manager.List(), "process_model": "single"})
+	server.listModules(writer, request)
 }
 
 func (server *Server) serveModule(writer http.ResponseWriter, request *http.Request) {

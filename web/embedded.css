@@ -1,0 +1,35 @@
+/* Loaded only inside the toolbox. Keep standalone module presentation intact. */
+html[data-toolbox-module] { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+html[data-toolbox-module] body { min-width: 0; }
+html[data-toolbox-module="backup"] .app-shell,
+html[data-toolbox-module="media"] .app-shell { display: flex; flex-direction: column; min-height: 100vh; height: auto; }
+html[data-toolbox-module="backup"] .sidebar,
+html[data-toolbox-module="media"] .sidebar,
+html[data-toolbox-module="music"] .sidebar { width: auto; flex: none; position: static; padding: 8px 20px; border: 0; border-bottom: 1px solid #e2e6ee; background: #fff; }
+html[data-toolbox-module="backup"] .sidebar .brand,
+html[data-toolbox-module="backup"] .sidebar .version,
+html[data-toolbox-module="media"] .sidebar .brand,
+html[data-toolbox-module="media"] .sidebar-footer,
+html[data-toolbox-module="media"] .nav-separator,
+html[data-toolbox-module="music"] .app-header { display: none; }
+html[data-toolbox-module="backup"] .sidebar nav,
+html[data-toolbox-module="media"] .nav-list,
+html[data-toolbox-module="music"] .sidebar { display: flex; flex-direction: row; align-items: center; gap: 6px; overflow-x: auto; }
+html[data-toolbox-module="media"] .nav-list { padding: 0; }
+html[data-toolbox-module] .sidebar button { flex-shrink: 0; width: auto; min-height: 38px; height: 38px; font-size: 13px; padding: 0 13px; margin: 0; }
+html[data-toolbox-module] .sidebar button::before { display: none; }
+html[data-toolbox-module="music"] .workspace { display: flex; flex-direction: column; }
+html[data-toolbox-module="media"] .main-content { width: auto; overflow: visible; }
+html[data-toolbox-module="backup"] main { width: 100%; max-width: none; min-width: 0; padding: 24px; }
+html[data-toolbox-module="media"] .page { padding: 24px; }
+html[data-toolbox-module="backup"] h1 { font-size: 25px; }
+@media (max-width: 760px) {
+  html[data-toolbox-module="backup"] main,
+  html[data-toolbox-module="media"] .page,
+  html[data-toolbox-module="music"] .content { padding: 16px; }
+  html[data-toolbox-module="music"] .directory-field { grid-template-columns: minmax(0, 1fr) 98px; gap: 7px; }
+  html[data-toolbox-module="music"] .directory-field > span { grid-column: 1 / -1; }
+  html[data-toolbox-module="music"] .directory-field input { min-width: 0; width: 100%; }
+  html[data-toolbox-module="music"] .option-row { padding-left: 0; }
+  html[data-toolbox-module="music"] .primary-actions { flex-wrap: wrap; }
+}

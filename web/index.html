@@ -14,7 +14,7 @@
           <span class="brand-mark">W</span>
           <div>
             <strong>wayyoung</strong>
-            <span>飞牛工具箱</span>
+            <span id="toolbox-version">飞牛工具箱</span>
           </div>
         </div>
 
@@ -44,7 +44,7 @@
               <p id="module-description"></p>
             </div>
           </div>
-          <div class="module-controls">
+          <div class="module-controls" id="module-controls">
             <div class="status-pill" id="module-status"><span class="status-dot"></span><span>读取中</span></div>
             <span class="toggle-label" id="toggle-label">启用模块</span>
             <label class="switch" title="独立启停当前模块">
@@ -55,7 +55,7 @@
         </header>
 
         <section class="notice" id="notice" hidden aria-live="polite"></section>
-        <section class="module-content" id="module-content" role="tabpanel" tabindex="0" aria-live="polite">
+        <section class="module-content" id="module-content" role="tabpanel" tabindex="0">
           <div class="initial-loading"><span class="spinner"></span><span>正在连接工具箱…</span></div>
         </section>
       </main>
@@ -76,6 +76,12 @@
           <button type="submit" class="dialog-primary">确认启用</button>
         </div>
       </form>
+    </dialog>
+    <dialog class="confirm-dialog" id="stop-dialog" aria-labelledby="stop-dialog-title">
+      <h2 id="stop-dialog-title">关闭<span id="stop-module-name"></span>？</h2>
+      <p>关闭会暂停该模块的定时计划，并可能取消正在执行的任务。未保存的页面修改会丢失，已保存配置与历史记录保留。</p>
+      <p id="stop-hardware-warning" hidden>硬件控制也会退出，风扇将按安全退出逻辑处理，转速可能变化。</p>
+      <div class="dialog-actions"><button class="dialog-secondary" id="stop-cancel">保留运行</button><button class="dialog-primary" id="stop-confirm">确认关闭</button></div>
     </dialog>
     <script type="module" src="./app.js"></script>
   </body>

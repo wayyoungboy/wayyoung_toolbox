@@ -96,7 +96,7 @@ buildFrontends();
 fs.rmSync(path.join(root, 'dist/stage'), { recursive: true, force: true });
 fs.mkdirSync(stage, { recursive: true });
 copy(path.join(root, 'packaging/wayyoung_toolbox'), stage);
-for (const file of ['index.html', 'app.js', 'styles.css', 'directory-picker.js']) {
+for (const file of ['index.html', 'app.js', 'shell.js', 'api.js', 'overview.js', 'styles.css', 'embedded.css', 'directory-picker.js']) {
   copy(path.join(root, 'web', file), path.join(stage, 'app/public', file));
 }
 copy(path.join(modules.backup, 'frontend/src/directory-authorization.js'), path.join(stage, 'app/public/directory-authorization.js'));
