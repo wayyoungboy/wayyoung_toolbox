@@ -1,23 +1,17 @@
+import { createDirectoryAuthorizer, toolboxParent } from "./directory-authorization.js";
+
 const prefix = "/app/backup_center/api";
-let sdkPromise;
-async function nativeSDK() {
-  sdkPromise ||= import("@trimjs/web-app")
-    .then(async ({ TrimApp }) => {
-      const sdk = new TrimApp({ debug: false });
-      await sdk.ready();
-      return sdk;
-    })
-    .catch((error) => {
-      sdkPromise = undefined;
-      throw error;
-    });
-  return sdkPromise;
-}
+const parentHost = toolboxParent();
 
 // The desktop host starts its handshake when the iframe loads. Waiting until a
 // picker click can miss that window. Keep one early connection; do not grant or
 // open anything here. Failed initialization is reported by the picker on demand.
-nativeSDK().catch(() => {});
+const authorizeDirectory = parentHost
+  ? kind => parentHost.wayyoungToolboxPickDirectory?.(window, kind)
+  : createDirectoryAuthorizer(async () => {
+      const { TrimApp } = await import("@trimjs/web-app");
+      return new TrimApp({ debug: false });
+    });
 
 export function createClient(fetcher = (...args) => fetch(...args)) {
   let csrf = "";
@@ -63,22 +57,7 @@ export function createClient(fetcher = (...args) => fetch(...args)) {
     rebind: (taskID, target) =>
       request(`/tasks/${id(taskID)}/rebind`, "POST", { target }),
     async authorize(kind) {
-      const sdk = await nativeSDK();
-      // Standalone browser uses the in-app list of already authorized directories.
-      // New OS permissions must be granted from the native fnOS desktop picker.
-      if (sdk.isStandaloneWeb) return undefined;
-      const result = await sdk.pickSharedFile({
-        title: kind === "target" ? "选择备份目标目录" : "选择本地授权目录",
-        okText: "选择此目录",
-        sidebarGroup:
-          kind === "target"
-            ? ["remote"]
-            : ["myFiles", "otherShare", "favorites"],
-        creatable: false,
-      });
-      if (result && result.code !== 0)
-        throw new Error(result.msg || "目录授权未完成");
-      return result?.data?.[0] || null;
+      return authorizeDirectory(kind);
     },
   };
 }

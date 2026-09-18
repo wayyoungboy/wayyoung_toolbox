@@ -96,9 +96,11 @@ buildFrontends();
 fs.rmSync(path.join(root, 'dist/stage'), { recursive: true, force: true });
 fs.mkdirSync(stage, { recursive: true });
 copy(path.join(root, 'packaging/wayyoung_toolbox'), stage);
-for (const file of ['index.html', 'app.js', 'styles.css']) {
+for (const file of ['index.html', 'app.js', 'styles.css', 'directory-picker.js']) {
   copy(path.join(root, 'web', file), path.join(stage, 'app/public', file));
 }
+copy(path.join(modules.backup, 'frontend/src/directory-authorization.js'), path.join(stage, 'app/public/directory-authorization.js'));
+copy(path.join(modules.backup, 'frontend/node_modules/@trimjs/web-app/dist/index.js'), path.join(stage, 'app/public/vendor/trimjs-web-app.js'));
 copy(path.join(root, 'web/integrity'), path.join(stage, 'app/modules/integrity/public'));
 
 const supervisorBinary = path.join(stage, 'app/bin/wayyoung-toolbox');

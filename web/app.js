@@ -1,3 +1,5 @@
+import './directory-picker.js';
+
 const APP_BASE = '/app/wayyoung_toolbox';
 const tabsNode = document.querySelector('#module-tabs');
 const contentNode = document.querySelector('#module-content');

@@ -273,18 +273,46 @@ export function FolderPicker({ client, kind, onSelect, onClose }) {
 
 export function usePicker(client, reportError) {
   const [picker, setPicker] = useState(null);
+  const [waiting, setWaiting] = useState(false);
+  const requestID = useRef(0);
+  const inFlight = useRef(false);
+  useEffect(() => () => { requestID.current++; }, []);
+  function cancel() {
+    requestID.current++;
+    inFlight.current = false;
+    setWaiting(false);
+    setPicker(null);
+  }
   async function choose(kind, done) {
+    if (inFlight.current) return;
+    const current = ++requestID.current;
+    inFlight.current = true;
+    setWaiting(true);
+    reportError("");
     try {
       const path = await client.authorize(kind);
+      if (current !== requestID.current) return;
       if (path === undefined) setPicker({ kind, done });
       else if (path) done(path);
     } catch (e) {
-      reportError(e.message);
+      if (current === requestID.current) reportError(e.message);
+    } finally {
+      if (current === requestID.current) {
+        inFlight.current = false;
+        setWaiting(false);
+      }
     }
   }
   return [
     choose,
-    picker && (
+    waiting ? (
+      <Modal title="正在打开目录选择" onClose={cancel}>
+        <p role="status">正在连接飞牛目录选择器；无法连接时将显示已授权目录。</p>
+        <footer className="modal-footer">
+          <button type="button" onClick={cancel}>取消目录选择</button>
+        </footer>
+      </Modal>
+    ) : picker && (
       <FolderPicker
         client={client}
         kind={picker.kind}
