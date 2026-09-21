@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/yuukiy/javsp-go/internal/model"
 )
@@ -104,28 +105,69 @@ func (NoopEngine) Translate(ctx context.Context, text string, actress []string) 
 }
 
 func Apply(ctx context.Context, info *model.MovieInfo, engine Engine, fields Fields) (bool, error) {
-	if engine == nil {
-		engine = NoopEngine{}
+	if !fields.Title && !fields.Plot {
+		return true, nil
 	}
-	if fields.Title && info.Title != "" && info.OriginalTitle == "" {
+	if engine == nil {
+		return false, fmt.Errorf("translation requested without an engine")
+	}
+	// A crawler's OriginalTitle is source metadata, not proof that the selected
+	// title was translated. Merge may obtain the two fields from different sites.
+	// Commit both fields together so a failed plot cannot leave a half-translated
+	// object that a retry could mistake for success.
+	next := *info
+	if fields.Title && info.Title != "" {
 		result, err := engine.Translate(ctx, info.Title, info.Actress)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("translate title: %w", err)
 		}
-		info.OriginalTitle = info.Title
-		info.Title = result.Text
-		info.OriginalTitleBreak = append([]string(nil), result.OrigBreak...)
-		info.TitleBreak = append([]string(nil), result.TransBreak...)
+		if err := validateResult(info.Title, result.Text, info.Actress); err != nil {
+			return false, fmt.Errorf("translate title: %w", err)
+		}
+		if next.OriginalTitle == "" {
+			next.OriginalTitle = info.Title
+		}
+		next.Title = strings.TrimSpace(result.Text)
+		next.OriginalTitleBreak = append([]string(nil), result.OrigBreak...)
+		next.TitleBreak = append([]string(nil), result.TransBreak...)
 	}
 	if fields.Plot && info.Plot != "" {
 		result, err := engine.Translate(ctx, info.Plot, info.Actress)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("translate plot: %w", err)
 		}
-		info.OriginalPlot = info.Plot
-		info.Plot = result.Text
+		if err := validateResult(info.Plot, result.Text, info.Actress); err != nil {
+			return false, fmt.Errorf("translate plot: %w", err)
+		}
+		if next.OriginalPlot == "" {
+			next.OriginalPlot = info.Plot
+		}
+		next.Plot = strings.TrimSpace(result.Text)
 	}
+	*info = next
 	return true, nil
+}
+
+func validateResult(source, translated string, names []string) error {
+	if strings.TrimSpace(translated) == "" {
+		return fmt.Errorf("provider returned empty text")
+	}
+	if strings.TrimSpace(source) != strings.TrimSpace(translated) {
+		return nil
+	}
+	// An unchanged Chinese title is valid. Retained actor names are valid too;
+	// reject unchanged Japanese prose, without logging its contents.
+	for _, name := range names {
+		if name != "" {
+			source = strings.ReplaceAll(source, name, "")
+		}
+	}
+	for _, r := range source {
+		if unicode.In(r, unicode.Hiragana, unicode.Katakana) {
+			return fmt.Errorf("provider returned untranslated Japanese text")
+		}
+	}
+	return nil
 }
 
 type OpenAIEngine struct {
