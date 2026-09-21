@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,77 @@ func (testEngine) Translate(_ context.Context, text string, _ []string) (transla
 		return translate.Result{Text: "TEST-001 今天晴朗 & 温暖"}, nil
 	}
 	return translate.Result{Text: "明天也会晴朗"}, nil
+}
+
+func TestRepairFileDryRunAndExistingBackup(t *testing.T) {
+	dir, backupDir := t.TempDir(), t.TempDir()
+	root, _ := os.OpenRoot(dir)
+	defer root.Close()
+	backup, _ := os.OpenRoot(backupDir)
+	defer backup.Close()
+	if err := os.WriteFile(filepath.Join(dir, "test.nfo"), []byte(fixture), 0600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := repairFile(context.Background(), root, nil, "test.nfo", nil, false)
+	if err != nil || r.Fields != 2 || r.Before != r.After {
+		t.Fatalf("dry run: %+v %v", r, err)
+	}
+	if _, err := repairFile(context.Background(), root, nil, "test.nfo", testEngine{}, true); err == nil {
+		t.Fatal("allowed missing backup")
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, digest([]byte("test.nfo"))+".nfo"), []byte("old backup"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repairFile(context.Background(), root, backup, "test.nfo", testEngine{}, true); err == nil {
+		t.Fatal("overwrote backup")
+	}
+	if _, err := repairFile(context.Background(), root, backup, "missing.nfo", testEngine{}, true); err == nil {
+		t.Fatal("accepted missing NFO")
+	}
+	if _, err := repairFile(context.Background(), root, backup, "test.nfo", translate.NoopEngine{}, true); err == nil {
+		t.Fatal("accepted unchanged translation")
+	}
+}
+
+func TestCLIReadOnlyAndValidatedApplyWithoutNetwork(t *testing.T) {
+	for _, tc := range []struct {
+		name, credentials string
+		apply, wantError  bool
+	}{
+		{"dry", "", false, false},
+		{"apply_already_chinese", `{"api_key":"fixture:fx"}`, true, false},
+		{"missing_key", `{}`, true, true},
+		{"malformed_credentials", `{`, true, true},
+		{"invalid_proxy", `{"api_key":"fixture:fx","proxy":"ftp://example.invalid"}`, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, parent := t.TempDir(), t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "test.nfo"), []byte(`<movie><title>中文标题</title></movie>`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			credentials := filepath.Join(parent, "stdin.json")
+			if err := os.WriteFile(credentials, []byte(tc.credentials), 0600); err != nil {
+				t.Fatal(err)
+			}
+			stdin, err := os.Open(credentials)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stdin.Close()
+			oldFlags, oldArgs, oldStdin := flag.CommandLine, os.Args, os.Stdin
+			defer func() { flag.CommandLine, os.Args, os.Stdin = oldFlags, oldArgs, oldStdin }()
+			flag.CommandLine = flag.NewFlagSet("nfo-translate", flag.ContinueOnError)
+			os.Args = []string{"nfo-translate", "-root", dir}
+			if tc.apply {
+				os.Args = append(os.Args, "-apply", "-backup", filepath.Join(parent, "backup"))
+			}
+			os.Stdin = stdin
+			err = run()
+			if (err != nil) != tc.wantError {
+				t.Fatalf("run error = %v", err)
+			}
+		})
+	}
 }
 
 func TestRepairNFOOnlyReplacesRequestedText(t *testing.T) {

@@ -10,7 +10,7 @@ const modules = {
   media: path.join(root, 'modules/media'),
   music: path.join(root, 'modules/music'),
 };
-const version = '0.6.1';
+const version = '0.6.2';
 const stage = path.join(root, 'dist/stage/wayyoung_toolbox');
 const output = path.join(root, `dist/wayyoung_toolbox_${version}_x86_64.fpk`);
 
