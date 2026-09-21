@@ -18,6 +18,8 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  completedLibrary: ({ query = '', offset = 0, limit = 50, signal } = {}) => request(`/library/completed?${new URLSearchParams({ query, offset: String(offset), limit: String(limit) })}`, { signal }),
+  scanCompletedLibrary: ({ signal } = {}) => request('/library/completed/scan', { method: 'POST', body: '{}', signal }),
   queue: ({ status = '', before = 0, limit = 50, signal } = {}) => {
     const query = new URLSearchParams();
     if (status) query.set('status', status);

@@ -78,6 +78,23 @@ func TestCompletedLibraryAPIIsReadOnlyBoundedAndConfigAware(t *testing.T) {
 	if w := request("GET", "/api/library/completed?limit=10000", true); w.Code != 400 {
 		t.Fatalf("bound=%d", w.Code)
 	}
+	if w := request("GET", "/api/library/completed?offset=-1", true); w.Code != 400 {
+		t.Fatalf("offset=%d", w.Code)
+	}
+	if w := request("GET", "/api/library/completed?offset=999", true); w.Code != 200 || !strings.Contains(w.Body.String(), `"items":[]`) {
+		t.Fatalf("page=%s", w.Body)
+	}
+	other := cfg
+	other.OutputDirectory = t.TempDir()
+	if _, err := s.db.UpdateJavspConfig(other); err != nil {
+		t.Fatal(err)
+	}
+	if w := request("GET", "/api/library/completed", true); w.Code != 200 || strings.Contains(w.Body.String(), "TEST-001") || !strings.Contains(w.Body.String(), `"scanned":false`) {
+		t.Fatalf("config retained stale index: %s", w.Body)
+	}
+	if _, err := s.db.UpdateJavspConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.RemoveAll(cfg.OutputDirectory); err != nil {
 		t.Fatal(err)
 	}

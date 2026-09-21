@@ -36,7 +36,7 @@ func TestRSSConfirmationRecoversDelayedVisibilityWithoutReposting(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			var present, cancelDuringLookup atomic.Bool
+			var present atomic.Bool
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/v2/auth/login" {
 					fmt.Fprint(w, "Ok.")
@@ -46,10 +46,6 @@ func TestRSSConfirmationRecoversDelayedVisibilityWithoutReposting(t *testing.T) 
 					t.Errorf("unsafe confirmation request %s %s", r.Method, r.URL)
 					http.Error(w, "unsafe", 400)
 					return
-				}
-				if cancelDuringLookup.Load() {
-					current, _ := f.s.db.MediaJob(job.ID)
-					_, _ = f.s.db.CancelMediaJob(current.ID, current.Version)
 				}
 				if present.Load() {
 					_ = json.NewEncoder(w).Encode([]QBTorrent{{Hash: job.TorrentHash, AddedOn: time.Now().Unix(), ContentPath: "/downloads/TEST-001.mp4", Progress: 1, State: "stalledUP"}})
@@ -69,6 +65,7 @@ func TestRSSConfirmationRecoversDelayedVisibilityWithoutReposting(t *testing.T) 
 				t.Fatalf("missing should wait with clear message: %+v", missing)
 			}
 			present.Store(true)
+			f.reopen(t)
 			if err := f.s.reconcileRSSSubmissions(context.Background()); err != nil {
 				t.Fatal(err)
 			}
@@ -78,6 +75,70 @@ func TestRSSConfirmationRecoversDelayedVisibilityWithoutReposting(t *testing.T) 
 			}
 			if confirmed.Attempts != job.Attempts {
 				t.Fatal("read-only confirmation incremented submission attempts")
+			}
+		})
+	}
+}
+
+func TestRSSConfirmationRejectsUnsafeOrStaleObservations(t *testing.T) {
+	for _, scenario := range []string{"cancel_race", "old_torrent", "readded_torrent", "wrong_hash", "invalid_path", "empty_path", "missing_dispatch", "network_error", "missing", "canceled_context"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newRSSExecutionFixture(t)
+			f.failLookupAfterAdd.Store(true)
+			job, _ := f.run(t)
+			if job.Status != "needs_attention" {
+				t.Fatalf("fixture=%+v", job)
+			}
+			torrent := &QBTorrent{Hash: job.TorrentHash, AddedOn: time.Now().Unix(), ContentPath: "/downloads/TEST-001.mp4"}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var pollErr error
+			switch scenario {
+			case "cancel_race":
+				if _, err := f.s.db.CancelMediaJob(job.ID, job.Version); err != nil {
+					t.Fatal(err)
+				}
+			case "old_torrent":
+				torrent.AddedOn -= 3600
+			case "readded_torrent":
+				torrent.AddedOn += 3600
+			case "wrong_hash":
+				torrent.Hash = strings.Repeat("a", 40)
+			case "invalid_path":
+				torrent.ContentPath = "relative/video.mp4"
+			case "empty_path":
+				torrent.ContentPath = ""
+			case "missing_dispatch":
+				if _, err := f.s.db.db.Exec(`DELETE FROM media_job_events WHERE job_id=? AND reason='submission_dispatching'`, job.ID); err != nil {
+					t.Fatal(err)
+				}
+			case "network_error":
+				pollErr = fmt.Errorf("temporary failure")
+			case "missing":
+				torrent = nil
+			case "canceled_context":
+				cancel()
+			}
+			before, _ := f.s.db.MediaJobEvents(job.ID)
+			for range 2 {
+				err := f.s.db.recordRSSConfirmation(ctx, job, torrent, pollErr)
+				if scenario != "cancel_race" && scenario != "canceled_context" && err != nil {
+					t.Fatal(err)
+				}
+				if (scenario == "cancel_race" || scenario == "canceled_context") && err == nil {
+					t.Fatal("stale/canceled write accepted")
+				}
+			}
+			current, _ := f.s.db.MediaJob(job.ID)
+			if current.Phase != "discovered" || current.TorrentAddedOn != 0 || current.Attempts != job.Attempts {
+				t.Fatalf("unsafe association: %+v", current)
+			}
+			if scenario == "cancel_race" && current.Status != "canceled" {
+				t.Fatal("canceled job revived")
+			}
+			after, _ := f.s.db.MediaJobEvents(job.ID)
+			if len(before) != len(after) {
+				t.Fatal("observation inflated event history")
 			}
 		})
 	}

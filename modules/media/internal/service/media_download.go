@@ -139,6 +139,9 @@ func (s *Service) refreshQueuedDownloads(ctx context.Context) error {
 		return nil
 	}
 	defer s.downloadLock.Unlock()
+	if err := s.reconcileRSSSubmissions(ctx); err != nil {
+		return err
+	}
 	jobs, err := s.db.downloadsToObserve(ctx)
 	if err != nil || len(jobs) == 0 {
 		return err

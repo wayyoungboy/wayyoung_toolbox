@@ -14,10 +14,11 @@ import (
 // subscription identity and download destination are captured; credentials
 // remain in private settings.
 type RSSDiscovery struct {
-	SubscriptionName string    `json:"subscription_name"`
-	Entry            FeedEntry `json:"entry"`
-	Magnet           string    `json:"magnet,omitempty"`
-	SubmissionState  string    `json:"submission_state,omitempty"`
+	SubscriptionName      string    `json:"subscription_name"`
+	Entry                 FeedEntry `json:"entry"`
+	Magnet                string    `json:"magnet,omitempty"`
+	SubmissionState       string    `json:"submission_state,omitempty"`
+	ConfirmationCheckedAt string    `json:"confirmation_checked_at,omitempty"`
 	// nil identifies legacy jobs; a non-nil empty string deliberately retains
 	// qB's default directory instead of adopting a later shared configuration.
 	DownloadPath *string `json:"download_path,omitempty"`

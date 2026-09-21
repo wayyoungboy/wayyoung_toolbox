@@ -50,6 +50,7 @@ type Service struct {
 	maintenanceLock    sync.Mutex
 	intakeLock         sync.Mutex
 	downloadLock       sync.Mutex
+	completedLibrary   completedLibraryState
 	mediaFiles         sync.Mutex // shared by every production media-file writer
 	rssSlots           chan struct{}
 	queueWake          chan struct{}
@@ -151,6 +152,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/queue/{id}", s.handleQueueDetail)
 	mux.HandleFunc("POST /api/queue/{id}/{action}", s.handleQueueAction)
 	mux.HandleFunc("GET /api/tasks", s.handleTasks)
+	mux.HandleFunc("GET /api/library/completed", s.handleCompletedLibrary)
+	mux.HandleFunc("POST /api/library/completed/scan", s.handleScanCompletedLibrary)
 	mux.HandleFunc("POST /api/tasks", s.handleCreateTask)
 	mux.HandleFunc("PUT /api/tasks/{id}", s.handleUpdateTask)
 	mux.HandleFunc("DELETE /api/tasks/{id}", s.handleDeleteTask)
@@ -847,7 +850,12 @@ func (s *Service) executeTaskReserved(ctx context.Context, id int64, trigger str
 	completedIndex := completedMediaIndex{ids: map[string]struct{}{}}
 	if javspConfig, configErr := s.db.JavspConfig(); configErr != nil {
 		slog.Warn("load JAVSP config for RSS deduplication", "error", configErr, "task_id", id)
-	} else if index, indexErr := buildCompletedMediaIndex(javspConfig); indexErr != nil {
+	} else if index, indexErr := s.completedIndex(ctx, javspConfig); indexErr != nil {
+		if javspConfig.OutputDirectory != "" {
+			err := fmt.Errorf("成品媒体库无法核对，已暂停本次 RSS 投递，请检查整理完成目录：%w", indexErr)
+			finishErr := s.db.FinishRun(runID, summary, "failed", err.Error())
+			return summary, errors.Join(err, finishErr)
+		}
 		slog.Warn("index organized media for RSS deduplication", "error", indexErr, "task_id", id)
 	} else {
 		completedIndex = index

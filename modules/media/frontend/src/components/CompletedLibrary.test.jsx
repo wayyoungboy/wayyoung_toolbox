@@ -1,6 +1,9 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CompletedLibraryResults } from './CompletedLibrary';
+
+vi.mock('@douyinfe/semi-ui/lib/es/button', () => ({ default: () => null }));
+vi.mock('@douyinfe/semi-ui/lib/es/input', () => ({ default: () => null }));
 
 it('shows identifiers, counts, timestamp and escaped filenames with no video-delete controls', () => {
   const html = renderToStaticMarkup(<CompletedLibraryResults report={{ scanned: true, root: '/completed', scanned_at: '2026-09-22T10:00:00Z', video_count: 3, id_count: 2, unrecognized_count: 1, unrecognized_examples: ['<unknown>.mp4'], total: 2, items: [{ media_id: 'TEST-001', file_count: 2, example_path: '<title>.mp4' }] }} />);

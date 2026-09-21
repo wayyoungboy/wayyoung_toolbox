@@ -426,3 +426,11 @@ button, input, select { font: inherit; }
   .queue-inspector { padding: 14px; }
   .queue-pagination { flex-wrap: wrap; }
 }
+.completed-library { margin-top: 24px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.library-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.library-heading h3 { margin: 0 0 8px; }
+.library-heading p { margin: 0; }
+.library-path, .library-unknown code { overflow-wrap: anywhere; word-break: break-word; }
+.library-unknown { margin-top: 16px; }
+.library-unknown summary { cursor: pointer; }
+.library-pagination { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 16px; }

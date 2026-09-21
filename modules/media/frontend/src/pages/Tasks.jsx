@@ -10,6 +10,7 @@ import Table from '@douyinfe/semi-ui/lib/es/table';
 import Toast from '@douyinfe/semi-ui/lib/es/toast';
 import { IconDelete, IconEdit, IconPlay, IconPlus, IconRefresh, IconSearch } from '@douyinfe/semi-icons';
 import { api, formatDate } from '../api';
+import CompletedLibrary from '../components/CompletedLibrary';
 
 const emptyTask = {
   name: '', feed_url: '', enabled: true, schedule_type: 'interval',
@@ -182,6 +183,7 @@ export default function Tasks({ embedded = false }) {
         <Button icon={<IconRefresh />} onClick={load}>刷新</Button>
       </div>
       <Table rowKey="id" loading={loading} columns={columns} dataSource={visible} pagination={false} empty="暂无 RSS 订阅" />
+      <CompletedLibrary />
 
       <SideSheet
         title={editingId ? '编辑订阅' : '新增订阅'}

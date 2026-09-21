@@ -33,7 +33,7 @@ npm test
 npm run build
 ```
 
-产物为 `dist/wayyoung_toolbox_0.5.2_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
+产物为 `dist/wayyoung_toolbox_0.6.1_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
 
 ```bash
 SKIP_FNPACK=1 npm run build
@@ -55,6 +55,8 @@ web/                         工具箱外壳与文件完整性检查界面
 ```
 
 ## 安全与隐私
+
+影片订阅支持只读识别整理完成目录中的已有番号，并在投递前跳过；qB 延迟可见的原投递任务会后台核对，不会盲目重发。使用方法和识别边界见 [已有影片去重与投递确认](docs/COMPLETED_LIBRARY.md)。
 
 项目不包含示例账号、密码、个人目录或预设媒体路径。需要访问的目录、下载服务账号和翻译服务密钥均由用户在自己的 fnOS 中配置，并写入应用私有数据目录。
 

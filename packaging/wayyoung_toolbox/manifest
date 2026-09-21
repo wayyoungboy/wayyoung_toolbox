@@ -1,5 +1,5 @@
 appname               = wayyoung_toolbox
-version               = 0.5.7
+version               = 0.6.1
 display_name          = wayyoung的飞牛工具箱
 desc                  = 一个进程管理备份、硬件、影片、音乐转换和文件完整性检查。五个模块拥有独立开关和配置目录。
 arch                  = x86_64

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ var (
 type completedMediaIndex struct {
 	ids       map[string]struct{}
 	available bool
+	report    completedLibraryReport
 }
 
 func normalizedMediaID(prefix, number string) (string, bool) {
@@ -137,53 +139,13 @@ func staticJavspOutputRoot(config JavspConfig) (string, bool, error) {
 }
 
 func buildCompletedMediaIndex(config JavspConfig) (completedMediaIndex, error) {
-	index := completedMediaIndex{ids: map[string]struct{}{}}
-	root, available, err := staticJavspOutputRoot(config)
-	if err != nil || !available {
-		return index, err
-	}
-	extensions := make(map[string]bool, len(config.FilenameExtensions))
-	for _, extension := range config.FilenameExtensions {
-		extensions[strings.ToLower(extension)] = true
-	}
-	visited := 0
-	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		visited++
-		if visited > maxCompletedMediaEntries {
-			return fmt.Errorf("JAVSP 整理完成目录超过 %d 个条目", maxCompletedMediaEntries)
-		}
-		if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() {
-			return nil
-		}
-		if !extensions[strings.ToLower(filepath.Ext(entry.Name()))] {
-			return nil
-		}
-		info, infoErr := entry.Info()
-		if infoErr != nil {
-			return infoErr
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		if id, ok := mediaIDFromVideoFilename(entry.Name()); ok {
-			index.ids[id] = struct{}{}
-		}
-		return nil
-	})
-	if err != nil {
-		return completedMediaIndex{ids: map[string]struct{}{}}, err
-	}
-	index.available = true
-	return index, nil
+	return scanCompletedLibrary(context.Background(), config)
 }
 
 func (index completedMediaIndex) Available() bool { return index.available }
 
 func (index completedMediaIndex) MatchTitle(title string) (string, bool) {
-	id, ok := mediaIDFromTitle(title)
+	id, ok := unambiguousMediaID(title)
 	if !ok {
 		return "", false
 	}

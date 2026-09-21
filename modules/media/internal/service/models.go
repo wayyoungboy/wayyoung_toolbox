@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const Version = "0.0.18"
+const Version = "0.0.19"
 
 var (
 	timePattern = regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d$`)

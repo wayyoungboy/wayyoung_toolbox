@@ -12,6 +12,7 @@ import (
 )
 
 var errQBSubmissionRejected = errors.New("qBittorrent 明确拒绝投递")
+var errRSSSubmissionUnconfirmed = errors.New("qB 投递结果待确认")
 
 func (session *QBSession) Torrent(ctx context.Context, hash string) (QBTorrent, bool, error) {
 	if _, ok := magnetInfoHash("magnet:?xt=urn:btih:" + hash); !ok {
@@ -67,7 +68,7 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 	defer cancel()
 	fail := func(cause error) (RunDetail, error) {
 		status := "failed"
-		if errors.Is(cause, errIntakeConflict) {
+		if errors.Is(cause, errIntakeConflict) || errors.Is(cause, errRSSSubmissionUnconfirmed) {
 			status = "needs_attention"
 		}
 		if errors.Is(cause, context.DeadlineExceeded) {
@@ -159,7 +160,26 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 	}
 	state := job.Discovery.SubmissionState
 	if state == "dispatching" || state == "acknowledged" {
-		return fail(fmt.Errorf("%w：此前已发出投递，但 qB 中暂未确认；不会自动重复下发，请核对后重试确认", errIntakeConflict))
+		return fail(fmt.Errorf("%w：将自动查询原种子，不会重复下发", errRSSSubmissionUnconfirmed))
+	}
+	// Queued discoveries can resume long after the feed was checked. Recheck
+	// an explicitly configured library before a new submission, while leaving
+	// already-dispatched jobs on the observation-only path above.
+	cfg, err := s.db.JavspConfig()
+	if err != nil {
+		return fail(err)
+	}
+	if cfg.OutputDirectory != "" {
+		index, err := s.completedIndex(ctx, cfg)
+		if err != nil {
+			return fail(fmt.Errorf("成品媒体库无法核对，已暂停投递，请检查整理完成目录：%w", err))
+		}
+		if mediaID, completed := index.MatchTitle(job.Title); completed {
+			reason := "整理完成目录中已存在：" + mediaID
+			_, err := s.db.skipRSSAcquisition(job.ID, job.Version, reason)
+			detail.Message = reason
+			return detail, err
+		}
 	}
 	if err := s.db.SaveRSSSubmission(job.ID, job.Version, "dispatching"); err != nil {
 		return fail(err)
@@ -188,5 +208,5 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 	if ctx.Err() != nil {
 		return fail(ctx.Err())
 	}
-	return fail(fmt.Errorf("%w：投递结果尚未确认；重试将只查询 qB，不重复投递", errIntakeConflict))
+	return fail(fmt.Errorf("%w：将自动查询原种子，不会重复下发", errRSSSubmissionUnconfirmed))
 }
