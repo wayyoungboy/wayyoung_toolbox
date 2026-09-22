@@ -78,7 +78,7 @@ func DefaultDefinitions(appDir string) []Definition {
 	prefix := "/app/wayyoung_toolbox/modules/"
 	return []Definition{
 		{
-			ID: "backup", Name: "飞牛备份中心", Version: "0.0.1",
+			ID: "backup", Name: "飞牛备份中心", Version: "0.0.2",
 			Description: "本地目录增量备份、版本记录与恢复。",
 			Prefix:      prefix + "backup", PublicDir: modulePath("backup", "public"),
 		},

@@ -18,7 +18,7 @@ import (
 	"fnos-backup-center/internal/tasks"
 )
 
-const Version = "0.0.1"
+const Version = "0.0.2"
 const Prefix = "/app/backup_center"
 
 type gatewayKey struct{}
