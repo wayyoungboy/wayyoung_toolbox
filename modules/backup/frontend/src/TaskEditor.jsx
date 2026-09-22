@@ -108,10 +108,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
               <p className="hint">{key === 'source' ? '只读本地文件，不会移动或删除源文件。' : '请选择已挂载的网盘目录；断开挂载时会停止写入。'}</p>
             </div>
           ))}
-          <p className="hint">
-            执行前和执行中检查挂载身份；失联时停止写入。
-            {task && " 更换挂载请使用任务的“重新选择挂载”。"}
-          </p>
+          {task && <p className="hint">更换挂载请使用任务的“重新选择挂载”。</p>}
           <div className="schedule-switch">
             <div>
               <h3 className="form-section-title"><span>2</span> 定时执行</h3>

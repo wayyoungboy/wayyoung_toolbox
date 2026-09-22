@@ -24,9 +24,14 @@ html[data-toolbox-module="backup"] main { width: 100%; max-width: none; min-widt
 html[data-toolbox-module="media"] .page { padding: 24px; }
 html[data-toolbox-module="backup"] h1 { font-size: 25px; }
 html[data-toolbox-module="backup"] .sidebar nav button svg { width: 19px; height: 19px; }
-html[data-toolbox-module="backup"] .sidebar nav button { gap: 8px; }
+html[data-toolbox-module="backup"] .sidebar nav button { gap: 8px; flex-direction: row; }
+html[data-toolbox-module="backup"] .sidebar nav { padding-bottom: 0; }
 html[data-toolbox-module="backup"] .page-header p { font-size: 14px; }
 @media (max-width: 760px) {
+  html[data-toolbox-module="backup"] .sidebar { padding: 8px; }
+  html[data-toolbox-module="backup"] .sidebar nav { gap: 2px; }
+  html[data-toolbox-module="backup"] .sidebar nav button { flex: 1; min-width: 0; padding: 0 6px; }
+  html[data-toolbox-module="backup"] .sidebar nav button svg { display: none; }
   html[data-toolbox-module="backup"] main,
   html[data-toolbox-module="media"] .page,
   html[data-toolbox-module="music"] .content { padding: 16px; }

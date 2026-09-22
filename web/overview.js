@@ -19,10 +19,14 @@ export async function checkModule(id, request) {
     const [data, source, target] = await Promise.all([get('state'), get('directories?kind=source'), get('directories?kind=target')]);
     requireFields(Array.isArray(data.state?.tasks) && Array.isArray(data.state?.runs) && Array.isArray(source.roots) && Array.isArray(target.roots));
     const tasks = data.state.tasks, running = data.state.runs.filter(r => ['running', 'queued', 'cancel_requested'].includes(r.status)).length;
-    return complete(tasks.length ? `${tasks.length} 个备份任务 · ${running} 个待执行/运行中` : '尚未创建备份任务', [
+    // State returns newest-first runs. Ignore older failures already superseded
+    // by a new result, and records belonging to deleted task configurations.
+    const unresolved = tasks.filter(task => ['failed', 'interrupted', 'record_error', 'publication_unknown', 'pending'].includes(data.state.runs.find(run => run.task_id === task.id)?.status)).length;
+    return complete(tasks.length ? `${tasks.length} 个备份任务 · ${running} 个待执行/运行中${unresolved ? ` · ${unresolved} 个任务结果待核对` : ''}` : '尚未创建备份任务', [
       `可选本地授权根目录 ${source.roots.length} 个；远程挂载 ${target.roots.length} 个。`,
       '请在新建任务中核对具体源目录授权与目标挂载；此检查不证明目标可写或云端完成。',
-    ], !tasks.length || !target.roots.length || !source.roots.length ? 'warning' : 'info');
+      ...(unresolved ? ['打开运行记录查看失败原因或待确认结果；挂载写入完成不代表云端上传完成。'] : []),
+    ], unresolved || !tasks.length || !target.roots.length || !source.roots.length ? 'warning' : 'info');
   }
   if (id === 'media') {
     const data = await get('pipeline');

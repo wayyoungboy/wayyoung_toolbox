@@ -541,10 +541,12 @@ tbody tr:last-child td {
   font-size: 25px;
   margin-bottom: 4px;
 }
-.modal > .muted {
+.modal-heading > .muted {
   font-size: 14px;
   margin-bottom: 23px;
 }
+.task-editor .modal-heading { position: sticky; top: -32px; z-index: 2; background: #fff; margin: -32px -36px 0; padding: 24px 36px 1px; border-bottom: 1px solid var(--border); }
+.task-editor .modal-heading h2 { font-size: 21px; }
 .close {
   position: absolute;
   right: 19px;
@@ -987,4 +989,7 @@ tbody tr:last-child td {
     padding: 8px 3px;
     gap: 4px;
   }
+  .task-editor .modal-heading { top: -24px; margin: -24px -21px 0; padding: 20px 21px 1px; }
+  .task-editor .modal-footer { bottom: -24px; flex-wrap: wrap; }
+  .save-explanation { flex-basis: 100%; max-width: none; }
 }

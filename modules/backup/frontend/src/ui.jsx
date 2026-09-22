@@ -170,6 +170,7 @@ export function Modal({ title, subtitle, children, onClose, busy = false, classN
         tabIndex={-1}
         ref={ref}
       >
+        <div className="modal-heading">
         <button
           className="icon-button close"
           aria-label="关闭对话框"
@@ -180,6 +181,7 @@ export function Modal({ title, subtitle, children, onClose, busy = false, classN
         </button>
         <h2>{title}</h2>
         {subtitle && <p className="muted">{subtitle}</p>}
+        </div>
         {children}
       </section>
     </div>

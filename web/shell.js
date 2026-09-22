@@ -9,7 +9,7 @@ export function startToolbox({ request = createRequest(), doc = document, win = 
   const events = new AbortController();
   const listen = (target, type, fn) => target.addEventListener(type, fn, { signal: events.signal });
   const frames = new Map(), checks = new Map(), checking = new Set();
-  let modules = [], selected = 'overview', version = '', busy = '', disposed = false, refreshPromise, cancelDialog, activation = 0;
+  let modules = [], selected = 'overview', version = '', busy = '', disposed = false, refreshPromise, cancelDialog, activation = 0, acceptedState = '', connectionFailed = false;
   const pane = doc.createElement('div');
   pane.className = 'shell-pane';
   node('module-content').replaceChildren(pane);
@@ -114,6 +114,10 @@ export function startToolbox({ request = createRequest(), doc = document, win = 
   }
   function accept(payload) {
     if (!Array.isArray(payload.modules) || payload.modules.some(m => !Object.hasOwn(presentation, m.id) || m.id === 'overview' || typeof m.running !== 'boolean')) throw new Error('模块状态响应无效');
+    const snapshot = JSON.stringify([payload.modules, payload.version]);
+    if (snapshot === acceptedState && !connectionFailed) return;
+    acceptedState = snapshot;
+    if (connectionFailed) { notice(); connectionFailed = false; }
     const previous = new Map(modules.map(m => [m.id, m.started_at]));
     modules = payload.modules.slice().sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
     for (const m of modules) if (previous.get(m.id) !== m.started_at || !m.running) checks.delete(m.id);
@@ -126,6 +130,7 @@ export function startToolbox({ request = createRequest(), doc = document, win = 
     node('refresh').disabled = true;
     refreshPromise = request('/api/modules').then(payload => { if (!disposed) accept(payload); }).catch(error => {
       if (!disposed) {
+        connectionFailed = true;
         notice(error.message, true);
         node('module-status').textContent = '连接异常';
         node('module-status').className = 'status-pill failed';
