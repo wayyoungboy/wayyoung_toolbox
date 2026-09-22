@@ -47,3 +47,14 @@ it('summarizes attention, unchecked and disabled modules separately and prioriti
   expect(doc.querySelector('details[data-details="backup"]').open).toBe(false);
   expect(doc.body.textContent).not.toContain('全部正常');
 });
+
+it('surfaces only the latest result per existing backup task, without calling pending uploads successful', async () => {
+  const request = async path => path.endsWith('state') ? {state:{tasks:[{id:'one'},{id:'two'}],runs:[
+    {task_id:'one',status:'previewed'}, {task_id:'one',status:'failed'},
+    {task_id:'two',status:'pending'}, {task_id:'removed',status:'failed'},
+  ]}} : {roots:[{}]};
+  const result = await checkModule('backup', request);
+  expect(result.level).toBe('warning');
+  expect(result.summary).toContain('1 个任务结果待核对');
+  expect(result.details.join(' ')).toContain('云端');
+});

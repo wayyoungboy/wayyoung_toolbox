@@ -29,6 +29,15 @@ it('keeps expanded diagnostic details across background refreshes', async () => 
   expect(document.querySelector('details[data-details="backup"]').open).toBe(true);
 });
 
+it('does not replace the overview DOM during unchanged background status polling', async () => {
+  const {app} = await setup('#overview');
+  const open = document.querySelector('[data-open="backup"]');
+  open.focus();
+  await app.refresh();
+  expect(document.querySelector('[data-open="backup"]')).toBe(open);
+  expect(document.activeElement).toBe(open);
+});
+
 it("keeps module frames and unsaved state across navigation and quiet refresh", async () => {
   const { app } = await setup();
   const frame = document.querySelector('iframe[title="backup"]');
