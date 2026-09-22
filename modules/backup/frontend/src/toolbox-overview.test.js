@@ -34,3 +34,16 @@ it('escapes untrusted status text and timestamps inspection without making guara
   expect(html).not.toContain('<img'); expect(html).not.toContain('<script>');
   expect(html).toContain('仅代表当次结果');
 });
+
+it('summarizes attention, unchecked and disabled modules separately and prioritizes problems', () => {
+  const modules = [{id:'music',running:true}, {id:'backup',running:true}, {id:'media',running:true}, {id:'integrity',running:false,enabled:false}, {id:'ha500',running:false,enabled:true}];
+  const checks = new Map([['backup',{summary:'目标未配置',details:['请选目录'],level:'warning',checkedAt:new Date().toISOString()}], ['music',{summary:'已配置',details:[],level:'info',checkedAt:new Date().toISOString()}]]);
+  const doc = new DOMParser().parseFromString(overviewHTML(modules, checks, new Set()), 'text/html');
+  expect(doc.querySelector('[data-summary="attention"]').textContent).toContain('2');
+  expect(doc.querySelector('[data-summary="unchecked"]').textContent).toContain('1');
+  expect(doc.querySelector('[data-summary="disabled"]').textContent).toContain('1');
+  const rows = [...doc.querySelectorAll('[data-overview-module]')];
+  expect(rows.slice(0,2).map(row => row.dataset.overviewModule)).toEqual(['backup','ha500']);
+  expect(doc.querySelector('details[data-details="backup"]')).not.toHaveAttribute('open');
+  expect(doc.body.textContent).not.toContain('全部正常');
+});

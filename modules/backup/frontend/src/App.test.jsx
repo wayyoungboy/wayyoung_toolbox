@@ -203,6 +203,7 @@ describe("backup application workflows", () => {
       "请选择源目录与目标目录",
     );
     await user.click(within(modal).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "放弃修改" }));
     client.run.mockRejectedValue(new Error("目标挂载丢失"));
     await user.click(screen.getByRole("button", { name: "立即备份" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("目标挂载丢失");

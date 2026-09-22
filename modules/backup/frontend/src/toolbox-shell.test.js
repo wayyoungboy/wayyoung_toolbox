@@ -19,6 +19,16 @@ async function setup(hash = "#backup") {
   return { app, modules, request };
 }
 
+it('keeps expanded diagnostic details across background refreshes', async () => {
+  const {app, request, modules} = await setup('#overview');
+  request.mockImplementation(async path => path === '/api/modules' ? {modules,version:'0.6.0'} : path.endsWith('state') ? {state:{tasks:[],runs:[]}} : {roots:[]});
+  document.querySelector('[data-check="backup"]').click();
+  await vi.waitFor(() => expect(document.querySelector('details[data-details="backup"]')).not.toBeNull());
+  document.querySelector('details[data-details="backup"]').open = true;
+  await app.refresh();
+  expect(document.querySelector('details[data-details="backup"]').open).toBe(true);
+});
+
 it("keeps module frames and unsaved state across navigation and quiet refresh", async () => {
   const { app } = await setup();
   const frame = document.querySelector('iframe[title="backup"]');
