@@ -20,6 +20,10 @@ func (p testMounts) List() ([]backup.Mount, error) { return []backup.Mount{p.m},
 func (p testMounts) FileID(*os.File) (int, error)  { return p.m.ID, nil }
 
 func fixture(t *testing.T) (*Server, backup.Selection) {
+	return fixtureWithPrefix(t, "")
+}
+
+func fixtureWithPrefix(t *testing.T, prefix string) (*Server, backup.Selection) {
 	t.Helper()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	source, target := filepath.Join(base, "source"), filepath.Join(base, "cloud")
@@ -35,7 +39,7 @@ func fixture(t *testing.T) (*Server, backup.Selection) {
 		t.Fatal(err)
 	}
 	m := backup.Mount{ID: 5, Point: target, Source: "fixture:remote", Type: "fuse.rclone", Root: "/"}
-	s, err := New(Options{DataDir: filepath.Join(base, "state"), PublicDir: filepath.Join(base, "public"), LocalRoots: []string{source, filepath.Join(base, "restore-parent")}, Mounts: testMounts{m}})
+	s, err := New(Options{DataDir: filepath.Join(base, "state"), PublicDir: filepath.Join(base, "public"), Prefix: prefix, LocalRoots: []string{source, filepath.Join(base, "restore-parent")}, Mounts: testMounts{m}})
 	if err != nil {
 		t.Fatal(err)
 	}
