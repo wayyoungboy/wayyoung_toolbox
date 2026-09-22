@@ -11,7 +11,7 @@ import (
 // fnOS can rewrite Host. HTTP LAN browsers may omit Fetch Metadata, so matching
 // application Referer is a compatibility hint, NOT independent authorization.
 // The unguessable token and absence of credentialed CORS remain essential.
-func validRequestOrigin(r *http.Request, trusted bool) bool {
+func validRequestOrigin(r *http.Request, trusted bool, prefix string) bool {
 	site := r.Header.Get("Sec-Fetch-Site")
 	if site != "" && site != "same-origin" {
 		return false
@@ -34,7 +34,9 @@ func validRequestOrigin(r *http.Request, trusted bool) bool {
 			return false
 		}
 		clean := path.Clean(ref.Path)
-		appReferrer = (ref.Path == clean || ref.Path == clean+"/") && (clean == Prefix || strings.HasPrefix(clean, Prefix+"/"))
+		// The host can embed this module at a different path. Only accept that
+		// configured path, never another app or a caller-supplied forwarding header.
+		appReferrer = (ref.Path == clean || ref.Path == clean+"/") && (clean == prefix || strings.HasPrefix(clean, prefix+"/"))
 	}
 	if origin.Host == r.Host {
 		return true

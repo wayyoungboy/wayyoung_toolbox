@@ -29,7 +29,7 @@ func TestOriginValidationBoundaries(t *testing.T) {
 		r.Header.Set("Origin", tc.origin)
 		r.Header.Set("Referer", tc.ref)
 		r.Header.Set("Sec-Fetch-Site", tc.site)
-		if got := validRequestOrigin(r, tc.trusted); got != tc.want {
+		if got := validRequestOrigin(r, tc.trusted, Prefix); got != tc.want {
 			t.Errorf("%+v got %t", tc, got)
 		}
 	}
@@ -37,7 +37,7 @@ func TestOriginValidationBoundaries(t *testing.T) {
 		r := httptest.NewRequest("POST", "http://nas.test/", nil)
 		r.Header.Set("Origin", "http://nas.test")
 		r.Header.Set("Sec-Fetch-Site", site)
-		if validRequestOrigin(r, true) {
+		if validRequestOrigin(r, true, Prefix) {
 			t.Fatal("same Host bypassed Fetch Metadata")
 		}
 	}

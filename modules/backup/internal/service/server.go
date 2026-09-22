@@ -135,7 +135,7 @@ func (s *Server) routes() http.Handler {
 				respond(w, 403, nil, errors.New("请求校验失效，请刷新页面"))
 				return
 			}
-			if !validRequestOrigin(r, trusted) {
+			if !validRequestOrigin(r, trusted, s.prefix) {
 				respond(w, 403, nil, errors.New("请求来源校验失败，请从飞牛桌面重新打开应用"))
 				return
 			}
