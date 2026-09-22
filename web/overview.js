@@ -18,7 +18,7 @@ export async function checkModule(id, request) {
   if (id === 'backup') {
     const [data, source, target] = await Promise.all([get('state'), get('directories?kind=source'), get('directories?kind=target')]);
     requireFields(Array.isArray(data.state?.tasks) && Array.isArray(data.state?.runs) && Array.isArray(source.roots) && Array.isArray(target.roots));
-    const tasks = data.state.tasks, running = data.state.runs.filter(r => ['running', 'queued', 'canceling'].includes(r.status)).length;
+    const tasks = data.state.tasks, running = data.state.runs.filter(r => ['running', 'queued', 'cancel_requested'].includes(r.status)).length;
     return complete(tasks.length ? `${tasks.length} 个备份任务 · ${running} 个待执行/运行中` : '尚未创建备份任务', [
       `可选本地授权根目录 ${source.roots.length} 个；远程挂载 ${target.roots.length} 个。`,
       '请在新建任务中核对具体源目录授权与目标挂载；此检查不证明目标可写或云端完成。',
@@ -57,15 +57,21 @@ export async function checkModule(id, request) {
 }
 
 export function overviewHTML(modules, checks, checking) {
-  return `<div class="overview-intro"><div><h2>先看状态，再开始任务</h2><p>“服务运行”仅表示模块已启动。配置检查只读取状态，不执行备份、扫描、下载或清理。</p></div><button class="primary-button" data-check-all ${checking.size ? 'disabled' : ''}>${checking.size ? '正在检查…' : '检查配置与连接'}</button></div>
-    <div class="overview-list">${modules.map(module => {
+  const needsAttention = m => Boolean(m.last_error || (m.enabled && !m.running) || ['warning', 'error'].includes(checks.get(m.id)?.level));
+  const attention = modules.filter(needsAttention).length;
+  const unchecked = modules.filter(m => m.running && !checks.has(m.id) && !needsAttention(m)).length;
+  const disabled = modules.filter(m => !m.running && !m.enabled && !needsAttention(m)).length;
+  const sorted = modules.slice().sort((a, b) => Number(needsAttention(b)) - Number(needsAttention(a)));
+  return `<div class="overview-intro"><div><h2>今天从哪里开始？</h2><p>先检查配置，再进入工具。检查不会启动备份、扫描、下载或清理。</p></div><button class="primary-button" data-check-all ${checking.size || !modules.some(m => m.running) ? 'disabled' : ''}>${checking.size ? '正在检查…' : '检查配置与连接'}</button></div>
+    <div class="overview-summary" aria-label="配置检查摘要"><span data-summary="attention" class="${attention ? 'attention' : ''}"><strong>${attention}</strong> 项需要处理</span><span data-summary="unchecked"><strong>${unchecked}</strong> 项尚未检查</span><span data-summary="disabled"><strong>${disabled}</strong> 项未启用</span><p>服务运行 ≠ 任务成功。以下只代表最近一次检查。</p></div>
+    <div class="overview-list">${sorted.map(module => {
       const guide = guides[module.id] || { title: module.name, steps: '', help: '', action: '打开模块' };
       const check = checks.get(module.id);
       const state = module.last_error ? '服务异常' : module.running ? '服务运行' : module.enabled ? '启动异常' : '未启用';
-      return `<article class="overview-row ${escapeHTML(check?.level || '')}"><div class="overview-title"><h3>${escapeHTML(guide.title)}</h3><span class="overview-service">${escapeHTML(state)}</span><p>${escapeHTML(guide.steps)}</p></div>
-        <div class="overview-detail"><strong>${escapeHTML(!module.running ? '启用后可检查配置' : checking.has(module.id) ? '正在检查…' : check?.summary || '配置尚未检查')}</strong>
-          <p>${escapeHTML(guide.help)}</p>${check ? `<ul>${check.details.map(line => `<li>${escapeHTML(line)}</li>`).join('')}</ul><small>检查于 ${escapeHTML(new Date(check.checkedAt).toLocaleTimeString())}，仅代表当次结果</small>` : ''}
+      return `<article data-overview-module="${escapeHTML(module.id)}" class="overview-row ${escapeHTML(needsAttention(module) ? 'warning' : check?.level || '')}"><div class="overview-title"><h3>${escapeHTML(guide.title)}</h3><span class="overview-service">${escapeHTML(state)}</span><p>${escapeHTML(guide.steps)}</p></div>
+        <div class="overview-detail"><strong>${escapeHTML(!module.running ? module.enabled ? '启动未完成，请查看模块错误' : '按需启用，不使用也可以保持关闭' : checking.has(module.id) ? '正在检查…' : check?.summary || '配置尚未检查')}</strong>
+          <p>${escapeHTML(guide.help)}</p>${check ? `<details data-details="${escapeHTML(module.id)}"><summary>检查详情</summary><ul>${check.details.map(line => `<li>${escapeHTML(line)}</li>`).join('')}</ul><small>检查于 ${escapeHTML(new Date(check.checkedAt).toLocaleTimeString())}，仅代表当次结果</small></details>` : ''}
           ${module.last_error ? '<p class="error-text">模块操作失败，请打开模块查看错误，勿反复启停。</p>' : ''}</div>
-        <div class="overview-actions"><button class="secondary-button" data-open="${escapeHTML(module.id)}">${escapeHTML(module.running ? guide.action : '查看模块')}</button><button class="text-button" data-check="${escapeHTML(module.id)}" ${!module.running || checking.has(module.id) ? 'disabled' : ''}>重新检查</button></div></article>`;
+        <div class="overview-actions"><button class="secondary-button" data-open="${escapeHTML(module.id)}">${escapeHTML(module.running ? guide.action : '查看模块')}</button><button class="text-button" data-check="${escapeHTML(module.id)}" ${!module.running || checking.has(module.id) ? 'disabled' : ''}>${checking.has(module.id) ? '检查中…' : check ? '重新检查' : '检查配置'}</button></div></article>`;
     }).join('')}</div><aside class="overview-note"><strong>配置和权限说明</strong><p>备份目录通过飞牛原生授权；其他文件工具由管理员选择存储卷内目录。硬件模块需要系统权限。不会自动扩大目录授权或开启新定时任务。</p><p>切换模块保留本次页面状态；刷新页面、关闭模块或应用升级仍会丢弃未保存内容，请先保存。</p></aside>`;
 }

@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, usePicker, Icon } from "./ui.jsx";
 
 export default function TaskEditor({ task, client, onClose, onSaved }) {
-  const [value, setValue] = useState(
-    task
+  const [initial] = useState(() => task
       ? structuredClone(task)
       : {
           name: "",
@@ -17,10 +16,19 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
             zone: "Asia/Shanghai",
           },
           retries: 1,
-        },
-  );
+        });
+  const [value, setValue] = useState(initial);
   const [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [discard, setDiscard] = useState(false);
+  const dirty = JSON.stringify(value) !== JSON.stringify(initial);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = event => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+  function close() { if (busy) return; if (dirty) setDiscard(true); else onClose(); }
   const [choose, picker] = usePicker(client, setError);
   const schedule = (key, v) =>
     setValue((prev) => ({ ...prev, schedule: { ...prev.schedule, [key]: v } }));
@@ -36,8 +44,8 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
     try {
       if (!value.selection.source || !value.selection.target)
         throw new Error("请选择源目录与目标目录");
-      await client.saveTask(value);
-      await onSaved();
+      const saved = await client.saveTask(value);
+      await onSaved(saved);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -48,11 +56,13 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
     <>
       <Modal
         title={task ? "编辑备份任务" : "新建备份任务"}
-        subtitle="选择授权目录，先预览，再开始备份。"
-        onClose={onClose}
+        subtitle="源文件不会修改。保存任务后，可先预览要备份的变化。"
+        onClose={close}
         busy={busy}
+        className="task-editor"
       >
         <form onSubmit={submit}>
+          <fieldset disabled={busy} className="editor-fields">
           {error && (
             <p role="alert" className="error">
               {error}
@@ -67,6 +77,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
               onChange={(e) => setValue({ ...value, name: e.target.value })}
             />
           </label>
+          <h3 className="form-section-title"><span>1</span> 备份什么，存到哪里</h3>
           {[
             ["source", "源目录（只读）", "选择本地目录"],
             ["target", "目标目录", "选择已挂载的网盘目录"],
@@ -94,6 +105,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
                 onClick={() => choose(key, (path) => directory(key, path), { existing: true })}>
                 从已授权目录选择
               </button>}
+              <p className="hint">{key === 'source' ? '只读本地文件，不会移动或删除源文件。' : '请选择已挂载的网盘目录；断开挂载时会停止写入。'}</p>
             </div>
           ))}
           <p className="hint">
@@ -102,9 +114,9 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
           </p>
           <div className="schedule-switch">
             <div>
-              <strong>定时执行</strong>
+              <h3 className="form-section-title"><span>2</span> 定时执行</h3>
               <p className="hint">
-                新任务默认关闭，可在此开启或以后编辑，也可随时手动执行。
+                {value.schedule.enabled ? '保存后按计划自动备份，请确认目录与执行时间。' : '当前仅手动执行，需要时再开启自动备份。'}
               </p>
             </div>
             <label className="switch">
@@ -118,7 +130,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
               <span />
             </label>
           </div>
-          <div className="form-grid">
+          {value.schedule.enabled && <div className="form-grid">
             <label className="field">
               执行频率
               <select
@@ -176,7 +188,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
                 onChange={(e) => schedule("zone", e.target.value)}
               />
             </label>
-          </div>
+          </div>}
           <details className="advanced">
             <summary>重试与记录保留</summary>
             <label className="field">
@@ -198,8 +210,10 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
             </p>
           </details>
           <p className="hint">历史版本始终保留。不会自动删除云端备份。</p>
+          </fieldset>
           <footer className="modal-footer">
-            <button type="button" onClick={onClose} disabled={busy}>
+            <p className="save-explanation">{value.schedule.enabled ? '保存后定时计划生效，不会立即开始备份。' : task ? '保存后仅手动执行，不会开始备份。' : '仅创建任务，不会开始备份。'}</p>
+            <button type="button" onClick={close} disabled={busy}>
               取消
             </button>
             <button className="primary" disabled={busy}>
@@ -208,6 +222,13 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
           </footer>
         </form>
       </Modal>
+      {discard && <Modal title="放弃未保存的修改？" onClose={() => setDiscard(false)}>
+        <p>任务尚未保存。继续编辑会保留刚才填写的目录和定时设置。</p>
+        <footer className="modal-footer">
+          <button type="button" onClick={onClose}>放弃修改</button>
+          <button type="button" className="primary" onClick={() => setDiscard(false)}>继续编辑</button>
+        </footer>
+      </Modal>}
       {picker}
     </>
   );

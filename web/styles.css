@@ -230,6 +230,15 @@ button:focus-visible, input:focus-visible, .module-content:focus-visible { outli
 .overview-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
 .overview-intro h2 { margin: 0 0 8px; font-size: 23px; }
 .overview-intro p, .overview-note p { margin: 0; color: #667085; font-size: 13px; line-height: 1.7; }
+.overview-intro .primary-button { margin-top: 0; flex-shrink: 0; }
+.overview-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 28px; padding: 14px 0 20px; color: #536176; font-size: 13px; }
+.overview-summary span { white-space: nowrap; }
+.overview-summary strong { color: #172033; font-size: 22px; font-variant-numeric: tabular-nums; margin-right: 5px; }
+.overview-summary .attention, .overview-summary .attention strong { color: #976007; }
+.overview-summary p { margin: 0 0 0 auto; font-size: 12px; }
+.overview-detail details { margin-top: 10px; }
+.overview-detail summary { cursor: pointer; color: #2466c5; font-size: 12px; width: fit-content; }
+.overview-detail summary:focus-visible { outline: 3px solid #b4cefa; outline-offset: 3px; }
 .overview-list { border: 1px solid #e2e6ee; border-radius: 12px; background: #fff; overflow: hidden; }
 .overview-row { display: grid; grid-template-columns: minmax(155px, .8fr) minmax(0, 1.6fr) auto; gap: 24px; padding: 24px; border-bottom: 1px solid #edf0f4; }
 .overview-row:last-child { border: 0; }
@@ -248,6 +257,9 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .overview-note { margin-top: 22px; padding: 18px 20px; background: #eef3f9; border-radius: 10px; }
 .overview-note strong { display: block; font-size: 13px; margin-bottom: 8px; }
 .confirm-dialog { max-width: min(460px, calc(100vw - 32px)); }
+.confirm-dialog#stop-dialog { padding: 24px; }
+.tab-copy strong { white-space: normal; line-height: 1.4; }
+.module-heading p { overflow-wrap: anywhere; }
 @media (max-width: 1100px) {
   .app-shell { grid-template-columns: 82px minmax(0, 1fr); }
   .brand div, .nav-label, .tab-copy, .sidebar-footer .module-total { display: none; }
@@ -277,6 +289,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .overview-intro { display: block; }
   .overview-intro h2 { font-size: 21px; }
   .overview-intro button { margin-top: 14px; }
+  .overview-summary { gap: 12px 18px; }
+  .overview-summary p { width: 100%; margin: 0; line-height: 1.6; }
   .overview-row { display: block; padding: 18px; }
   .overview-detail { margin-top: 14px; }
   .overview-actions { flex-direction: row; justify-content: flex-start; margin-top: 14px; }

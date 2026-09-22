@@ -114,7 +114,7 @@ export function bytes(value = 0) {
   return `${n.toFixed(1)} ${units[i]}`;
 }
 
-export function Modal({ title, subtitle, children, onClose, busy = false }) {
+export function Modal({ title, subtitle, children, onClose, busy = false, className = "" }) {
   const ref = useRef(null);
   const latest = useRef({ onClose, busy });
   latest.current = { onClose, busy };
@@ -163,7 +163,7 @@ export function Modal({ title, subtitle, children, onClose, busy = false }) {
   return (
     <div className="overlay">
       <section
-        className="modal"
+        className={`modal ${className}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

@@ -29,6 +29,8 @@ export default function App({ client = api }) {
   const [data, setData] = useState(null),
     [page, setPage] = useState("tasks"),
     [error, setError] = useState(""),
+    [readError, setReadError] = useState(""),
+    [feedback, setFeedback] = useState(null),
     [busy, setBusy] = useState(false),
     [editor, setEditor] = useState(null),
     [selected, setSelected] = useState(""),
@@ -44,7 +46,10 @@ export default function App({ client = api }) {
       request.promise = (async () => {
         try {
           const result = await client.state(signal);
-          if (!signal?.aborted) setData(result);
+          if (!signal?.aborted) { setData(result); setReadError(""); }
+        } catch (e) {
+          if (!signal?.aborted) setReadError(e.message);
+          throw e;
         } finally {
           if (inFlight.current === request) inFlight.current = null;
         }
@@ -56,9 +61,7 @@ export default function App({ client = api }) {
   useEffect(() => {
     const controller = new AbortController();
     const poll = () =>
-      refresh(controller.signal).catch((e) => {
-        if (!controller.signal.aborted) setError(e.message);
-      });
+      refresh(controller.signal).catch(() => {});
     poll();
     const timer = setInterval(poll, 5000);
     return () => {
@@ -71,12 +74,16 @@ export default function App({ client = api }) {
   const chosen = tasks.find((t) => t.id === selected) || tasks[0];
   const latest = chosen && runs.find((r) => r.task_id === chosen.id);
   const [choose, picker] = usePicker(client, setError);
-  async function act(action) {
+  async function act(action, message) {
     setBusy(true);
     setError("");
+    setFeedback(null);
     try {
       await action();
-      await refresh();
+      if (message) setFeedback({message});
+      // A successful write remains successful even if the following read fails.
+      // In particular, never invite the user to submit a new task twice.
+      await refresh().catch(() => {});
     } catch (e) {
       setError(e.message);
       throw e;
@@ -84,9 +91,9 @@ export default function App({ client = api }) {
       setBusy(false);
     }
   }
-  const safeAct = (action) => act(action).catch(() => {});
+  const safeAct = (action, message) => act(action, message).catch(() => {});
   async function run(id, options) {
-    await act(() => client.run(id, options));
+    await act(() => client.run(id, options), options.kind === 'preview' ? '预览已提交，仅检查文件变化，不写入备份。' : '任务已提交，请在运行记录中查看进度。');
     setPage("runs");
   }
   function rebind(task) {
@@ -98,6 +105,7 @@ export default function App({ client = api }) {
       confirm.type === "delete"
         ? client.removeTask(confirm.task.id)
         : client.rebind(confirm.task.id, confirm.target),
+      confirm.type === 'delete' ? '任务配置已删除，源文件和云端历史备份保留。' : '挂载已重新绑定，定时执行已关闭，请核对后再开启。',
     );
     setConfirm(null);
   }
@@ -161,16 +169,30 @@ export default function App({ client = api }) {
             </button>
           </div>
         )}
+        {readError && <div role="alert" className="error">
+          <div>状态读取失败：{readError}<p className="hint">当前显示的是上次读取结果；不会因此重复提交任务。正在自动重连。</p></div>
+          <button type="button" onClick={() => refresh().catch(() => {})}>重试连接</button>
+        </div>}
+        {feedback && <div className="feedback" role="status">
+          <div>{feedback.message}</div>
+          {feedback.taskID && <button type="button" disabled={busy} onClick={() => run(feedback.taskID, {kind:'preview'}).catch(() => {})}>预览此任务</button>}
+          <button className="icon-button" aria-label="关闭成功提示" onClick={() => setFeedback(null)}><Icon name="close" /></button>
+        </div>}
         {!data ? (
           <p role="status">正在连接备份服务…</p>
         ) : page === "tasks" ? (
           <>
+            <ol className="backup-steps" aria-label="备份使用步骤">
+              <li><b>1</b><span>新建任务<small>确定源目录、目标与时间</small></span></li>
+              <li><b>2</b><span>预览变化<small>只检查，不写入文件</small></span></li>
+              <li><b>3</b><span>执行并核对<small>查看记录，确认云端文件</small></span></li>
+            </ol>
             <div className="toolbar">
               <strong>{tasks.length} 个任务</strong>
               <button
                 className="text-button"
                 disabled={busy}
-                onClick={() => safeAct(() => refresh())}
+                onClick={() => refresh().catch(() => {})}
               >
                 <Icon name="refresh" />
                 刷新
@@ -392,7 +414,7 @@ export default function App({ client = api }) {
               <span>
                 最近 {runs.length} 次 · 完成记录最多保留 {data.state.retain} 次
               </span>
-              <button onClick={() => safeAct(() => refresh())}>刷新记录</button>
+              <button onClick={() => refresh().catch(() => {})}>刷新记录</button>
             </div>
             <RunList
               runs={runs}
@@ -413,7 +435,7 @@ export default function App({ client = api }) {
             retain={data.state.retain}
             version={data.version}
             busy={busy}
-            onSave={(count) => safeAct(() => client.setRetention(count))}
+            onSave={(count) => safeAct(() => client.setRetention(count), '设置已保存。仅影响本地运行记录保留，不删除备份版本。')}
           />
         )}
       </main>
@@ -422,9 +444,12 @@ export default function App({ client = api }) {
           task={editor.id ? editor : null}
           client={client}
           onClose={() => setEditor(null)}
-          onSaved={async () => {
-            await refresh();
+          onSaved={async (saved) => {
+            setError('');
+            setSelected(saved.id);
+            setFeedback({taskID: saved.read_only ? null : saved.id, message: `${editor.id ? '任务已保存' : '任务已创建'}：${saved.name}。${saved.schedule.enabled ? '定时计划已启用，可在任务列表查看下次执行时间。' : '定时执行未启用；可先预览，再手动备份。'}`});
             setEditor(null);
+            await refresh().catch(() => {});
           }}
         />
       )}

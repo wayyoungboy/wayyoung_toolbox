@@ -1,5 +1,5 @@
 import { APP_BASE, createRequest } from './api.js';
-import { checkModule, escapeHTML, overviewHTML } from './overview.js';
+import { checkModule, escapeHTML, guides, overviewHTML } from './overview.js';
 
 const presentation = { overview: ['总', '总览'], backup: ['备', '备份'], media: ['影', '影片'], music: ['乐', '音乐'], integrity: ['检', '检查'], ha500: ['硬', '硬件'] };
 const order = Object.keys(presentation);
@@ -87,7 +87,7 @@ export function startToolbox({ request = createRequest(), doc = document, win = 
     node('module-header').hidden = false;
     node('module-name').textContent = m?.name || '工具箱总览';
     node('module-version').textContent = m ? `组件 v${m.version}` : version ? `v${version}` : '—';
-    node('module-description').textContent = m ? '切换模块保留页面；刷新或关闭前请保存修改。' : '统一查看服务、配置与权限，从这里进入各项工具。';
+    node('module-description').textContent = m ? guides[m.id].steps : '配置检查与工具入口；不会自动执行任务。';
     node('module-icon').textContent = presentation[selected]?.[0] || '工';
     node('module-icon').className = `module-icon module-${selected}`;
     node('module-status').className = `status-pill ${state}`;
@@ -95,13 +95,15 @@ export function startToolbox({ request = createRequest(), doc = document, win = 
     node('module-controls').hidden = !m;
     node('module-toggle').checked = Boolean(m?.enabled);
     node('module-toggle').disabled = Boolean(busy);
-    node('toggle-label').textContent = busy === selected ? '操作中…' : '启用此模块';
+    node('toggle-label').textContent = busy === selected ? '操作中…' : '模块服务';
     node('module-content').setAttribute('aria-labelledby', `module-tab-${selected}`);
     for (const [id, frame] of frames) { frame.hidden = id !== selected; frame.dataset.active = String(id === selected); }
     pane.hidden = Boolean(m?.running);
     if (!m) {
       const focused = doc.activeElement?.dataset;
+      const expanded = [...pane.querySelectorAll('details[data-details][open]')].map(detail => detail.dataset.details);
       pane.className = 'shell-pane overview'; pane.innerHTML = overviewHTML(modules, checks, checking);
+      for (const id of expanded) { const detail = pane.querySelector(`details[data-details="${id}"]`); if (detail) detail.open = true; }
       if (focused?.check) pane.querySelector(`[data-check="${focused.check}"]`)?.focus();
       else if (focused?.checkAll !== undefined) pane.querySelector('[data-check-all]')?.focus();
     } else if (m.running) openFrame(m);

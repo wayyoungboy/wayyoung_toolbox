@@ -44,6 +44,6 @@ it('summarizes attention, unchecked and disabled modules separately and prioriti
   expect(doc.querySelector('[data-summary="disabled"]').textContent).toContain('1');
   const rows = [...doc.querySelectorAll('[data-overview-module]')];
   expect(rows.slice(0,2).map(row => row.dataset.overviewModule)).toEqual(['backup','ha500']);
-  expect(doc.querySelector('details[data-details="backup"]')).not.toHaveAttribute('open');
+  expect(doc.querySelector('details[data-details="backup"]').open).toBe(false);
   expect(doc.body.textContent).not.toContain('全部正常');
 });

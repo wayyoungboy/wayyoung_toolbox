@@ -492,6 +492,27 @@ tbody tr:last-child td {
   min-height: 24px;
   flex-shrink: 0;
 }
+.feedback { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin: 14px 0; border: 1px solid #b9dfce; border-radius: 7px; background: #f1faf6; color: #17633f; font-size: 14px; }
+.feedback > div { flex: 1; }
+.feedback button { flex-shrink: 0; }
+.backup-steps { display: flex; gap: 24px; padding: 0 0 20px; margin: 22px 0; list-style: none; border-bottom: 1px solid var(--border); }
+.backup-steps li { display: flex; align-items: center; gap: 10px; flex: 1; font-size: 14px; }
+.backup-steps b, .form-section-title > span { display: inline-grid; place-items: center; border-radius: 50%; background: #eef4ff; color: var(--blue); width: 25px; height: 25px; flex-shrink: 0; font-size: 12px; }
+.backup-steps small { font-size: 12px; }
+.editor-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.form-section-title { display: flex; align-items: center; gap: 8px; margin: 24px 0 14px; font-size: 15px; }
+.schedule-switch .form-section-title { margin: 0 0 8px; }
+.task-editor .field > .text-button { align-self: flex-start; padding: 0; min-height: 30px; font-size: 12px; }
+.task-editor .modal-footer { position: sticky; bottom: -32px; background: #fff; padding: 14px 0 4px; z-index: 1; }
+.save-explanation { color: var(--muted); font-size: 12px; line-height: 1.5; margin-right: auto; max-width: 250px; }
+@media (max-width: 600px) {
+  .backup-steps { gap: 10px; flex-wrap: wrap; }
+  .backup-steps li { min-width: 160px; }
+  .feedback { flex-wrap: wrap; }
+  .feedback > div { flex-basis: 100%; }
+  .task-editor .modal-footer { flex-wrap: wrap; bottom: -22px; }
+  .save-explanation { flex-basis: 100%; max-width: none; }
+}
 .overlay {
   position: fixed;
   inset: 0;
