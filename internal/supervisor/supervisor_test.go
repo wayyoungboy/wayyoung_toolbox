@@ -19,6 +19,8 @@ func TestBackupRootsIncludeAuthorizedUserDirectories(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	shared, _ = filepath.EvalSymlinks(shared)
+	authorized, _ = filepath.EvalSymlinks(authorized)
 
 	roots, err := backupRoots(shared, authorized+string(os.PathListSeparator)+shared)
 	if err != nil {
@@ -31,12 +33,20 @@ func TestBackupRootsIncludeAuthorizedUserDirectories(t *testing.T) {
 
 func TestBackupRootsIgnoreRevokedAccessibleDirectory(t *testing.T) {
 	shared := t.TempDir()
-	roots, err := backupRoots(shared, filepath.Join(t.TempDir(), "missing"))
+	shared, _ = filepath.EvalSymlinks(shared)
+	roots, err := backupRoots(shared, filepath.Join(t.TempDir(), "missing")+string(os.PathListSeparator)+"/")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(roots, []string{shared}) {
 		t.Fatalf("backup roots = %q, want existing shared directory only", roots)
+	}
+}
+
+func TestBackupRootsRejectMissingSharedDirectory(t *testing.T) {
+	_, err := backupRoots(filepath.Join(t.TempDir(), "missing"), t.TempDir())
+	if err == nil {
+		t.Fatal("missing application share must not be ignored")
 	}
 }
 

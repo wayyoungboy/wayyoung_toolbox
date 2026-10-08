@@ -294,7 +294,7 @@ func (manager *Manager) startLocked(id string) error {
 	switch id {
 	case "backup":
 		var roots []string
-		roots, err = backupRoots(os.Getenv("TRIM_DATA_SHARE_PATHS"))
+		roots, err = backupRoots(os.Getenv("TRIM_DATA_SHARE_PATHS"), os.Getenv("TRIM_DATA_ACCESSIBLE_PATHS"))
 		if err == nil {
 			instance, err = backupmodule.New(ctx, backupmodule.Options{
 				DataDir: dataDir, PublicDir: definition.PublicDir, Prefix: definition.Prefix, LocalRoots: roots,
@@ -367,9 +367,16 @@ func (manager *Manager) moduleDataDir(id string) string {
 	return filepath.Join(manager.dataDir, "modules", id)
 }
 
-func backupRoots(configured string) ([]string, error) {
+func backupRoots(shared, accessible string) ([]string, error) {
 	var roots []string
-	for _, path := range filepath.SplitList(configured) {
+	seen := make(map[string]bool)
+	add := func(path string) {
+		if !seen[path] {
+			roots = append(roots, path)
+			seen[path] = true
+		}
+	}
+	for _, path := range filepath.SplitList(shared) {
 		if strings.TrimSpace(path) == "" {
 			continue
 		}
@@ -377,7 +384,21 @@ func backupRoots(configured string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("application shared directory unavailable: %w", err)
 		}
-		roots = append(roots, canonical)
+		add(canonical)
+	}
+	for _, path := range filepath.SplitList(accessible) {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		canonical, err := filepath.EvalSymlinks(path)
+		if err != nil || !filepath.IsAbs(canonical) || canonical == "/" {
+			continue
+		}
+		info, err := os.Stat(canonical)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		add(canonical)
 	}
 	return roots, nil
 }
