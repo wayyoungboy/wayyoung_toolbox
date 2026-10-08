@@ -6,8 +6,39 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
+
+func TestBackupRootsIncludeAuthorizedUserDirectories(t *testing.T) {
+	base := t.TempDir()
+	shared := filepath.Join(base, "shared")
+	authorized := filepath.Join(base, "authorized")
+	for _, directory := range []string{shared, authorized} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	roots, err := backupRoots(shared, authorized+string(os.PathListSeparator)+shared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(roots, []string{shared, authorized}) {
+		t.Fatalf("backup roots = %q, want shared and authorized paths once", roots)
+	}
+}
+
+func TestBackupRootsIgnoreRevokedAccessibleDirectory(t *testing.T) {
+	shared := t.TempDir()
+	roots, err := backupRoots(shared, filepath.Join(t.TempDir(), "missing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(roots, []string{shared}) {
+		t.Fatalf("backup roots = %q, want existing shared directory only", roots)
+	}
+}
 
 func TestManagerDefaultsEveryModuleToDisabled(t *testing.T) {
 	app := t.TempDir()
