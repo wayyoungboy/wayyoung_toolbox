@@ -130,6 +130,14 @@ func TestDirectCopyRejectsTargetSymlink(t *testing.T) {
 	}
 }
 
+func TestDirectTemporaryNameIsWebDAVCompatible(t *testing.T) {
+	name := directTempName("actor/movie.mp4")
+	base := filepath.Base(name)
+	if filepath.Dir(name) != "actor" || base[0] == '.' || filepath.Ext(name) != ".tmp" {
+		t.Fatalf("temporary name is incompatible with this WebDAV mount: %q", name)
+	}
+}
+
 func TestDirectCopyMountLossKeepsOldTargetFile(t *testing.T) {
 	e, s, mounts := fixture(t)
 	s.Mode = ModeDirect
