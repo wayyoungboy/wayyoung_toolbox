@@ -75,6 +75,22 @@ func TestRepositoryCannotHaveTwoWritableTasks(t *testing.T) {
 	}
 }
 
+func TestExistingTaskCanSwitchToDirectCopyWithoutChangingItsPaths(t *testing.T) {
+	m, _ := newManager(t, &fakeExecutor{})
+	legacy, err := m.SaveTask(sampleTask())
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.Selection.Mode = "direct"
+	updated, err := m.SaveTask(legacy)
+	if err != nil || updated.Selection.Mode != "direct" {
+		t.Fatalf("switch to direct copy: %+v %v", updated, err)
+	}
+	if got := m.State().Tasks[0]; got.Selection.Target != legacy.Selection.Target || got.Selection.Source != legacy.Selection.Source {
+		t.Fatal("switch changed task paths")
+	}
+}
+
 func TestLoadRejectsDuplicateRepositoryWriters(t *testing.T) {
 	dir := t.TempDir()
 	first := sampleTask()
