@@ -18,6 +18,7 @@ import (
 
 func TestFullAPIBackupRestoreImportRebindAndDelete(t *testing.T) {
 	s, selection := fixture(t)
+	selection.Mode = "versioned"
 	create := req(t, s, "POST", "/api/tasks", tasks.Task{Name: "API backup", Selection: selection}, true, true, true)
 	if create.Code != 201 {
 		t.Fatal(create.Body.String())

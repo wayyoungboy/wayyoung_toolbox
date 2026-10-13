@@ -179,7 +179,7 @@ func TestCreatePreviewBackupAndUnauthorizedPath(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &task); err != nil {
 		t.Fatal(err)
 	}
-	if !task.Schedule.Enabled || task.Next.IsZero() || task.Selection.RepoID == "" {
+	if !task.Schedule.Enabled || task.Next.IsZero() || task.Selection.RepoID == "" || task.Selection.Mode != backup.ModeDirect {
 		t.Fatal(task)
 	}
 	for _, kind := range []string{"preview", "backup"} {
@@ -195,8 +195,18 @@ func TestCreatePreviewBackupAndUnauthorizedPath(t *testing.T) {
 		t.Fatal("incorrect backup status")
 	}
 	w = req(t, s, "GET", "/api/tasks/"+task.ID+"/snapshots", nil, true, true, false)
-	if w.Code != 200 {
-		t.Fatal(w.Body.String())
+	if w.Code != 400 {
+		t.Fatal("direct copy unexpectedly exposed version snapshots", w.Body.String())
+	}
+	parent := s.options.LocalRoots[1]
+	if err := os.Mkdir(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	w = req(t, s, "POST", "/api/tasks/"+task.ID+"/run", map[string]string{
+		"kind": "restore", "snapshot_id": backup.NewID(), "destination": filepath.Join(parent, "restore"),
+	}, true, true, true)
+	if w.Code != 400 {
+		t.Fatal("direct copy unexpectedly allowed snapshot restore", w.Body.String())
 	}
 	selection.Source = filepath.Dir(selection.Source)
 	w = req(t, s, "POST", "/api/tasks", tasks.Task{Name: "escape", Selection: selection}, true, true, true)
