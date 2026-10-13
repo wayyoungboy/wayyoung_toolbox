@@ -55,11 +55,24 @@ it('confirms a new task and offers a separate read-only preview without starting
   await user.click((await screen.findAllByRole('button', {name:'新建任务', exact:true}))[0]);
   await fillTask(user);
   await user.click(screen.getByRole('button', {name:'创建任务', exact:true}));
+  expect(client.saveTask.mock.calls[0][0].selection.mode).toBe('direct');
   expect(await screen.findByRole('status')).toHaveTextContent('任务已创建');
   expect(screen.getByRole('status')).toHaveTextContent('定时执行未启用');
   expect(client.run).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button', {name:'预览此任务'}));
   expect(client.run).toHaveBeenCalledWith('new', {kind:'preview'});
+});
+
+it('describes direct copy without claiming snapshots or readback verification', async () => {
+  const client = clientFixture();
+  client.data.state.tasks = [{
+    id: 'direct', name: '影片直拷',
+    selection: {source: '/data/example', target: '/mount/example', mode: 'direct', repo_id: 'unused'},
+    schedule: {enabled: false},
+  }];
+  render(<App client={client} />);
+  expect(await screen.findByText('原样复制')).toBeVisible();
+  expect(screen.queryByText('历史版本始终保留')).not.toBeInTheDocument();
 });
 
 it('does not invite duplicate creation if saving succeeds but refreshing fails', async () => {
