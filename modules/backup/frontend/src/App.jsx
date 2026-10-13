@@ -158,7 +158,7 @@ export default function App({ client = api }) {
         <div className="cloud-warning">
           <Icon name="info" />
           <span>
-            文件写入挂载目录不等于云端已持久化；直拷不进行内容哈希或回读校验。
+            文件写入挂载目录不等于云端已持久化；直拷不进行内容哈希或回读校验，中断时目标文件可能不完整。
           </span>
         </div>
         {error && (
@@ -536,7 +536,7 @@ function Settings({ retain, version, busy, onSave }) {
           Cookie。
         </p>
         <ul>
-          <li>新任务默认原样单向复制，按大小和修改时间跳过未变化文件，不做内容哈希或回读校验。</li>
+          <li>新任务默认直接写入目标文件，按大小和修改时间跳过未变化文件，不做内容哈希或回读校验；中断时目标文件可能不完整。</li>
           <li>旧版增量仓库任务仍可读取历史版本并恢复，不会自动清理。</li>
           <li>
             不保留 ACL、扩展属性、硬链接关系，不跟随符号链接或跨越嵌套挂载。

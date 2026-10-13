@@ -215,7 +215,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
               次。取消、挂载失联不重试；恢复失败请更换新目录。运行记录保留量在设置中统一管理。
             </p>
           </details>
-          <p className="hint">{value.selection.mode === 'direct' ? '直拷任务不生成历史版本，也不删除目标已有文件。' : '旧版仓库的历史版本始终保留，不会自动删除。'}</p>
+          <p className="hint">{value.selection.mode === 'direct' ? '直拷任务不生成历史版本，也不删除目标已有文件；中断时目标文件可能不完整。' : '旧版仓库的历史版本始终保留，不会自动删除。'}</p>
           </fieldset>
           <footer className="modal-footer">
             <p className="save-explanation">{value.schedule.enabled ? '保存后定时计划生效，不会立即开始备份。' : task ? '保存后仅手动执行，不会开始备份。' : '仅创建任务，不会开始备份。'}</p>

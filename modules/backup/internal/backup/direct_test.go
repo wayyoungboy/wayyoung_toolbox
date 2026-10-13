@@ -74,7 +74,22 @@ func TestDirectPreviewReadsMetadataWithoutCreatingFiles(t *testing.T) {
 	}
 }
 
-func TestDirectCopyCancellationKeepsOldTargetFile(t *testing.T) {
+func TestDirectPreviewRejectsSourceSymlinkWithoutWriting(t *testing.T) {
+	e, s, _ := fixture(t)
+	s.Mode = ModeDirect
+	write(t, s.Source, "real.mp4", "video")
+	if err := os.Symlink("real.mp4", filepath.Join(s.Source, "link.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Preview(context.Background(), s); err == nil {
+		t.Fatal("preview followed source symlink")
+	}
+	if _, err := os.Stat(filepath.Join(s.Target, "real.mp4")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("failed preview wrote to target")
+	}
+}
+
+func TestDirectCopyCancellationStopsFurtherWrites(t *testing.T) {
 	e, s, _ := fixture(t)
 	s.Mode = "direct"
 	write(t, s.Source, "movie.mp4", string(make([]byte, 4<<20)))
@@ -89,9 +104,9 @@ func TestDirectCopyCancellationKeepsOldTargetFile(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
-	got, err := os.ReadFile(filepath.Join(s.Target, "movie.mp4"))
-	if err != nil || string(got) != "old good copy" {
-		t.Fatalf("existing target was truncated: %q %v", got, err)
+	st, err := os.Stat(filepath.Join(s.Target, "movie.mp4"))
+	if err != nil || st.Size() == 0 || st.Size() >= 4<<20 {
+		t.Fatalf("cancellation did not stop a partial direct copy: %v %v", st, err)
 	}
 }
 
@@ -130,15 +145,7 @@ func TestDirectCopyRejectsTargetSymlink(t *testing.T) {
 	}
 }
 
-func TestDirectTemporaryNameIsWebDAVCompatible(t *testing.T) {
-	name := directTempName("actor/movie.mp4")
-	base := filepath.Base(name)
-	if filepath.Dir(name) != "actor" || base[0] == '.' || filepath.Ext(name) != "" {
-		t.Fatalf("temporary name is incompatible with this WebDAV mount: %q", name)
-	}
-}
-
-func TestDirectCopyMountLossKeepsOldTargetFile(t *testing.T) {
+func TestDirectCopyMountLossStopsFurtherWrites(t *testing.T) {
 	e, s, mounts := fixture(t)
 	s.Mode = ModeDirect
 	write(t, s.Source, "movie.mp4", string(make([]byte, 4<<20)))
@@ -151,8 +158,8 @@ func TestDirectCopyMountLossKeepsOldTargetFile(t *testing.T) {
 	if !errors.Is(err, ErrMountLost) {
 		t.Fatalf("mount loss: %v", err)
 	}
-	got, err := os.ReadFile(filepath.Join(s.Target, "movie.mp4"))
-	if err != nil || string(got) != "old good copy" {
-		t.Fatalf("mount loss changed existing target: %q %v", got, err)
+	st, err := os.Stat(filepath.Join(s.Target, "movie.mp4"))
+	if err != nil || st.Size() == 0 || st.Size() > 4<<20 {
+		t.Fatalf("unexpected target size after mount loss: %v %v", st, err)
 	}
 }

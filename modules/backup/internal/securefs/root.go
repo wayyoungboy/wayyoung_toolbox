@@ -70,6 +70,9 @@ func (r *Root) OpenDir(name string) (*os.File, error) {
 func (r *Root) Create(name string) (*os.File, error) {
 	return r.open(name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL, 0600)
 }
+func (r *Root) CreateOrTruncate(name string) (*os.File, error) {
+	return r.open(name, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC, 0600)
+}
 
 func (r *Root) ReadFile(name string, limit int64) ([]byte, error) {
 	f, err := r.Open(name)
@@ -159,25 +162,6 @@ func (r *Root) RenameNew(old, name string) error {
 	defer np.Close()
 	if err = renameNew(int(op.Fd()), ol, int(np.Fd()), nl); err != nil {
 		return &os.LinkError{Op: "rename-no-replace", Old: old, New: name, Err: err}
-	}
-	return nil
-}
-
-// RenameReplace atomically publishes a completed file in the same root.
-// An existing destination entry is replaced, never followed.
-func (r *Root) RenameReplace(old, name string) error {
-	op, ol, err := r.parent(old)
-	if err != nil {
-		return err
-	}
-	defer op.Close()
-	np, nl, err := r.parent(name)
-	if err != nil {
-		return err
-	}
-	defer np.Close()
-	if err = unix.Renameat(int(op.Fd()), ol, int(np.Fd()), nl); err != nil {
-		return &os.LinkError{Op: "rename-replace", Old: old, New: name, Err: err}
 	}
 	return nil
 }

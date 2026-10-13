@@ -217,12 +217,10 @@ func copyDirectFile(ctx context.Context, v *Volume, src *securefs.Root, name str
 	if !st.Mode().IsRegular() {
 		return errors.New("源文件不是普通文件")
 	}
-	temp := directTempName(name)
-	out, err := v.Root.Create(temp)
+	out, err := v.Root.CreateOrTruncate(name)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = v.Root.Remove(temp) }()
 	buf := make([]byte, 1<<20)
 	var written int64
 	var sinceCheck int64
@@ -280,14 +278,5 @@ func copyDirectFile(ctx context.Context, v *Volume, src *securefs.Root, name str
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	if err = v.Check(); err != nil {
-		return err
-	}
-	return v.Root.RenameReplace(temp, name)
-}
-
-// Some WebDAV providers reject MOVE for hidden names or temporary extensions
-// even though they accept extensionless files in the same directory.
-func directTempName(name string) string {
-	return path.Join(path.Dir(name), "fnos-copy-"+NewID())
+	return v.Check()
 }
