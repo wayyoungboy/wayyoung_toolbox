@@ -217,7 +217,7 @@ func copyDirectFile(ctx context.Context, v *Volume, src *securefs.Root, name str
 	if !st.Mode().IsRegular() {
 		return errors.New("源文件不是普通文件")
 	}
-	temp := path.Join(path.Dir(name), ".fnos-copy-"+NewID())
+	temp := directTempName(name)
 	out, err := v.Root.Create(temp)
 	if err != nil {
 		return err
@@ -284,4 +284,10 @@ func copyDirectFile(ctx context.Context, v *Volume, src *securefs.Root, name str
 		return err
 	}
 	return v.Root.RenameReplace(temp, name)
+}
+
+// Some WebDAV providers reject MOVE for hidden source names even though they
+// accept ordinary files in the same directory.
+func directTempName(name string) string {
+	return path.Join(path.Dir(name), "fnos-copy-"+NewID()+".tmp")
 }
