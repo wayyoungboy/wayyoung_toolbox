@@ -71,6 +71,38 @@ func TestRootRoundTripAndNoClobber(t *testing.T) {
 	}
 }
 
+func TestRootCreateOrTruncateWritesDirectlyWithoutFollowingSymlink(t *testing.T) {
+	r, dir := rootFixture(t)
+	if err := os.WriteFile(filepath.Join(dir, "movie.mp4"), []byte("old longer data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := r.CreateOrTruncate("movie.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(f, "new"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "movie.mp4"))
+	if err != nil || string(got) != "new" {
+		t.Fatalf("direct overwrite: %q %v", got, err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := r.CreateOrTruncate("link"); err == nil {
+		f.Close()
+		t.Fatal("symlink target was followed")
+	}
+}
+
 func TestRootRejectsTraversalAndSymlinks(t *testing.T) {
 	r, dir := rootFixture(t)
 	out := t.TempDir()
