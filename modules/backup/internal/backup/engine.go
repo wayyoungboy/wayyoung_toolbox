@@ -33,6 +33,9 @@ func (e *Engine) Snapshots(ctx context.Context, s Selection) ([]Manifest, error)
 }
 
 func (e *Engine) Preview(ctx context.Context, s Selection) (Preview, error) {
+	if s.Mode == ModeDirect {
+		return e.previewDirect(ctx, s)
+	}
 	var out Preview
 	if err := s.Validate(true); err != nil {
 		return out, err
@@ -165,6 +168,9 @@ func sameFileState(a, b os.FileInfo) bool {
 }
 
 func (e *Engine) Backup(ctx context.Context, s Selection, progress func(Progress)) (out Result, err error) {
+	if s.Mode == ModeDirect {
+		return e.backupDirect(ctx, s, progress)
+	}
 	out.State = "failed"
 	defer func() {
 		if err != nil {

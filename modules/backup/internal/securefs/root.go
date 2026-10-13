@@ -163,6 +163,25 @@ func (r *Root) RenameNew(old, name string) error {
 	return nil
 }
 
+// RenameReplace atomically publishes a completed file in the same root.
+// An existing destination entry is replaced, never followed.
+func (r *Root) RenameReplace(old, name string) error {
+	op, ol, err := r.parent(old)
+	if err != nil {
+		return err
+	}
+	defer op.Close()
+	np, nl, err := r.parent(name)
+	if err != nil {
+		return err
+	}
+	defer np.Close()
+	if err = unix.Renameat(int(op.Fd()), ol, int(np.Fd()), nl); err != nil {
+		return &os.LinkError{Op: "rename-replace", Old: old, New: name, Err: err}
+	}
+	return nil
+}
+
 // Remove removes a single directory entry, never recursively and never a directory.
 func (r *Root) Remove(name string) error {
 	p, leaf, err := r.parent(name)

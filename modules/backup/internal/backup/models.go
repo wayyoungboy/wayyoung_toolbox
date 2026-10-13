@@ -21,6 +21,8 @@ const Schema = 2
 const MaxManifestBytes = 32 << 20
 const MaxEntries = 200000
 const CloudNotice = "已完成挂载层写入与校验；rclone 可能仍在写回缓存，云端持久化待确认。"
+const DirectCloudNotice = "文件已原样写入目标挂载；未做内容校验，网盘端持久化待确认。"
+const ModeDirect = "direct"
 
 var idPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 var hashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -30,9 +32,13 @@ type Selection struct {
 	Target string `json:"target"`
 	RepoID string `json:"repo_id"`
 	Mount  Mount  `json:"mount"`
+	Mode   string `json:"mode,omitempty"`
 }
 
 func (s Selection) Validate(source bool) error {
+	if s.Mode != "" && s.Mode != "versioned" && s.Mode != ModeDirect {
+		return errors.New("invalid backup mode")
+	}
 	if !idPattern.MatchString(s.RepoID) {
 		return errors.New("invalid repository ID")
 	}

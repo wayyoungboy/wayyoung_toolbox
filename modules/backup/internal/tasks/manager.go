@@ -116,7 +116,10 @@ func (m *Manager) SaveTask(t Task) (Task, error) {
 	} else {
 		old := s.Tasks[index]
 		t.Created = old.Created
-		if t.Selection != old.Selection || t.ReadOnly != old.ReadOnly {
+		oldSelection, newSelection := old.Selection, t.Selection
+		oldSelection.Mode, newSelection.Mode = "", ""
+		if oldSelection != newSelection || t.ReadOnly != old.ReadOnly ||
+			(old.Selection.Mode != t.Selection.Mode && (t.Selection.Mode != backup.ModeDirect || old.Selection.Mode == backup.ModeDirect)) {
 			return t, errors.New("目录或仓库身份不可直接改写，请新建任务；旧备份仍保留")
 		}
 	}

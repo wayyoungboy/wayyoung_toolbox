@@ -227,7 +227,7 @@ describe("backup application workflows", () => {
     expect(
       await screen.findByRole("heading", { name: "备份任务" }),
     ).toBeVisible();
-    expect(screen.getByText(/挂载校验不等于云端完成/)).toBeVisible();
+    expect(screen.getByText(/文件写入挂载目录不等于云端已持久化/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "预览" }));
     expect(client.run).toHaveBeenCalledWith("task1", { kind: "preview" });
     await user.click(screen.getByRole("button", { name: "备份任务" }));

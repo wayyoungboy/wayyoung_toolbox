@@ -6,7 +6,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
       ? structuredClone(task)
       : {
           name: "",
-          selection: { source: "", target: "" },
+          selection: { source: "", target: "", mode: "direct" },
           schedule: {
             enabled: false,
             kind: "daily",
@@ -56,7 +56,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
     <>
       <Modal
         title={task ? "编辑备份任务" : "新建备份任务"}
-        subtitle="源文件不会修改。保存任务后，可先预览要备份的变化。"
+        subtitle="源文件不会修改。直拷只按文件大小和修改时间跳过未变化文件，不计算内容哈希。"
         onClose={close}
         busy={busy}
         className="task-editor"
@@ -78,6 +78,15 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
             />
           </label>
           <h3 className="form-section-title"><span>1</span> 备份什么，存到哪里</h3>
+          {task && !task.read_only && task.selection.mode !== 'direct' && <label className="field">
+            备份方式
+            <select value={value.selection.mode || 'versioned'} onChange={e => directory('mode', e.target.value)}>
+              <option value="versioned">旧版增量仓库</option>
+              <option value="direct">原样复制到目标目录</option>
+            </select>
+            <span className="hint">切换为原样复制后，不再生成新历史版本；已有仓库文件不会删除。</span>
+          </label>}
+          {!task && <p className="hint">备份方式：原样复制到目标目录；目标已有的其他文件不会删除。</p>}
           {[
             ["source", "源目录（只读）", "选择本地目录"],
             ["target", "目标目录", "选择已挂载的网盘目录"],
@@ -206,7 +215,7 @@ export default function TaskEditor({ task, client, onClose, onSaved }) {
               次。取消、挂载失联不重试；恢复失败请更换新目录。运行记录保留量在设置中统一管理。
             </p>
           </details>
-          <p className="hint">历史版本始终保留。不会自动删除云端备份。</p>
+          <p className="hint">{value.selection.mode === 'direct' ? '直拷任务不生成历史版本，也不删除目标已有文件。' : '旧版仓库的历史版本始终保留，不会自动删除。'}</p>
           </fieldset>
           <footer className="modal-footer">
             <p className="save-explanation">{value.schedule.enabled ? '保存后定时计划生效，不会立即开始备份。' : task ? '保存后仅手动执行，不会开始备份。' : '仅创建任务，不会开始备份。'}</p>

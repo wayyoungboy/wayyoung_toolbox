@@ -20,9 +20,9 @@ const navigation = [
   ["settings", "设置与关于", "settings"],
 ];
 const subtitles = {
-  tasks: "只读源文件，增量保留历史版本。",
+  tasks: "只读源文件，原样复制到目标目录；旧版仓库仍可恢复。",
   runs: "追踪每次执行，查看进度和错误详情。",
-  restore: "选择历史版本，恢复到新的本地目录。",
+  restore: "旧版增量仓库可选择历史版本，恢复到新的本地目录。",
   settings: "管理记录保留，了解备份的安全边界。",
 };
 export default function App({ client = api }) {
@@ -105,7 +105,11 @@ export default function App({ client = api }) {
       confirm.type === "delete"
         ? client.removeTask(confirm.task.id)
         : client.rebind(confirm.task.id, confirm.target),
-      confirm.type === 'delete' ? '任务配置已删除，源文件和云端历史备份保留。' : '挂载已重新绑定，定时执行已关闭，请核对后再开启。',
+      confirm.type === 'delete'
+        ? confirm.task.selection.mode === 'direct'
+          ? '任务配置已删除，源文件和目标文件保留。'
+          : '任务配置已删除，源文件和云端历史备份保留。'
+        : '挂载已重新绑定，定时执行已关闭，请核对后再开启。',
     );
     setConfirm(null);
   }
@@ -154,7 +158,7 @@ export default function App({ client = api }) {
         <div className="cloud-warning">
           <Icon name="info" />
           <span>
-            挂载校验不等于云端完成。写回缓存尚无法独立确认时，备份显示为待确认。
+            文件写入挂载目录不等于云端已持久化；直拷不进行内容哈希或回读校验。
           </span>
         </div>
         {error && (
@@ -319,9 +323,9 @@ export default function App({ client = api }) {
                                     >
                                       编辑任务
                                     </button>
-                                    <button onClick={() => rebind(task)}>
+                                    {task.selection.mode !== 'direct' && <button onClick={() => rebind(task)}>
                                       重新选择挂载
-                                    </button>
+                                    </button>}
                                     <button
                                       className="danger"
                                       onClick={() => {
@@ -353,11 +357,11 @@ export default function App({ client = api }) {
                   <dl className="stats">
                     <div>
                       <dt>备份方式</dt>
-                      <dd>{chosen.read_only ? "只读导入" : "单向增量"}</dd>
+                      <dd>{chosen.read_only ? "只读导入" : chosen.selection.mode === 'direct' ? "原样复制" : "旧版增量仓库"}</dd>
                     </div>
                     <div>
                       <dt>历史版本</dt>
-                      <dd>始终保留</dd>
+                      <dd>{chosen.selection.mode === 'direct' ? '不生成' : '始终保留'}</dd>
                     </div>
                     <div>
                       <dt>目标保护</dt>
@@ -365,10 +369,8 @@ export default function App({ client = api }) {
                     </div>
                   </dl>
                   <details>
-                    <summary className="hint">仓库与挂载标识</summary>
-                    <p className="hint path">
-                      仓库 ID：{chosen.selection.repo_id}
-                    </p>
+                    <summary className="hint">挂载标识</summary>
+                    {chosen.selection.mode !== 'direct' && <p className="hint path">仓库 ID：{chosen.selection.repo_id}</p>}
                     <p className="hint path">
                       {chosen.selection.mount?.point} ·{" "}
                       {chosen.selection.mount?.source}
@@ -383,8 +385,10 @@ export default function App({ client = api }) {
                       <span>
                         新增 {latest.preview.new} · 变化{" "}
                         {latest.preview.changed} · 未变化{" "}
-                        {latest.preview.unchanged} · 源端删除{" "}
-                        {latest.preview.removed}（历史保留）
+                        {latest.preview.unchanged}
+                        {chosen.selection.mode === 'direct'
+                          ? ' · 目标额外文件保留'
+                          : ` · 源端删除 ${latest.preview.removed}（历史保留）`}
                       </span>
                     ) : (
                       <span>
@@ -405,7 +409,7 @@ export default function App({ client = api }) {
             )}
             <div className="safety">
               <Icon name="info" />
-              源文件删除不会自动删除备份。恢复时始终创建新目录。
+              源文件删除不会自动删除目标文件。直拷无历史版本；旧版仓库的恢复会创建新目录。
             </div>
           </>
         ) : page === "runs" ? (
@@ -418,6 +422,7 @@ export default function App({ client = api }) {
             </div>
             <RunList
               runs={runs}
+              tasks={tasks}
               busy={busy}
               onCancel={(id) => safeAct(() => client.cancel(id))}
             />
@@ -425,7 +430,7 @@ export default function App({ client = api }) {
         ) : page === "restore" ? (
           <RestoreView
             client={client}
-            tasks={tasks}
+            tasks={tasks.filter(task => task.selection.mode !== 'direct')}
             onRun={run}
             onRefresh={refresh}
           />
@@ -463,12 +468,12 @@ export default function App({ client = api }) {
         >
           <p>
             {confirm.type === "delete"
-              ? "只删除此任务配置，源文件和云端历史备份均保留。请记下仓库 ID，以便日后只读导入恢复。"
+              ? confirm.task.selection.mode === 'direct' ? "只删除任务配置；源文件和目标目录里的文件都保留。" : "只删除此任务配置，源文件和云端历史备份均保留。请记下仓库 ID，以便日后只读导入恢复。"
               : "将在新目标中校验原仓库身份与备份清单。确认后保留历史记录，并关闭定时执行；不会创建另一份仓库。"}
           </p>
           <p className="path">
             {confirm.type === "delete"
-              ? confirm.task.selection.repo_id
+              ? confirm.task.selection.mode === 'direct' ? confirm.task.selection.target : confirm.task.selection.repo_id
               : confirm.target}
           </p>
           <footer className="modal-footer">
@@ -531,12 +536,13 @@ function Settings({ retain, version, busy, onSave }) {
           Cookie。
         </p>
         <ul>
-          <li>单向、文件内容增量；恢复校验 SHA-256。</li>
+          <li>新任务默认原样单向复制，按大小和修改时间跳过未变化文件，不做内容哈希或回读校验。</li>
+          <li>旧版增量仓库任务仍可读取历史版本并恢复，不会自动清理。</li>
           <li>
             不保留 ACL、扩展属性、硬链接关系，不跟随符号链接或跨越嵌套挂载。
           </li>
           <li>不是数据库一致性快照；备份数据库前需自行停写或导出。</li>
-          <li>rclone 写回缓存无法独立确认，首版所有已发布版本显示“待确认”。</li>
+          <li>rclone 写回缓存无法独立确认；直拷完成只代表写入挂载层，不保证云端持久化。</li>
           <li>
             取消需要等待当前文件系统操作返回。请保留独立备份，不将测试版本作为唯一数据保障。
           </li>

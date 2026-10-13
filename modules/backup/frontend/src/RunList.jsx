@@ -4,10 +4,11 @@ const kinds = { backup: "备份", preview: "预览", restore: "恢复" };
 const phases = {
   scanning: "读取源文件并计算校验",
   copying: "写入挂载并校验",
+  copying_direct: "原样复制到目标目录",
   restoring: "恢复并校验",
   committing: "发布备份清单",
 };
-export default function RunList({ runs, onCancel, busy }) {
+export default function RunList({ runs, tasks = [], onCancel, busy }) {
   if (!runs.length)
     return (
       <div className="empty">
@@ -78,10 +79,10 @@ export default function RunList({ runs, onCancel, busy }) {
                   <dt>未变化</dt>
                   <dd>{run.preview.unchanged}</dd>
                 </div>
-                <div>
+                {tasks.find(task => task.id === run.task_id)?.selection.mode !== 'direct' && <div>
                   <dt>源端已删除（历史保留）</dt>
                   <dd>{run.preview.removed}</dd>
-                </div>
+                </div>}
               </dl>
             )}
             {!active(run) && !run.preview && (

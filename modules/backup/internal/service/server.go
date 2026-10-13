@@ -18,7 +18,7 @@ import (
 	"fnos-backup-center/internal/tasks"
 )
 
-const Version = "0.0.2"
+const Version = "0.0.3"
 const Prefix = "/app/backup_center"
 
 type gatewayKey struct{}
@@ -178,6 +178,9 @@ func (s *Server) saveTask(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		in.ID = ""
 		in.ReadOnly = false
+		if in.Selection.Mode == "" {
+			in.Selection.Mode = backup.ModeDirect
+		}
 		in.Selection.RepoID = backup.NewID()
 		code = 201
 		mount, err := s.targetMount(in.Selection.Target)
@@ -213,6 +216,10 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 		respond(w, 404, nil, err)
 		return
 	}
+	if in.Kind == "restore" && t.Selection.Mode == backup.ModeDirect {
+		respond(w, 400, nil, errors.New("原样复制任务没有可恢复的历史版本"))
+		return
+	}
 	if in.Kind == "restore" {
 		err = s.local(r.Context(), in.Destination, true)
 	} else {
@@ -229,6 +236,10 @@ func (s *Server) snapshots(w http.ResponseWriter, r *http.Request) {
 	t, err := s.task(r.PathValue("id"))
 	if err != nil {
 		respond(w, 404, nil, err)
+		return
+	}
+	if t.Selection.Mode == backup.ModeDirect {
+		respond(w, 400, nil, errors.New("原样复制任务不生成历史版本"))
 		return
 	}
 	out, err := s.Engine.Snapshots(r.Context(), t.Selection)
