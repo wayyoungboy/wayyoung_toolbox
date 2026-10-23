@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@douyinfe/semi-ui/lib/es/modal';
 import { api } from '../api';
-import { catalogAssetURL, createProgressSaver, createPlaybackSession, formatPlaybackTime, playbackModeLabel } from '../catalog-playback';
+import { catalogAssetURL, createProgressSaver, createPlaybackSession, formatPlaybackTime, playbackModeLabel, loadedPlaybackProgress } from '../catalog-playback';
 import CompatiblePlayer from './CompatiblePlayer';
 
 export default function CatalogPlayer({ asset, title, onClose }) {
@@ -23,10 +23,11 @@ export default function CatalogPlayer({ asset, title, onClose }) {
   const save = () => {
     if(mode!=='direct')return flushRef.current?.()||Promise.resolve();
     const video = videoRef.current;
-    if (!video || video.error) return Promise.resolve();
+    const progress=loadedPlaybackProgress(video);
+    if (!progress || video.error) return Promise.resolve();
     lastSaved.current = Date.now();
-    if(Number.isFinite(video.currentTime))resume.current=video.currentTime;
-    return saver.save({ position: video.currentTime, duration: video.duration });
+    resume.current=progress.position;
+    return saver.save(progress);
   };
   const record=(value,force=false)=>{
     resume.current=value.position;
@@ -52,7 +53,8 @@ export default function CatalogPlayer({ asset, title, onClose }) {
     const flush = () => {
       if(closed.current)return;
       if(mode!=='direct'){flushRef.current?.();return;}
-      if (video && !video.error) saver.save({ position: video.currentTime, duration: video.duration });
+      const progress=loadedPlaybackProgress(video);
+      if (progress && !video.error) saver.save(progress);
     };
     const hide = () => { if (document.visibilityState === 'hidden') flush(); };
     document.addEventListener('visibilitychange', hide);

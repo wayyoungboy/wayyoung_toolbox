@@ -40,6 +40,10 @@ export function createPlaybackSession(){
  return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
 }
 export function playbackModeLabel(mode){return mode==='software'?'软件转码播放':mode==='auto'?'自动兼容播放':'原文件播放';}
+export function loadedPlaybackProgress(video){
+ if(!video||video.readyState<1||!Number.isFinite(video.duration)||video.duration<=0||!Number.isFinite(video.currentTime))return null;
+ return {position:Math.min(video.duration,Math.max(0,video.currentTime)),duration:video.duration};
+}
 
 export function preferredAsset(assets = []) {
   return assets.filter(asset => asset.available).sort((a, b) => String(b.progress?.played_at || '').localeCompare(String(a.progress?.played_at || '')))[0] || null;
