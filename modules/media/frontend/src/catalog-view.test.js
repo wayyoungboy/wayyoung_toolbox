@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
-import {catalogView,catalogLocation} from './catalog-view';
+import {catalogView,catalogLocation,catalogPageOffset} from './catalog-view';
 describe('catalog navigation state',()=>{
+ it('recovers an obsolete page after the filter shrinks or files are removed',()=>{expect(catalogPageOffset(48,1)).toBe(0);expect(catalogPageOffset(96,60)).toBe(48);expect(catalogPageOffset(0,0)).toBe(0);});
  it('restores a complete validated search and filter state',()=>{
   expect(catalogView({query:'mountain',actor_name:'Actor',tag:'travel',view:'continue',sort:'title',library:'2',list:'saved',offset:'96'})).toEqual({query:'mountain',actor:'Actor',tag:'travel',view:'continue',sort:'title',libraryID:'2',listID:'saved',offset:96});
   const state=catalogView({view:'invalid',sort:'drop',offset:'NaN'});expect(state.view).toBe('all');expect(state.sort).toBe('recent');expect(state.offset).toBe(0);

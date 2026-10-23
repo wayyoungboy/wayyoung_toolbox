@@ -2,6 +2,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
+it('prepares progress CSRF before playback so final save sends one keepalive PUT',async()=>{
+ const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>url.endsWith('/catalog/session')?{csrf:'held-progress-token'}:{revision:1}}));vi.stubGlobal('fetch',fetch);
+ await api.prepareCatalogSession();fetch.mockClear();await api.catalogProgress('asset',{position:9,duration:100,revision:0});
+ expect(fetch).toHaveBeenCalledOnce();expect(fetch.mock.calls[0][1]).toMatchObject({method:'PUT',keepalive:true,headers:{'X-Catalog-CSRF':'held-progress-token'}});
+});
 
 it('closes an established playback session with a single unload-safe request',async()=>{
  const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>url.endsWith('/catalog/session')?{csrf:'held-token'}:{id:'playing'}}));
