@@ -240,3 +240,25 @@ func TestBrowserDoesNotPickFirstConflictingIdentifier(t *testing.T) {
 		t.Fatal("conflicting repeated query identity was silently reduced to the first value")
 	}
 }
+
+func TestBrowserGoogleRedirectDoesNotPickAnAmbiguousTarget(t *testing.T) {
+	for _, raw := range []string{
+		"https://www.google.com/url?q=https%3A%2F%2Fwww.javbus.com%2FDEMO-100&q=https%3A%2F%2Fwww.javbus.com%2FDEMO-101",
+		"https://www.google.com/url?url=https%3A%2F%2Fwww.javbus.com%2FDEMO-100&url=https%3A%2F%2Fwww.javbus.com%2FDEMO-101",
+		"https://www.google.com/url?q=https%3A%2F%2Fwww.javbus.com%2FDEMO-100&url=https%3A%2F%2Fwww.javbus.com%2FDEMO-101",
+	} {
+		data, _ := json.Marshal([]map[string]any{{"url": raw, "dt": 1700000000}})
+		got, err := Parse(context.Background(), "history.json", "history", data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Entries) != 0 || got.Skipped != 1 {
+			t.Error("ambiguous Google target accepted", raw)
+		}
+	}
+	data := []byte(`[{"url":"https://www.google.com/url?q=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3Dneutral","dt":1700000000}]`)
+	got, err := Parse(context.Background(), "history.json", "history", data)
+	if err != nil || len(got.Entries) != 1 || got.Entries[0].URL != "https://www.google.com/search?q=neutral" {
+		t.Error("legitimate wrapped search was discarded")
+	}
+}
