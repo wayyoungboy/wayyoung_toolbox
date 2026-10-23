@@ -143,7 +143,8 @@ func TestBrowserImportRejectsUnsafeAndMalformedInput(t *testing.T) {
 }
 
 func FuzzBrowserImport(f *testing.F) {
-	f.Add([]byte(`[{"url":"https://example.test/DEMO-100"}]`))
+	f.Add([]byte(`[{"url":"https://example.test/DEMO-100","dt":1700000000}]`))
+	f.Add([]byte(`[{"url":"https://example.test/search?q=neutral","dt":1700000000}]`))
 	f.Add([]byte("garbage"))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > 1<<20 {
@@ -155,7 +156,7 @@ func FuzzBrowserImport(f *testing.F) {
 				t.Fatal("limit")
 			}
 			for _, e := range got.Entries {
-				if strings.ContainsAny(e.URL, "?#") {
+				if strings.Contains(e.URL, "#") {
 					t.Fatal("secret-bearing URL")
 				}
 			}

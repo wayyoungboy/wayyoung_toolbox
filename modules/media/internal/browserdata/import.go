@@ -139,6 +139,9 @@ func cleanURL(raw string) (string, bool) {
 	}
 	q := url.Values{}
 	for _, key := range []string{"v", "id", "q"} {
+		if len(u.Query()[key]) > 1 {
+			return "", false
+		}
 		if v := u.Query().Get(key); v != "" && len(v) <= 500 {
 			q.Set(key, v)
 		}
@@ -394,7 +397,10 @@ func (p *parser) read(r io.Reader) ([]byte, error) {
 	remaining := MaxExpanded - p.expanded
 	data, err := io.ReadAll(io.LimitReader(contextReader{p.ctx, r}, int64(remaining)+1))
 	if err != nil {
-		return nil, err
+		if p.ctx.Err() != nil {
+			return nil, p.ctx.Err()
+		}
+		return nil, invalid("compressed or archive stream")
 	}
 	if len(data) > remaining {
 		return nil, ErrLimit
