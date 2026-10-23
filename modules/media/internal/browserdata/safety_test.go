@@ -6,7 +6,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,5 +207,26 @@ func TestBrowserSQLiteExpandedRecordsBudget(t *testing.T) {
 	}
 	if _, err := Parse(context.Background(), "history.sqlite", "history", data); err == nil {
 		t.Fatal("SQLite JOIN bypassed normalized text budget")
+	}
+}
+
+func TestBrowserJSONTraversalBudgetAndStableDigest(t *testing.T) {
+	leaf := `{"url":"https://example.test/item","padding":"` + strings.Repeat("a", 2<<20) + `"}`
+	nested := strings.Repeat(`{"type":"folder","children":[`, 42) + leaf + strings.Repeat(`]}`, 42)
+	if _, err := Parse(context.Background(), "Bookmarks", "bookmarks", []byte(`{"roots":{"folder":`+nested+`}}`)); err == nil {
+		t.Error("repeated RawMessage copies bypassed traversal budget")
+	}
+	data := []byte(`[{"url":"https://example.test/item","dt":1700000000}]`)
+	got, err := Parse(context.Background(), "history.json", "history", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(got.Entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(append([]byte("history\x00"), encoded...))
+	if got.Digest != hex.EncodeToString(sum[:]) {
+		t.Error("streaming digest changed existing source identity")
 	}
 }
