@@ -373,6 +373,13 @@ completed=excluded.completed,played_at=excluded.played_at WHERE catalog_progress
  completed=MAX(catalog_history.completed,excluded.completed),updated_at=excluded.updated_at`, stableID("history", assetID, value.SessionID), assetID, value.SessionID, value.Position, value.Duration, value.Completed, value.PlayedAt, value.PlayedAt); err != nil {
 		return value, err
 	}
+	if value.Completed {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_work_notes(work_id,watched,revision)
+ SELECT work_id,1,1 FROM catalog_assets WHERE id=?
+ ON CONFLICT(work_id) DO UPDATE SET watched=1,revision=revision+CASE WHEN COALESCE(catalog_work_notes.watched,0)=1 THEN 0 ELSE 1 END`, assetID); err != nil {
+			return value, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return value, err
 	}

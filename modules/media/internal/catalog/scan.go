@@ -434,6 +434,57 @@ func transferOrphanedPersonal(ctx context.Context, tx *sql.Tx, oldID string, des
 		return nil
 	}
 	for newID := range destinations {
+		// Empty destination fields are not an intentional replacement of source
+		// notes. Merge fields independently, preserving explicitly set values.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_work_notes(work_id,watched,rating,feedback,revision)
+ SELECT ?,watched,rating,feedback,revision FROM catalog_work_notes WHERE work_id=?
+ ON CONFLICT(work_id) DO UPDATE SET
+ watched=COALESCE(catalog_work_notes.watched,excluded.watched),
+ rating=CASE WHEN catalog_work_notes.rating=0 THEN excluded.rating ELSE catalog_work_notes.rating END,
+ feedback=CASE WHEN catalog_work_notes.feedback='' THEN excluded.feedback ELSE catalog_work_notes.feedback END,
+ revision=catalog_work_notes.revision+1`, newID, oldID); err != nil {
+			return err
+		}
+		rows, err := tx.QueryContext(ctx, "SELECT list_id,position FROM catalog_list_items WHERE work_id=?", oldID)
+		if err != nil {
+			return err
+		}
+		type membership struct {
+			list     string
+			position int
+		}
+		members := []membership{}
+		for rows.Next() {
+			var item membership
+			if err := rows.Scan(&item.list, &item.position); err != nil {
+				rows.Close()
+				return err
+			}
+			members = append(members, item)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+		for _, item := range members {
+			var already int
+			if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM catalog_list_items WHERE list_id=? AND work_id=?", item.list, newID).Scan(&already); err != nil {
+				return err
+			}
+			if already == 0 {
+				if _, err := tx.ExecContext(ctx, "UPDATE catalog_list_items SET work_id=? WHERE list_id=? AND work_id=?", newID, item.list, oldID); err != nil {
+					return err
+				}
+			} else {
+				if _, err := tx.ExecContext(ctx, "DELETE FROM catalog_list_items WHERE list_id=? AND work_id=?", item.list, oldID); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.ExecContext(ctx, "UPDATE catalog_lists SET version=version+1,updated_at=? WHERE id=?", timestamp(), item.list); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_personal(work_id,favorite,watch_later)
 SELECT ?,favorite,watch_later FROM catalog_personal WHERE work_id=?
 ON CONFLICT(work_id) DO UPDATE SET favorite=MAX(favorite,excluded.favorite),watch_later=MAX(watch_later,excluded.watch_later)`, newID, oldID); err != nil {
@@ -457,6 +508,9 @@ ON CONFLICT(work_id) DO UPDATE SET favorite=MAX(favorite,excluded.favorite),watc
 	// This is a move of current intent, not a second live personal-state copy.
 	// Otherwise a later return to the old identity can resurrect canceled flags.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM catalog_personal WHERE work_id=?", oldID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM catalog_work_notes WHERE work_id=?", oldID); err != nil {
 		return err
 	}
 	return nil

@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS catalog_list_items(
 		if _, err := tx.Exec("INSERT INTO catalog_state(key,value) VALUES('history_backfill_1','done')"); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO catalog_work_notes(work_id,watched,revision) SELECT DISTINCT work_id,1,1 FROM catalog_assets a JOIN catalog_progress g ON g.asset_id=a.id WHERE g.completed=1`); err != nil {
+			return err
+		}
 	}
 	return syncActorsTx(context.Background(), tx)
 }
