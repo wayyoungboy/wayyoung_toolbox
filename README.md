@@ -16,6 +16,8 @@
 
 0.7.4 在已有馆藏、兼容播放和个人记录上增加默认关闭的本地偏好分析：选择参与的来源、查看推荐理由，以及按稳定身份关注演员。不会联网获取新作，也不读取电脑浏览器。RSS、下载和 JAVSP 流程继续保留。本项目仍为阶段性测试版，并非 Peach 全功能替代版。当前能力、测试方法与限制见 [媒体中心阶段说明](docs/MEDIA_CENTER_STATUS.md)，逐项缺口见 [功能交付对照](docs/MEDIA_CENTER_PARITY.md)，完整目标见 [功能基线与验收范围](docs/MEDIA_CENTER_GOAL.md)。
 
+主分支正在准备 **0.7.5（尚未发布）**：增加显式上传的浏览器历史/书签导入、预览、来源管理与可选推荐贡献，包含深色和手机布局。当前 NAS 与 Release 仍为 0.7.4；新能力的输入、安全边界及待验收事项见 [浏览器资料导入](docs/BROWSER_IMPORT.md)，不自动读取用户浏览器。
+
 ## 使用顺序与权限
 
 1. 用 fnOS 管理员账户打开工具箱，在“总览与配置”中按需启用模块。
@@ -55,7 +57,7 @@ npm test
 npm run build
 ```
 
-产物为 `dist/wayyoung_toolbox_0.7.4_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
+本分支构建目标为 `dist/wayyoung_toolbox_0.7.5_x86_64.fpk`，并非已发布或已完成 NAS 验收的声明。没有 `fnpack` 时可以先生成完整的打包目录：
 
 ```bash
 SKIP_FNPACK=1 npm run build

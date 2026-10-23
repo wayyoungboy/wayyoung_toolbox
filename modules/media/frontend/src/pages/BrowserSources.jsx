@@ -12,7 +12,7 @@ export function BrowserSourceList({items,busy,onReading,onDelete}){
 export function BrowserImportForm({items,form,busy,preview,onChange,onFile,onPreview,onCommit}){
  const fileInput=useRef(null);
  useEffect(()=>{if(!form.filename&&fileInput.current)fileInput.current.value='';},[form.filename]);
- return <section className="browser-import"><h2>导入浏览器资料</h2><p className="catalog-help">只处理你选择上传的导出文件，不会直接读取电脑浏览器，也不访问文件中的网址。URL 会去掉用户凭据、片段及非必要查询参数；保留网址、标题和时间，仅供本应用管理员查看。</p>
+ return <section className="browser-import"><h2>导入浏览器资料</h2><p className="catalog-help">只处理你选择上传的导出文件，不会直接读取电脑浏览器，也不访问文件中的网址。含用户凭据的网址会跳过，片段及非必要参数会移除；保留的网址、标题和搜索词仍可能涉及隐私，仅供本应用管理员查看。</p>
  <form onSubmit={event=>{event.preventDefault();onPreview();}}><fieldset disabled={busy}>
  <label>导入到<select aria-label="导入目标来源" value={form.source_id} onChange={event=>onChange({source_id:event.target.value})}><option value="">创建新来源</option>{items.map(source=><option key={source.id} value={source.id}>{source.name}{!source.reading?'（已停止）':''}</option>)}</select></label>
  <label>来源名称<input aria-label="浏览器来源名称" required maxLength={160} value={form.name} onChange={event=>onChange({name:event.target.value})}/></label>
