@@ -3,6 +3,20 @@ import { api } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
 
+it('uses authenticated preview/execute and queue cleanup without automatic replay', async () => {
+ const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>url.endsWith('/session')?{csrf:'test-csrf'}:{}}));
+ vi.stubGlobal('fetch',fetch);
+ await api.catalogDeletePreview(['one']);
+ await api.catalogDeleteExecute(['one'],'preview-token','永久删除');
+ await api.queueCleanupCandidates(30);
+ await api.cleanupQueueJobs([{id:2,version:3}]);
+ const writes=fetch.mock.calls.filter(([,options])=>options.method);
+ expect(writes).toHaveLength(3);
+ expect(JSON.parse(writes[1][1].body)).toEqual({work_ids:['one'],token:'preview-token',confirmation:'永久删除'});
+ expect(writes.every(([,options])=>options.headers['X-Catalog-CSRF']==='test-csrf')).toBe(true);
+ expect(fetch.mock.calls.some(([url])=>url.includes('/queue/cleanup?older_days=30'))).toBe(true);
+});
+
 it('passes catalog filters and abort signals to the real HTTP API', async () => {
   const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], total: 0 }) });
   vi.stubGlobal('fetch', fetch);
