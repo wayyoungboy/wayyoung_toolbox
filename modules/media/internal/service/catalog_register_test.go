@@ -246,3 +246,39 @@ func TestCatalogRegistrationRejectsAmbiguousMoveReceipts(t *testing.T) {
 		})
 	}
 }
+
+func TestCatalogRegistrationRetiresOnlyReplacedTargetGeneration(t *testing.T) {
+	s := testService(t)
+	root := registrationRoot(t)
+	catalogWrite(t, root, "TEST-001.mp4", "original video")
+	catalogWrite(t, root, "TEST-002.mp4", "unrelated")
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	old := catalogDetail(t, s, catalogWorks(t, s, "query=TEST-001")[0].ID).Assets[0]
+	// A new inode at the same path is a new physical generation, not the
+	// organizer-proven move case. Keep old history, but never call it playable.
+	replacement := filepath.Join(root, "replacement.tmp")
+	if err := os.WriteFile(replacement, []byte("replacement video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(root, "TEST-001.mp4")
+	if err := os.Rename(replacement, filename); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.catalog.RegisterFiles(context.Background(), []catalog.RegistrationTarget{registrationTarget(t, filename)}, nil); err != nil {
+		t.Fatal(err)
+	}
+	detail := catalogDetail(t, s, catalogWorks(t, s, "query=TEST-001")[0].ID)
+	if len(detail.Assets) != 2 {
+		t.Fatalf("old generation was deleted: %+v", detail)
+	}
+	for _, asset := range detail.Assets {
+		if asset.Available == (asset.ID == old.ID) {
+			t.Fatalf("wrong active generation: %+v", detail.Assets)
+		}
+	}
+	other := catalogDetail(t, s, catalogWorks(t, s, "query=TEST-002")[0].ID)
+	if len(other.Assets) != 1 || !other.Assets[0].Available {
+		t.Fatalf("unrelated path retired: %+v", other)
+	}
+}
