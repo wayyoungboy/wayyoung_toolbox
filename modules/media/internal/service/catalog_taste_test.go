@@ -109,7 +109,7 @@ func TestCatalogTasteOptInSourceControlsAndClear(t *testing.T) {
 }
 
 func TestCatalogTasteHistoryDeduplicatesWorksNotHeartbeatsOrEditions(t *testing.T) {
-	s, _, works := personalFixture(t)
+	s, lib, works := personalFixture(t)
 	work := catalogDetail(t, s, works[0].ID)
 	asset := work.Assets[0].ID
 	for i, session := range []string{"taste-session-one", "taste-session-two"} {
@@ -124,6 +124,20 @@ func TestCatalogTasteHistoryDeduplicatesWorksNotHeartbeatsOrEditions(t *testing.
 	second := tasteReport(t, s)
 	if !reflect.DeepEqual(first.Facets, second.Facets) || first.Items[0].Score != second.Items[0].Score {
 		t.Fatal("repeated saves amplified preference")
+	}
+	catalogWrite(t, lib.Root, "DEMO-100-C.mp4", "second neutral edition")
+	catalogScan(t, s, lib)
+	work = catalogDetail(t, s, works[0].ID)
+	if len(work.Assets) != 2 {
+		t.Fatalf("edition fixture: %+v", work)
+	}
+	for _, edition := range work.Assets {
+		if edition.ID != asset {
+			catalogJSON[catalog.Progress](t, s, "PUT", "/api/catalog/assets/"+edition.ID+"/progress", map[string]any{"position": 80, "duration": 100, "revision": 0, "session_id": "taste-other-edition"}, 200)
+		}
+	}
+	if third := tasteReport(t, s); !reflect.DeepEqual(first.Facets, third.Facets) || first.Items[0].Score != third.Items[0].Score {
+		t.Fatal("second edition amplified the same work")
 	}
 	rows := catalogJSON[catalog.HistoryPage](t, s, "GET", "/api/catalog/history", nil, 200)
 	ids := []string{}
@@ -154,7 +168,7 @@ func TestCatalogTasteFeedbackNegativeWeightsAndMissingMetadata(t *testing.T) {
 }
 
 func TestCatalogActorFollowUsesCanonicalIdentityAndIndependentCAS(t *testing.T) {
-	s, _, works := personalFixture(t)
+	s, lib, works := personalFixture(t)
 	work := catalogJSON[catalog.Work](t, s, "GET", "/api/catalog/works/"+works[0].ID, nil, 200)
 	actor := work.ActorProfiles[0]
 	path := "/api/catalog/actors/" + actor.ID + "/follow"
@@ -183,6 +197,16 @@ func TestCatalogActorFollowUsesCanonicalIdentityAndIndependentCAS(t *testing.T) 
 	if len(report.Facets) != 1 || report.Facets[0].Key != actor.ID || report.Facets[0].Label != "Renamed actor" {
 		t.Fatalf("follow preference uses mutable name: %+v", report)
 	}
+	catalogScan(t, s, lib)
+	reopened, err := catalog.New(s.db.db, unambiguousMediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.db.catalog = reopened
+	current := catalogJSON[map[string]any](t, s, "GET", "/api/catalog/actors/"+actor.ID, nil, 200)
+	if current["following"] != true || current["follow_version"] != float64(1) {
+		t.Fatal("scan/restart lost canonical follow")
+	}
 	state = catalogJSON[follow](t, s, "PUT", path, map[string]any{"following": false, "version": state.Version}, 200)
 	if state.Following || len(tasteReport(t, s).Facets) != 0 {
 		t.Fatal("unfollow still contributes")
@@ -210,6 +234,9 @@ func TestCatalogTasteValidationSecurityAndAtomicConfig(t *testing.T) {
 		if w.Code != 400 {
 			t.Fatalf("accepted invalid config %s: %d", payload, w.Code)
 		}
+	}
+	if after := catalogJSON[tasteTestConfig](t, s, "GET", "/api/catalog/taste/config", nil, 200); after.Version != 2 || !after.Sources["collection"] {
+		t.Fatal("invalid flags consumed revision or changed config")
 	}
 	for _, path := range []string{"/api/catalog/taste?limit=0", "/api/catalog/taste?limit=101", "/api/catalog/taste?offset=-1", "/api/catalog/actors?following=perhaps"} {
 		if w := catalogRequest(t, s, "GET", path, nil); w.Code != 400 {
