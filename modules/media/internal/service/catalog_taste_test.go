@@ -200,7 +200,7 @@ func TestCatalogTasteValidationSecurityAndAtomicConfig(t *testing.T) {
 	if w := catalogRequest(t, s, "PUT", "/api/catalog/taste/config", config); w.Code != 409 {
 		t.Fatalf("stale config: %d", w.Code)
 	}
-	for _, payload := range []string{`{}`, `{"enabled":true,"version":2}`, `{"enabled":true,"version":2,"sources":{"unknown":true}}`, `{"enabled":true,"version":2,"sources":null}`, `{"enabled":true,"version":2,"sources":{"collection":true,"history":true,"feedback":true,"follows":true},"extra":1}`} {
+	for _, payload := range []string{`{}`, `{"enabled":true,"version":2}`, `{"enabled":true,"version":2,"sources":{"unknown":true}}`, `{"enabled":true,"version":2,"sources":null}`, `{"enabled":true,"version":2,"sources":{"collection":null,"history":true,"feedback":true,"follows":true}}`, `{"enabled":true,"version":2,"sources":{"collection":true,"history":true,"feedback":true,"follows":true},"extra":1}`} {
 		r := httptest.NewRequest("PUT", "/api/catalog/taste/config", strings.NewReader(payload))
 		r.Header.Set("X-Trim-Isadmin", "true")
 		r.Header.Set("X-Catalog-CSRF", s.catalogCSRF)
@@ -238,7 +238,7 @@ func TestCatalogTasteValidationSecurityAndAtomicConfig(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := s.db.catalog.PersonalStats(ctx); err == nil {
+	if _, err := s.db.catalog.Taste(ctx, 24, 0); err == nil {
 		t.Fatal("canceled database read succeeded")
 	}
 }

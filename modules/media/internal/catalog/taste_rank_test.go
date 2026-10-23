@@ -86,3 +86,29 @@ func BenchmarkTasteRankingSharedMetadata(b *testing.B) {
 		}
 	}
 }
+
+func TestTasteRankingBoundsProofsAndSubtractsEveryCandidate(t *testing.T) {
+	works := make([]tasteWork, 20)
+	for i := range works {
+		works[i] = tasteWork{Work: Work{ID: fmt.Sprintf("work-%02d", i), Genres: []string{"Shared"}, AvailableCount: 1}}
+	}
+	_, items, err := rankTaste(context.Background(), works, nil, map[string]bool{"collection": true})
+	if err != nil || len(items) != 20 {
+		t.Fatalf("ranking: %d %v", len(items), err)
+	}
+	for _, item := range items {
+		if len(item.Reasons) != 1 || len(item.Reasons[0].WorkIDs) != 5 || cap(item.Reasons[0].WorkIDs) > 8 {
+			t.Fatalf("unbounded proof: %+v", item)
+		}
+		if diff := item.Score - 19*.25*.7; diff > 1e-10 || diff < -1e-10 {
+			t.Fatal("own contribution wasn't subtracted")
+		}
+		seen := map[string]bool{}
+		for _, id := range item.Reasons[0].WorkIDs {
+			if id == item.Work.ID || seen[id] {
+				t.Fatal("self/duplicate representative")
+			}
+			seen[id] = true
+		}
+	}
+}
