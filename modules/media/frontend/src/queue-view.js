@@ -10,7 +10,7 @@ export const queuePhaseLabel = (job) => phaseLabels[job?.phase] || job?.phase ||
 export const queueStatusTone = (status) => ({ success: 'success', failed: 'danger', partial: 'warning', timed_out: 'danger', needs_attention: 'warning', running: 'active' }[status] || 'neutral');
 
 export function queueActions(job) {
-  if (!Number.isSafeInteger(job?.version) || job.version < 1 || job.phase === 'done') return [];
+  if (job?.archived || !Number.isSafeInteger(job?.version) || job.version < 1 || job.phase === 'done') return [];
   const actions = [];
   if (['partial', 'failed', 'canceled', 'timed_out', 'needs_attention'].includes(job.status)) {
     actions.push({ key: 'retry', label: job.phase === 'qb_cleanup' ? '重试 qB 清理' : job.phase === 'download' ? '恢复下载检查与后续处理' : '重试未完成步骤' });
@@ -70,7 +70,7 @@ export function safeSourceURL(value) {
 
 export function queueEventLabel(reason) {
   return ({ enqueued: '已入队', claimed: '开始执行', retry: '手动重试', cancel: '取消任务', stage_result: '阶段结果',
-    intake_linked: '关联搬运来源', intake_movies_published: '影片任务已登记', intake_complete: '搬运及清理完成',
+    archived: '手动清理归档', intake_linked: '关联搬运来源', intake_movies_published: '影片任务已登记', intake_complete: '搬运及清理完成',
     download_complete: '下载完成', download_attention: '下载需人工处理', recovered: '重启恢复', unrecognized_input: '文件待识别' })[reason] || reason;
 }
 

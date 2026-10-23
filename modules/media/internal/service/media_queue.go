@@ -14,6 +14,7 @@ var errMediaJobConflict = errors.New("任务已变化，请刷新后重试")
 // MediaJob keeps business provenance independently of rotated run logs. Key is
 // the producer's stable artifact identity, not merely a film/catalog number.
 type MediaJob struct {
+	Archived          bool                 `json:"archived,omitempty"`
 	Duplicate         *MediaDuplicate      `json:"duplicate,omitempty"`
 	Download          *DownloadObservation `json:"download,omitempty"`
 	IntakeMoviesReady bool                 `json:"intake_movies_ready,omitempty"`
@@ -343,7 +344,7 @@ func (d *Database) changeMediaJobTx(id, version int64, reason string, change fun
 	if err != nil {
 		return MediaJob{}, err
 	}
-	if job.Version != version {
+	if job.Version != version || job.Archived {
 		return MediaJob{}, errMediaJobConflict
 	}
 	if err := change(tx, &job); err != nil {

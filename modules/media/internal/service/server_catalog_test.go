@@ -60,17 +60,31 @@ func TestCatalogSearchesKeywordsAndSupportsExactActorAndTagFilters(t *testing.T)
 	}
 }
 
-func TestCatalogWatchLaterAndStableSorting(t *testing.T){
- s:=testService(t);root:=t.TempDir()
- for _,name:=range []string{"DEMO-123","DEMO-456"}{catalogWrite(t,root,name+".mp4","video")}
- catalogWrite(t,root,"DEMO-123.nfo",`<movie><title>Zebra</title><year>2020</year></movie>`)
- catalogWrite(t,root,"DEMO-456.nfo",`<movie><title>Amber</title><year>2026</year></movie>`)
- lib:=catalogLibrary(t,s,root);catalogScan(t,s,lib)
- work:=catalogWorks(t,s,"query=DEMO-123")[0]
- if w:=catalogRequest(t,s,"PATCH","/api/catalog/works/"+work.ID+"/personal",map[string]bool{"watch_later":true});w.Code!=200{t.Fatal(w.Body.String())}
- if items:=catalogWorks(t,s,"watch_later=true");len(items)!=1||items[0].ID!=work.ID{t.Fatalf("watch later: %+v",items)}
- for _,sort:=range []string{"title","year"}{if items:=catalogWorks(t,s,"sort="+sort);len(items)!=2||items[0].Code!="DEMO-456"{t.Fatalf("sort %s: %+v",sort,items)}}
- if w:=catalogRequest(t,s,"GET","/api/catalog/works?sort=invalid",nil);w.Code!=400{t.Fatalf("invalid sort: %d",w.Code)}
+func TestCatalogWatchLaterAndStableSorting(t *testing.T) {
+	s := testService(t)
+	root := t.TempDir()
+	for _, name := range []string{"DEMO-123", "DEMO-456"} {
+		catalogWrite(t, root, name+".mp4", "video")
+	}
+	catalogWrite(t, root, "DEMO-123.nfo", `<movie><title>Zebra</title><year>2020</year></movie>`)
+	catalogWrite(t, root, "DEMO-456.nfo", `<movie><title>Amber</title><year>2026</year></movie>`)
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	work := catalogWorks(t, s, "query=DEMO-123")[0]
+	if w := catalogRequest(t, s, "PATCH", "/api/catalog/works/"+work.ID+"/personal", map[string]bool{"watch_later": true}); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if items := catalogWorks(t, s, "watch_later=true"); len(items) != 1 || items[0].ID != work.ID {
+		t.Fatalf("watch later: %+v", items)
+	}
+	for _, sort := range []string{"title", "year"} {
+		if items := catalogWorks(t, s, "sort="+sort); len(items) != 2 || items[0].Code != "DEMO-456" {
+			t.Fatalf("sort %s: %+v", sort, items)
+		}
+	}
+	if w := catalogRequest(t, s, "GET", "/api/catalog/works?sort=invalid", nil); w.Code != 400 {
+		t.Fatalf("invalid sort: %d", w.Code)
+	}
 }
 
 func TestCatalogMigratesPreviousSchemaWithoutSilentlyTrustingAnotherRoot(t *testing.T) {

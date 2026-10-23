@@ -29,9 +29,11 @@ func (d *Database) MediaQueuePage(status string, before int64, limit int) (Media
 	if limit < 1 || limit > 200 {
 		return page, fmt.Errorf("limit 应为 1–200")
 	}
-	where := " WHERE 1=1"
+	where := " WHERE COALESCE(json_extract(payload,'$.archived'),0)=0"
 	args := []any{}
-	if status != "" {
+	if status == "archived" {
+		where = " WHERE json_extract(payload,'$.archived')=1"
+	} else if status != "" {
 		where += " AND status=?"
 		args = append(args, status)
 	}
@@ -102,7 +104,7 @@ func (d *Database) annotateQueueWaits(ctx context.Context, jobs []MediaQueueJob)
 
 func (s *Service) handleQueue(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
-	if status != "" && status != "pending" && status != "running" && status != "success" && status != "skipped" && !retryableMediaStatus(status) {
+	if status != "" && status != "archived" && status != "pending" && status != "running" && status != "success" && status != "skipped" && !retryableMediaStatus(status) {
 		writeError(w, 400, fmt.Errorf("无效的队列状态"))
 		return
 	}

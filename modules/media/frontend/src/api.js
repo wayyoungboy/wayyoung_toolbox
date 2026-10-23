@@ -8,7 +8,7 @@ async function request(path, options = {}) {
       ...(options.headers || {}),
     },
   });
-  const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch(() => { throw new Error('服务器返回结果不完整，请刷新核对；没有自动重试'); });
   if (!response.ok) {
     const error = new Error(data.error || `请求失败（${response.status}）`);
     error.status = response.status;
@@ -26,17 +26,23 @@ async function catalogMutation(path, method, payload, options = {}) {
 }
 
 export const api = {
+  catalogDeletePreview: (workIDs) => catalogMutation('/catalog/deletion/preview', 'POST', { work_ids: workIDs }),
+  catalogDeleteExecute: (workIDs, token, confirmation) => catalogMutation('/catalog/deletion/execute', 'POST', { work_ids: workIDs, token, confirmation }),
+  queueCleanupCandidates: (days, { signal } = {}) => request(`/queue/cleanup?older_days=${encodeURIComponent(days)}`, { signal }),
+  cleanupQueueJobs: (jobs) => catalogMutation('/queue/cleanup', 'POST', { jobs }),
   catalogLibraries: ({ signal } = {}) => request('/catalog/libraries', { signal }),
   catalogAddLibrary: (payload) => catalogMutation('/catalog/libraries', 'POST', payload),
   catalogRelinkLibrary: (id, root) => catalogMutation(`/catalog/libraries/${encodeURIComponent(id)}`, 'PATCH', { root }),
   catalogScan: (id, { signal } = {}) => catalogMutation(`/catalog/libraries/${encodeURIComponent(id)}/scan`, 'POST', {}, { signal }),
-  catalogWorks: ({ query = '', actor = '', tag = '', view = 'all', libraryID = '', offset = 0, signal } = {}) => {
+  catalogWorks: ({ query = '', actor = '', tag = '', sort = 'recent', view = 'all', libraryID = '', offset = 0, signal } = {}) => {
     const parameters = new URLSearchParams({ query, offset: String(offset), limit: '48' });
     if (libraryID) parameters.set('library_id', libraryID);
     if (actor) parameters.set('actor', actor);
     if (tag) parameters.set('tag', tag);
+    parameters.set('sort',sort);
     if (view === 'favorites') parameters.set('favorite', 'true');
     if (view === 'continue') parameters.set('continue', 'true');
+    if (view === 'later') parameters.set('watch_later','true');
     return request(`/catalog/works?${parameters}`, { signal });
   },
   catalogWork: (id, { signal } = {}) => request(`/catalog/works/${encodeURIComponent(id)}`, { signal }),

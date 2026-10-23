@@ -61,6 +61,7 @@ export function QueueJobDetails({ job, events, onSelect, onAction, busy = false 
       <h3>{job.media_id || job.title || '未识别影片'}</h3>
       {job.media_id && job.title ? <p className="queue-summary">{job.title}</p> : null}
       <div className="queue-detail-state"><QueueStatus status={job.status} /><span>{queuePhaseLabel(job)}</span></div>
+      {job.archived&&<p className="queue-footnote">此任务已清理归档，保留记录以防止重复采集，不会继续执行。</p>}
       <p className="queue-summary">{queueSummary(job)}</p>
       {job.error ? <div role="note" className="error-box">{job.error}</div> : null}
       <QueueDownloadStatus job={job} />

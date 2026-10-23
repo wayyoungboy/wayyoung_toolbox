@@ -27,6 +27,10 @@ func (s *Service) registerCatalogRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/catalog/libraries/{id}", s.catalogSameOrigin(s.handleCatalogRelink))
 	mux.HandleFunc("POST /api/catalog/libraries/{id}/scan", s.catalogSameOrigin(s.handleCatalogScan))
 	mux.HandleFunc("GET /api/catalog/works", s.handleCatalogWorks)
+	mux.HandleFunc("POST /api/catalog/deletion/preview", s.catalogSameOrigin(s.handleCatalogDeletePreview))
+	mux.HandleFunc("POST /api/catalog/deletion/execute", s.catalogSameOrigin(s.handleCatalogDeleteExecute))
+	mux.HandleFunc("POST /api/queue/cleanup", s.catalogSameOrigin(s.handleQueueCleanup))
+	mux.HandleFunc("GET /api/queue/cleanup", s.handleQueueCleanupCandidates)
 	mux.HandleFunc("GET /api/catalog/works/{id}", s.handleCatalogWork)
 	mux.HandleFunc("PATCH /api/catalog/works/{id}", s.catalogSameOrigin(s.handleCatalogTitle))
 	mux.HandleFunc("PATCH /api/catalog/works/{id}/personal", s.catalogSameOrigin(s.handleCatalogPersonal))
@@ -34,6 +38,54 @@ func (s *Service) registerCatalogRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/catalog/assets/{id}/stream", s.handleCatalogStream)
 	mux.HandleFunc("GET /api/catalog/assets/{id}/poster", s.handleCatalogPoster)
 	mux.HandleFunc("GET /api/catalog/assets/{id}/subtitles/{index}", s.handleCatalogSubtitle)
+}
+
+func (s *Service) handleCatalogDeletePreview(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WorkIDs []string `json:"work_ids"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeError(w, 400, err)
+		return
+	}
+	if !s.mediaFiles.TryLock() {
+		catalogError(w, catalog.ErrBusy)
+		return
+	}
+	defer s.mediaFiles.Unlock()
+	plan, err := s.db.catalog.PreviewDelete(r.Context(), body.WorkIDs)
+	if err != nil {
+		catalogError(w, err)
+		return
+	}
+	writeJSON(w, 200, plan)
+}
+
+func (s *Service) handleCatalogDeleteExecute(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WorkIDs      []string `json:"work_ids"`
+		Token        string   `json:"token"`
+		Confirmation string   `json:"confirmation"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeError(w, 400, err)
+		return
+	}
+	if body.Confirmation != "永久删除" {
+		catalogError(w, catalog.ErrInvalid)
+		return
+	}
+	if !s.acquireMediaFileWriter() {
+		catalogError(w, catalog.ErrBusy)
+		return
+	}
+	defer s.mediaFiles.Unlock()
+	result, err := s.db.catalog.Delete(r.Context(), body.WorkIDs, body.Token)
+	if err != nil {
+		catalogError(w, err)
+		return
+	}
+	writeJSON(w, 200, result)
 }
 
 func (s *Service) catalogSameOrigin(next http.HandlerFunc) http.HandlerFunc {
@@ -105,6 +157,9 @@ func catalogError(w http.ResponseWriter, err error) {
 		status, message = http.StatusConflict, "媒体目录或文件暂不可访问，请检查挂载和权限"
 	case errors.Is(err, catalog.ErrBusy):
 		status, message = http.StatusConflict, "馆藏扫描正在运行，请稍后再试"
+	case errors.Is(err, catalog.ErrDeletePending):
+		status, message = http.StatusConflict, "检测到未完成的删除操作，已阻止继续删除；请在运行日志中核对遗留文件"
+		slog.Warn("interrupted catalog deletion", "error", err)
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		status, message = http.StatusRequestTimeout, "操作已取消或超时，上次馆藏记录保留"
 	default:
@@ -198,7 +253,7 @@ func (s *Service) handleCatalogRelink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleCatalogWorks(w http.ResponseWriter, r *http.Request) {
-	filter := catalog.Filter{Query: r.URL.Query().Get("query"), Actor: r.URL.Query().Get("actor"), Tag: r.URL.Query().Get("tag"), Limit: 48}
+	filter := catalog.Filter{Query: r.URL.Query().Get("query"), Actor: r.URL.Query().Get("actor"), Tag: r.URL.Query().Get("tag"), Sort: r.URL.Query().Get("sort"), Limit: 48}
 	for key, destination := range map[string]*int{"limit": &filter.Limit, "offset": &filter.Offset} {
 		if value := r.URL.Query().Get(key); value != "" {
 			parsed, err := strconv.Atoi(value)
@@ -217,7 +272,7 @@ func (s *Service) handleCatalogWorks(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.LibraryID = parsed
 	}
-	for key, destination := range map[string]*bool{"favorite": &filter.Favorite, "continue": &filter.Continue} {
+	for key, destination := range map[string]*bool{"favorite": &filter.Favorite, "continue": &filter.Continue, "watch_later": &filter.WatchLater} {
 		if value := r.URL.Query().Get(key); value != "" {
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {

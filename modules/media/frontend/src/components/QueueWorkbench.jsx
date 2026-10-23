@@ -1,10 +1,12 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { api } from '../api';
 import { loadQueueOverview } from '../queue-view';
 import { useRemoteResource } from '../useRemoteResource';
 import { QueueJobsTable } from './QueueViews';
+import QueueCleanupDialog from './QueueCleanupDialog';
 
 export default function QueueWorkbench({ onNavigate }) {
+  const [cleanup,setCleanup]=useState(false);
   const load = useCallback((signal) => loadQueueOverview(api.queue, signal), []);
   const { data, error, loading, refresh } = useRemoteResource(load, 5000);
   const open = (id) => onNavigate('queue', 'jobs', id);
@@ -16,9 +18,10 @@ export default function QueueWorkbench({ onNavigate }) {
       <dl className="queue-metrics"><div><dt>运行中任务</dt><dd>{data.running.total}</dd></div><div><dt>排队 / 等待下载</dt><dd>{data.pending.total}</dd></div><div><dt>需要处理</dt><dd>{data.attentionTotal}</dd></div></dl>
       <div className="section-heading"><h3>正在处理的任务</h3><button type="button" onClick={() => onNavigate('queue')}>查看处理队列</button></div>
       {data.running.jobs.length ? <QueueJobsTable jobs={data.running.jobs} onSelect={open} /> : <p className="queue-footnote">当前没有正在执行的任务。</p>}
-      <div className="section-heading queue-attention-heading"><div><h3>需要处理的任务</h3><p>待人工处理、失败、部分成功和超时；点击任务查看原因及下一步。</p></div></div>
+      <div className="section-heading queue-attention-heading"><div><h3>需要处理的任务</h3><p>待人工处理、失败、部分成功和超时；点击任务查看原因及下一步。</p></div><button type="button" onClick={()=>setCleanup(true)}>清理过期任务</button></div>
       {data.attention.length ? <QueueJobsTable jobs={data.attention} onSelect={open} /> : <p className="queue-footnote">当前没有需要处理的队列异常。</p>}
       {data.attentionTotal > data.attention.length ? <p className="queue-footnote">当前展示 {data.attention.length} 项，更多任务请打开处理队列筛选。</p> : null}
     </> : null}
+    {cleanup&&<QueueCleanupDialog onClose={()=>setCleanup(false)} onChanged={refresh}/>}
   </section>;
 }

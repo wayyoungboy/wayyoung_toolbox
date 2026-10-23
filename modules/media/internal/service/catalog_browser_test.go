@@ -46,7 +46,11 @@ func TestCatalogBrowserJourney(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, name+".mp4"), video, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		catalogWrite(t, root, name+".nfo", fmt.Sprintf(`<movie><num>%s</num><title>%s</title><year>2026</year><plot>用于自动化验收的中性测试影片。验证资料、文件、播放与个人记录的完整链路。</plot><actor><name>Test Actor</name></actor><genre>测试样本</genre></movie>`, name, title))
+		actor := "Test Actor"
+		if index == 7 {
+			actor = "Test Actor Extra"
+		}
+		catalogWrite(t, root, name+".nfo", fmt.Sprintf(`<movie><num>%s</num><title>%s</title><year>2026</year><plot>用于自动化验收的中性测试影片。验证资料、文件、播放与个人记录的完整链路。</plot><actor><name>%s</name></actor><genre>测试样本</genre></movie>`, name, title, actor))
 		poster := image.NewRGBA(image.Rect(0, 0, 200, 300))
 		for y := 0; y < 300; y++ {
 			for x := 0; x < 200; x++ {
@@ -70,6 +74,10 @@ func TestCatalogBrowserJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	catalogWrite(t, root, "_646-C.mp4", "unconfirmed sample")
+	job := enqueueQueueTestJob(t, service.db, "browser-cleanup")
+	if _, err := service.db.db.Exec(`UPDATE media_jobs SET status='failed',updated_at='2020-01-01T00:00:00Z' WHERE id=?`, job.ID); err != nil {
+		t.Fatal(err)
+	}
 	handler := service.Handler()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("X-Trim-Isadmin", "true")

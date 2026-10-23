@@ -49,7 +49,7 @@ func (d *Database) downloadsToObserve(ctx context.Context) ([]MediaJob, error) {
 	// Oldest checked first prevents long-lived downloads from starving later
 	// jobs. Bounds apply before any network or per-job database work.
 	rows, err := d.db.QueryContext(ctx, `SELECT `+mediaJobColumns+` FROM media_jobs
-WHERE kind='torrent' AND phase='download' AND status='pending'
+WHERE COALESCE(json_extract(payload,'$.archived'),0)=0 AND kind='torrent' AND phase='download' AND status='pending'
 ORDER BY COALESCE(json_extract(payload,'$.download.checked_at'),''),id LIMIT 100`)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (d *Database) recordDownloadObservation(ctx context.Context, expected Media
 	if err != nil {
 		return err
 	}
-	if job.Version != expected.Version || job.Kind != "torrent" || job.Phase != "download" || job.Status != "pending" {
+	if job.Archived || job.Version != expected.Version || job.Kind != "torrent" || job.Phase != "download" || job.Status != "pending" {
 		return errMediaJobConflict
 	}
 	if job.Download == nil {

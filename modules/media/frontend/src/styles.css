@@ -434,3 +434,9 @@ button, input, select { font: inherit; }
 .library-unknown { margin-top: 16px; }
 .library-unknown summary { cursor: pointer; }
 .library-pagination { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+.queue-cleanup-filter { display: flex; gap: 12px; align-items: center; margin: 20px 0; }
+.queue-cleanup-filter select { padding: 8px; border: 1px solid var(--border); border-radius: 4px; }
+.queue-cleanup-list { max-height: 320px; overflow: auto; margin-bottom: 18px; }
+.queue-cleanup-list > label { display: flex; align-items: start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.queue-cleanup-list span { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.queue-cleanup-list small { color: var(--subtle-text); }

@@ -9,11 +9,12 @@ import (
 )
 
 var (
-	ErrInvalid     = errors.New("馆藏请求无效")
-	ErrNotFound    = errors.New("馆藏记录不存在")
-	ErrConflict    = errors.New("记录或媒体文件已变化，请刷新后重试")
-	ErrUnavailable = errors.New("媒体目录或文件暂不可访问")
-	ErrBusy        = errors.New("馆藏扫描正在运行")
+	ErrInvalid       = errors.New("馆藏请求无效")
+	ErrNotFound      = errors.New("馆藏记录不存在")
+	ErrConflict      = errors.New("记录或媒体文件已变化，请刷新后重试")
+	ErrUnavailable   = errors.New("媒体目录或文件暂不可访问")
+	ErrBusy          = errors.New("馆藏扫描正在运行")
+	ErrDeletePending = errors.New("未完成的馆藏删除需要检查")
 )
 
 type Library struct {
@@ -81,14 +82,16 @@ type Work struct {
 }
 
 type Filter struct {
-	Actor     string
-	Tag       string
-	Query     string
-	LibraryID int64
-	Favorite  bool
-	Continue  bool
-	Limit     int
-	Offset    int
+	WatchLater bool
+	Sort       string
+	Actor      string
+	Tag        string
+	Query      string
+	LibraryID  int64
+	Favorite   bool
+	Continue   bool
+	Limit      int
+	Offset     int
 }
 
 type Page struct {

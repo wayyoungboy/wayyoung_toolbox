@@ -10,14 +10,14 @@ import (
 )
 
 func uncertainRSSJob(job MediaJob) bool {
-	return job.Kind == "torrent" && job.Phase == "discovered" && job.Discovery != nil &&
+	return !job.Archived && job.Kind == "torrent" && job.Phase == "discovered" && job.Discovery != nil &&
 		(job.Discovery.SubmissionState == "dispatching" || job.Discovery.SubmissionState == "acknowledged") &&
 		(job.Status == "needs_attention" || job.Status == "failed" || job.Status == "timed_out")
 }
 
 func (d *Database) rssSubmissionsToConfirm(ctx context.Context) ([]MediaJob, error) {
 	rows, err := d.db.QueryContext(ctx, `SELECT `+mediaJobColumns+` FROM media_jobs
-WHERE kind='torrent' AND phase='discovered' AND status IN ('needs_attention','failed','timed_out')
+WHERE COALESCE(json_extract(payload,'$.archived'),0)=0 AND kind='torrent' AND phase='discovered' AND status IN ('needs_attention','failed','timed_out')
 AND json_extract(payload,'$.discovery.submission_state') IN ('dispatching','acknowledged')
 ORDER BY COALESCE(json_extract(payload,'$.discovery.confirmation_checked_at'),''),id LIMIT 100`)
 	if err != nil {

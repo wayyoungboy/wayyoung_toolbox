@@ -202,7 +202,9 @@ func TestCatalogDeletionDoesNotForgetInterruptedCapture(t *testing.T) {
 	if w.Code != 409 {
 		t.Fatalf("interrupted capture forgotten: %d %s", w.Code, w.Body.String())
 	}
-	catalogScan(t,s,lib)
-	w=catalogRequest(t,s,"POST","/api/catalog/deletion/preview",map[string]any{"work_ids":ids})
-	if w.Code!=409{t.Fatalf("scan bypassed interrupted capture guard: %d %s",w.Code,w.Body.String())}
+	catalogScan(t, s, lib)
+	w = catalogRequest(t, s, "POST", "/api/catalog/deletion/preview", map[string]any{"work_ids": ids})
+	if w.Code != 409 {
+		t.Fatalf("scan bypassed interrupted capture guard: %d %s", w.Code, w.Body.String())
+	}
 }

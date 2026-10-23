@@ -44,6 +44,10 @@ func (d *Database) skipRSSAcquisition(id, version int64, reason string) (MediaJo
 
 func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, settings Settings, session **QBSession) (RunDetail, error) {
 	detail := RunDetail{JobID: job.ID, Title: job.Title, Status: "skipped", Message: "已登记到处理队列"}
+	if job.Archived {
+		detail.Message = "此条目已清理归档，保留去重，不再执行"
+		return detail, nil
+	}
 	if job.Status == "skipped" {
 		detail.Message = job.Error
 		return detail, nil

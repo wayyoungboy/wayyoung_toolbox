@@ -5,6 +5,7 @@ import { useRemoteResource } from '../useRemoteResource';
 import { QueueJobDetails, QueueJobsTable } from '../components/QueueViews';
 import WorkspaceTabs from '../components/WorkspaceTabs';
 import Runs from './Runs';
+import QueueCleanupDialog from '../components/QueueCleanupDialog';
 
 const tabs = [{ key: 'jobs', label: '影片队列' }, { key: 'history', label: '运行记录' }];
 
@@ -36,6 +37,7 @@ function QueueDetail({ id, onClose, onSelect, onChanged }) {
 }
 
 function Jobs({ onNavigate, selectedID }) {
+  const [cleanup,setCleanup]=useState(false);
   const [paging, setPaging] = useState({ status: '', before: 0, previous: [] });
   const setSelectedID = (id) => onNavigate('queue', 'jobs', id);
   const load = useCallback((signal) => api.queue({ status: paging.status, before: paging.before, limit: 25, signal }), [paging.status, paging.before]);
@@ -44,8 +46,9 @@ function Jobs({ onNavigate, selectedID }) {
   const previous = () => setPaging((value) => ({ ...value, before: value.previous.at(-1) || 0, previous: value.previous.slice(0, -1) }));
   return <>
     <div className="queue-toolbar">
-      <label>状态<select aria-label="队列状态" value={paging.status} onChange={(event) => setPaging({ status: event.target.value, before: 0, previous: [] })}><option value="">全部状态</option>{queueStatuses.map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
+      <label>状态<select aria-label="队列状态" value={paging.status} onChange={(event) => setPaging({ status: event.target.value, before: 0, previous: [] })}><option value="">全部状态</option>{queueStatuses.map(([key, label]) => <option value={key} key={key}>{label}</option>)}<option value="archived">已清理归档</option></select></label>
       <button type="button" className="queue-button" disabled={loading} onClick={refresh}>刷新队列</button>
+      <button type="button" className="queue-button" onClick={()=>setCleanup(true)}>清理过期任务</button>
       <span className="queue-footnote">每 5 秒只读刷新</span>
       <button className="queue-link" type="button" onClick={() => onNavigate('settings', 'intake')}>入库设置与操作</button>
       <button className="queue-link" type="button" onClick={() => onNavigate('settings', 'javsp')}>扫描设置与入队</button>
@@ -59,6 +62,7 @@ function Jobs({ onNavigate, selectedID }) {
       </div>
       {selectedID ? <QueueDetail key={selectedID} id={selectedID} onClose={() => setSelectedID(null)} onSelect={setSelectedID} onChanged={refresh} /> : null}
     </div>
+    {cleanup&&<QueueCleanupDialog onClose={()=>setCleanup(false)} onChanged={refresh}/>}
   </>;
 }
 

@@ -182,6 +182,9 @@ func (s *Store) Works(ctx context.Context, filter Filter) (Page, error) {
 		return result, ErrInvalid
 	}
 	conditions := []string{"EXISTS (SELECT 1 FROM catalog_assets a WHERE a.work_id=w.id)"}
+	if filter.Sort != "" && filter.Sort != "recent" && filter.Sort != "title" && filter.Sort != "year" {
+		return result, ErrInvalid
+	}
 	args := []any{}
 	if filter.Query != "" {
 		literal := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.TrimSpace(filter.Query))
@@ -205,6 +208,9 @@ OR w.genres LIKE ? ESCAPE '\' OR w.original_title LIKE ? ESCAPE '\' OR w.plot LI
 	if filter.Favorite {
 		conditions = append(conditions, "p.favorite=1")
 	}
+	if filter.WatchLater {
+		conditions = append(conditions, "p.watch_later=1")
+	}
 	if filter.Continue {
 		conditions = append(conditions, `EXISTS (SELECT 1 FROM catalog_assets a JOIN catalog_progress g ON g.asset_id=a.id
 WHERE a.work_id=w.id AND a.available=1 AND g.position>0 AND g.completed=0)`)
@@ -216,6 +222,10 @@ WHERE a.work_id=w.id AND a.available=1 AND g.position>0 AND g.completed=0)`)
 	order := "w.created_at DESC,w.id"
 	if filter.Continue {
 		order = "last_played_at DESC,w.id"
+	} else if filter.Sort == "title" {
+		order = "w.title COLLATE NOCASE,w.id"
+	} else if filter.Sort == "year" {
+		order = "w.year DESC,w.title,w.id"
 	}
 	rows, err := s.db.QueryContext(ctx, "SELECT "+workColumns+` AS last_played_at`+from+" ORDER BY "+order+" LIMIT ? OFFSET ?", append(args, filter.Limit, filter.Offset)...)
 	if err != nil {

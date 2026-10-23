@@ -9,7 +9,7 @@ import (
 // healthy. Run logs can rotate, so they cannot supply these counts.
 func (d *Database) annotatePipelineQueue(ctx context.Context, stages []pipelineStage) error {
 	rows, err := d.db.QueryContext(ctx, `SELECT kind,phase,status,COUNT(*) FROM media_jobs
-WHERE status IN ('pending','running','failed','partial','timed_out','needs_attention')
+WHERE COALESCE(json_extract(payload,'$.archived'),0)=0 AND status IN ('pending','running','failed','partial','timed_out','needs_attention')
 GROUP BY kind,phase,status`)
 	if err != nil {
 		return err

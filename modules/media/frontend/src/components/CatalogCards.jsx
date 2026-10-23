@@ -8,9 +8,11 @@ export function CatalogPoster({ assetID, title = '', className = '' }) {
   </div>;
 }
 
-export default function CatalogCards({ items, onOpen }) {
+export default function CatalogCards({ items, onOpen, selecting = false, selectedIDs = [], onToggle }) {
   return <div className="catalog-grid">
-    {items.map(work => <button className="catalog-card" type="button" onClick={() => onOpen(work.id)} key={work.id}>
+    {items.map(work => <div key={work.id} className={`catalog-card-item${selectedIDs.includes(work.id) ? ' is-selected' : ''}`}>
+      {selecting && <label className="catalog-card-checkbox"><input type="checkbox" aria-label={`选择作品：${work.title}`} checked={selectedIDs.includes(work.id)} onChange={() => onToggle(work.id)} /><span>选择</span></label>}
+      <button className="catalog-card" type="button" onClick={() => selecting ? onToggle(work.id) : onOpen(work.id)}>
       <div className="catalog-cover-wrap">
         <CatalogPoster key={work.cover_asset_id} assetID={work.cover_asset_id} title="" />
         {work.favorite && <span className="catalog-favorite" aria-label="已收藏">♥</span>}
@@ -20,6 +22,6 @@ export default function CatalogCards({ items, onOpen }) {
       <span className="catalog-card-code">{work.code || '番号待确认'}</span>
       <span className="catalog-card-title">{work.title}</span>
       <span className="catalog-card-meta">{[work.year || '', work.actors?.slice(0, 2).join('、')].filter(Boolean).join(' · ') || (work.metadata_source === 'local_nfo' ? '本地 NFO' : '待补充资料')}</span>
-    </button>)}
+    </button></div>)}
   </div>;
 }

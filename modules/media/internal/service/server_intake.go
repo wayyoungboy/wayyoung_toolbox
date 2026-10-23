@@ -221,6 +221,9 @@ func (s *Service) runIntakeAtRevision(ctx context.Context, trigger string, revis
 		}
 		result.Candidates[i].JobID = job.ID
 		switch {
+		case job.Archived:
+			// Explicitly archived identities remain deduplicated, not new failures.
+			continue
 		case job.Status == "pending":
 			result.Queued++
 		case retryableMediaStatus(job.Status):
