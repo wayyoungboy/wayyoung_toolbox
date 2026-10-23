@@ -53,6 +53,7 @@ type parser struct {
 	snapshot  Snapshot
 	expanded  int
 	textBytes int
+	jsonBytes int
 }
 
 func Parse(ctx context.Context, name, kind string, data []byte) (Snapshot, error) {
@@ -90,16 +91,25 @@ func Parse(ctx context.Context, name, kind string, data []byte) (Snapshot, error
 	}
 	sort.Slice(p.snapshot.Entries, func(i, j int) bool {
 		a, b := p.snapshot.Entries[i], p.snapshot.Entries[j]
-		return a.URL+"\x00"+a.VisitedAt < b.URL+"\x00"+b.VisitedAt
+		if a.URL != b.URL {
+			return a.URL < b.URL
+		}
+		return a.VisitedAt < b.VisitedAt
 	})
 	h := sha256.New()
 	_, _ = h.Write([]byte(kind + "\x00"))
-	encoder := json.NewEncoder(h)
-	for _, entry := range p.snapshot.Entries {
-		if err := encoder.Encode(entry); err != nil {
+	_, _ = h.Write([]byte("["))
+	for i, entry := range p.snapshot.Entries {
+		if i > 0 {
+			_, _ = h.Write([]byte(","))
+		}
+		encoded, err := json.Marshal(entry)
+		if err != nil {
 			return Snapshot{}, ErrFormat
 		}
+		_, _ = h.Write(encoded)
 	}
+	_, _ = h.Write([]byte("]"))
 	p.snapshot.Digest = hex.EncodeToString(h.Sum(nil))
 	return p.snapshot, nil
 }
@@ -204,6 +214,10 @@ type jsonEntry struct {
 }
 
 func (p *parser) jsonRecord(raw json.RawMessage, depth int) error {
+	p.jsonBytes += len(raw)
+	if p.jsonBytes > MaxExpanded {
+		return ErrLimit
+	}
 	if depth > 48 {
 		return ErrLimit
 	}
@@ -275,6 +289,13 @@ func decodeSingle(data []byte, target any) error {
 	return nil
 }
 func (p *parser) json(data []byte, jsonl bool) error {
+	if err := p.ctx.Err(); err != nil {
+		return err
+	}
+	p.jsonBytes += len(data)
+	if p.jsonBytes > MaxExpanded {
+		return ErrLimit
+	}
 	p.snapshot.Format = "json"
 	if !utf8.Valid(data) {
 		return ErrFormat
