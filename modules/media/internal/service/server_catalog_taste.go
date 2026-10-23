@@ -35,9 +35,9 @@ func (s *Service) handleCatalogTaste(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Service) handleCatalogTasteConfig(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Enabled *bool           `json:"enabled"`
-		Sources map[string]bool `json:"sources"`
-		Version int64           `json:"version"`
+		Enabled *bool            `json:"enabled"`
+		Sources map[string]*bool `json:"sources"`
+		Version int64            `json:"version"`
 	}
 	if err := decodeJSON(w, r, &payload); err != nil {
 		writeError(w, 400, err)
@@ -47,7 +47,15 @@ func (s *Service) handleCatalogTasteConfig(w http.ResponseWriter, r *http.Reques
 		catalogError(w, catalog.ErrInvalid)
 		return
 	}
-	value, err := s.db.catalog.SetTasteConfig(r.Context(), catalog.TasteConfig{Enabled: *payload.Enabled, Sources: payload.Sources, Version: payload.Version})
+	sources := make(map[string]bool, len(payload.Sources))
+	for key, value := range payload.Sources {
+		if value == nil {
+			catalogError(w, catalog.ErrInvalid)
+			return
+		}
+		sources[key] = *value
+	}
+	value, err := s.db.catalog.SetTasteConfig(r.Context(), catalog.TasteConfig{Enabled: *payload.Enabled, Sources: sources, Version: payload.Version})
 	if err != nil {
 		catalogError(w, err)
 		return
