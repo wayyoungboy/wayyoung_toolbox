@@ -1,5 +1,7 @@
 export const primaryNavigation = [
   { key: 'catalog', label: '馆藏', group: 'watching' },
+  { key: 'people', label: '人物', group: 'watching' },
+  { key: 'personal', label: '个人记录', group: 'watching' },
   { key: 'dashboard', label: '工作台', group: 'primary' },
   { key: 'subscriptions', label: '订阅来源', group: 'primary' },
   { key: 'queue', label: '处理队列', group: 'primary' },
@@ -27,7 +29,8 @@ export function resolveDestination(page, tab = '') {
   }
   if (page === 'settings') return { page, tab: settingsTabs.some((item) => item.key === tab) ? tab : 'paths' };
   if (page === 'queue') return { page, tab: tab === 'history' ? tab : 'jobs' };
-  if (['catalog', 'dashboard', 'subscriptions', 'maintenance'].includes(page)) return { page, tab: '' };
+  if(page==='personal')return {page,tab:tab==='lists'?'lists':'history'};
+  if (['catalog', 'people', 'dashboard', 'subscriptions', 'maintenance'].includes(page)) return { page, tab: '' };
   return { page: 'catalog', tab: '' };
 }
 

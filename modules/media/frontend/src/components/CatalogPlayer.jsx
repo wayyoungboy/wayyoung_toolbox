@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@douyinfe/semi-ui/lib/es/modal';
 import { api } from '../api';
-import { catalogAssetURL, createProgressSaver, formatPlaybackTime } from '../catalog-playback';
+import { catalogAssetURL, createProgressSaver, createPlaybackSession, formatPlaybackTime } from '../catalog-playback';
 
 export default function CatalogPlayer({ asset, title, onClose }) {
   const videoRef = useRef(null);
@@ -10,8 +10,9 @@ export default function CatalogPlayer({ asset, title, onClose }) {
   const [error, setError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [closing, setClosing] = useState(false);
+  const [sessionID]=useState(createPlaybackSession);
   const saver = useMemo(() => createProgressSaver(asset.progress?.revision,
-    value => api.catalogProgress(asset.id, value), failure => setSaveError(`观看进度未能保存：${failure.message}。请关闭后重新打开播放器。`)), [asset.id, asset.progress?.revision]);
+    value => api.catalogProgress(asset.id, value), failure => setSaveError(`观看进度未能保存：${failure.message}。请关闭后重新打开播放器。`),sessionID), [asset.id, asset.progress?.revision,sessionID]);
 
   const save = () => {
     const video = videoRef.current;

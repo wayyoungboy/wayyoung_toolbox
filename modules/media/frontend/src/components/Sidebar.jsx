@@ -4,11 +4,15 @@ import {
   IconList,
   IconSearch,
   IconSetting,
+  IconUser,
+  IconHistory,
 } from '@douyinfe/semi-icons';
 import { primaryNavigation } from '../information-architecture';
 
 const icons = {
   catalog: IconHome,
+  people: IconUser,
+  personal: IconHistory,
   dashboard: IconHome,
   subscriptions: IconSignal,
   queue: IconList,

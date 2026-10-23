@@ -1,7 +1,7 @@
 // One player owns one optimistic revision. Coalesce timeupdate events rather
 // than racing writes, and stop after an uncertain result instead of overwriting
 // a newer session's progress with blind retries.
-export function createProgressSaver(initialRevision, write, onError = () => {}) {
+export function createProgressSaver(initialRevision, write, onError = () => {}, sessionID = '') {
   let revision = initialRevision || 0;
   let next = null;
   let flight = null;
@@ -16,7 +16,7 @@ export function createProgressSaver(initialRevision, write, onError = () => {}) 
             while (next && !stopped) {
               const current = next;
               next = null;
-              const result = await write({ ...current, revision });
+              const result = await write({ ...current, revision, ...(sessionID ? {session_id:sessionID} : {}) });
               if (!Number.isSafeInteger(result.revision) || result.revision !== revision + 1) throw new Error('观看进度响应无效，请重新打开播放器');
               revision = result.revision;
             }
@@ -32,6 +32,12 @@ export function createProgressSaver(initialRevision, write, onError = () => {}) 
       return flight;
     },
   };
+}
+
+export function createPlaybackSession(){
+ const bytes=new Uint8Array(16);
+ globalThis.crypto.getRandomValues(bytes);
+ return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
 }
 
 export function preferredAsset(assets = []) {

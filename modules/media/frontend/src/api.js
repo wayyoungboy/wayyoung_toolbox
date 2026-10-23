@@ -26,6 +26,20 @@ async function catalogMutation(path, method, payload, options = {}) {
 }
 
 export const api = {
+  catalogActors: ({ query='', offset=0, signal }={}) => request(`/catalog/actors?${new URLSearchParams({query,offset:String(offset),limit:'48'})}`,{signal}),
+  catalogActor: (id,{signal}={}) => request(`/catalog/actors/${encodeURIComponent(id)}`,{signal}),
+  catalogActorPatch: (id,payload) => catalogMutation(`/catalog/actors/${encodeURIComponent(id)}`,'PATCH',payload),
+  catalogActorPortrait: (id,payload) => catalogMutation(`/catalog/actors/${encodeURIComponent(id)}/portrait`,'PUT',payload),
+  catalogActorPortraitDelete: (id,version) => catalogMutation(`/catalog/actors/${encodeURIComponent(id)}/portrait`,'DELETE',{version}),
+  catalogHistory: ({query='',offset=0,signal}={}) => request(`/catalog/history?${new URLSearchParams({query,offset:String(offset),limit:'48'})}`,{signal}),
+  catalogHistoryClear: (ids) => catalogMutation('/catalog/history/clear','POST',{ids}),
+  catalogStats: ({signal}={}) => request('/catalog/personal/stats',{signal}),
+  catalogLists: ({signal}={}) => request('/catalog/lists',{signal}),
+  catalogList: (id,{signal}={}) => request(`/catalog/lists/${encodeURIComponent(id)}`,{signal}),
+  catalogListCreate: (payload) => catalogMutation('/catalog/lists','POST',payload),
+  catalogListUpdate: (id,payload) => catalogMutation(`/catalog/lists/${encodeURIComponent(id)}`,'PATCH',payload),
+  catalogListItems: (id,version,workIDs) => catalogMutation(`/catalog/lists/${encodeURIComponent(id)}/items`,'PUT',{version,work_ids:workIDs}),
+  catalogListDelete: (id,version) => catalogMutation(`/catalog/lists/${encodeURIComponent(id)}`,'DELETE',{version}),
   catalogDeletePreview: (workIDs) => catalogMutation('/catalog/deletion/preview', 'POST', { work_ids: workIDs }),
   catalogDeleteExecute: (workIDs, token, confirmation) => catalogMutation('/catalog/deletion/execute', 'POST', { work_ids: workIDs, token, confirmation }),
   queueCleanupCandidates: (days, { signal } = {}) => request(`/queue/cleanup?older_days=${encodeURIComponent(days)}`, { signal }),
@@ -34,15 +48,18 @@ export const api = {
   catalogAddLibrary: (payload) => catalogMutation('/catalog/libraries', 'POST', payload),
   catalogRelinkLibrary: (id, root) => catalogMutation(`/catalog/libraries/${encodeURIComponent(id)}`, 'PATCH', { root }),
   catalogScan: (id, { signal } = {}) => catalogMutation(`/catalog/libraries/${encodeURIComponent(id)}/scan`, 'POST', {}, { signal }),
-  catalogWorks: ({ query = '', actor = '', tag = '', sort = 'recent', view = 'all', libraryID = '', offset = 0, signal } = {}) => {
+  catalogWorks: ({ query = '', actor = '', actorID='', listID='', tag = '', sort = 'recent', view = 'all', libraryID = '', offset = 0, signal } = {}) => {
     const parameters = new URLSearchParams({ query, offset: String(offset), limit: '48' });
     if (libraryID) parameters.set('library_id', libraryID);
     if (actor) parameters.set('actor', actor);
     if (tag) parameters.set('tag', tag);
+    if(actorID)parameters.set('actor_id',actorID);
+    if(listID)parameters.set('list_id',listID);
     parameters.set('sort',sort);
     if (view === 'favorites') parameters.set('favorite', 'true');
     if (view === 'continue') parameters.set('continue', 'true');
     if (view === 'later') parameters.set('watch_later','true');
+    if(view==='watched'||view==='unwatched')parameters.set('watched',String(view==='watched'));
     return request(`/catalog/works?${parameters}`, { signal });
   },
   catalogWork: (id, { signal } = {}) => request(`/catalog/works/${encodeURIComponent(id)}`, { signal }),
