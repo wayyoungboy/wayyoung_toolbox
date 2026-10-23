@@ -245,8 +245,18 @@ try {
   await page.getByRole('button',{name:'浏览此列表',exact:true}).click();
   await check(async()=>await page.locator('.catalog-card').count()===1,'list deep link failed');
   await page.getByLabel('馆藏播放列表',{exact:true}).selectOption('');
+  let releaseSearch,observedSearch;
+  const searchGate=new Promise(resolve=>{releaseSearch=resolve;});
+  const searchObserved=new Promise(resolve=>{observedSearch=resolve;});
+  const holdSearch=async route=>{if(new URL(route.request().url()).searchParams.get('query')==='TEST-004'){observedSearch();await searchGate;}await route.continue();};
+  await page.route('**/api/catalog/works?*',holdSearch);
   await page.getByRole('searchbox',{name:'搜索馆藏'}).fill('TEST-004');
+  await searchObserved;
+  assert.ok(await page.locator('.catalog-card').evaluateAll(elements=>elements.length>0&&elements.every(element=>element.disabled)),'old search results remained actionable while replacement was pending');
+  releaseSearch();
+  await page.unroute('**/api/catalog/works?*',holdSearch);
   await check(async()=>await page.locator('.catalog-card').count()===1,'second playlist work search failed');
+  await check(async()=>await page.locator('.catalog-card-code').first().innerText()==='TEST-004','new query showed the previous single result');
   await page.locator('.catalog-card').click();
   await page.getByLabel('加入播放列表',{exact:true}).selectOption({label:'周末片单 · 已编辑'});
   await page.getByRole('button',{name:'添加到播放列表',exact:true}).click();

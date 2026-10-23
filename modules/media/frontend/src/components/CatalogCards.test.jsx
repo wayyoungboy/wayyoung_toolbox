@@ -9,3 +9,9 @@ it('uses a distinct accessible selection control without nesting buttons', () =>
  expect(html).toContain('checked');
  expect(html).not.toMatch(/<button[^>]*>.*<input/s);
 });
+
+it('disables stale result actions and selection while a new query is pending',()=>{
+ const html=renderToStaticMarkup(<CatalogCards items={[{id:'one',title:'Old result',actors:[],asset_count:1,available_count:1}]} disabled selecting onToggle={()=>{}} onOpen={()=>{}}/>);
+ expect(html).toMatch(/<button[^>]*disabled/);
+ expect(html).toMatch(/<input[^>]*disabled/);
+});
