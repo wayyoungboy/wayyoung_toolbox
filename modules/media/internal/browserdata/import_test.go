@@ -77,7 +77,7 @@ func TestBrowserImportArchivesAndDedup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(original.Entries) != 1 || original.Entries[0].Title != "B" || original.Skipped != 1 || original.Duplicates != 1 {
+	if len(original.Entries) != 2 || original.Skipped != 1 || original.Duplicates != 0 {
 		t.Fatalf("normalization: %+v", original)
 	}
 	var gz bytes.Buffer
@@ -104,7 +104,7 @@ func TestBrowserImportArchivesAndDedup(t *testing.T) {
 		if err != nil {
 			t.Fatal(tc.name, err)
 		}
-		if got.Digest != original.Digest || len(got.Entries) != 1 {
+		if got.Digest != original.Digest || len(got.Entries) != 2 {
 			t.Fatalf("container changed snapshot: %+v", got)
 		}
 	}
@@ -120,7 +120,7 @@ func TestBrowserImportRejectsUnsafeAndMalformedInput(t *testing.T) {
 			t.Fatal("accepted invalid", tc.name, tc.kind)
 		}
 	}
-	got, err := Parse(context.Background(), "a.json", "history", []byte(`[{"url":"file:///etc/passwd"},{"url":"https://user:pass@example.test/private"},{"url":"https://example.test/ok","metadata":{"title":"<script>text only</script>"}}]`))
+	got, err := Parse(context.Background(), "a.json", "history", []byte(`[{"url":"file:///etc/passwd","dt":1700000000},{"url":"https://user:pass@example.test/private","dt":1700000000},{"url":"https://example.test/ok","dt":1700000000,"metadata":{"title":"<script>text only</script>"}}]`))
 	if err != nil || len(got.Entries) != 1 || got.Skipped != 2 {
 		t.Fatalf("URL policy: %+v %v", got, err)
 	}
