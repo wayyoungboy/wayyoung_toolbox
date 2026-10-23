@@ -141,6 +141,8 @@ func TestCatalogHistoryUsesSessionsAndCASAndClearDoesNotEraseResume(t *testing.T
 	if current := catalogDetail(t, s, work.ID); current.Assets[0].Progress.Position != 96 {
 		t.Fatal("clearing history reset resume or video")
 	}
+	catalogJSON[map[string]any](t,s,"PUT",path,map[string]any{"position":10,"duration":100,"revision":3,"session_id":"test-session-rewatch"},200)
+	if rows:=catalogWorks(t,s,"watched=true");len(rows)!=1{t.Fatal("starting a rewatch lost completed state")}
 }
 
 func TestCatalogPersonalMarksAndOrderedPlaylists(t *testing.T) {
@@ -187,5 +189,27 @@ func TestCatalogPersonalMarksAndOrderedPlaylists(t *testing.T) {
 	catalogJSON[map[string]any](t, s, "DELETE", "/api/catalog/lists/"+list.ID, map[string]any{"version": restored.Version}, 200)
 	if len(catalogWorks(t, s, "")) != 2 {
 		t.Fatal("deleting playlist removed movies")
+	}
+}
+
+func TestCatalogIdentityCorrectionTransfersNotesAndLists(t *testing.T) {
+	s := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "_646-C.mp4", "video")
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	old := catalogWorks(t, s, "")[0]
+	catalogJSON[map[string]any](t, s, "PATCH", "/api/catalog/works/"+old.ID+"/personal", map[string]any{"rating": 9, "watched": true, "feedback": "like", "notes_revision": 0}, 200)
+	list := catalogJSON[map[string]any](t, s, "POST", "/api/catalog/lists", map[string]string{"name": "Keep", "description": ""}, 201)
+	catalogJSON[map[string]any](t, s, "PUT", "/api/catalog/lists/"+list["id"].(string)+"/items", map[string]any{"version": list["version"], "work_ids": []string{old.ID}}, 200)
+	catalogWrite(t, root, "_646-C.nfo", `<movie><num>DEMO-646</num><title>Resolved</title></movie>`)
+	catalogScan(t, s, lib)
+	work := catalogWorks(t, s, "")[0]
+	personal := catalogJSON[map[string]any](t, s, "GET", "/api/catalog/works/"+work.ID, nil, 200)
+	if personal["rating"] != float64(9) || personal["watched"] != true || personal["feedback"] != "like" {
+		t.Fatalf("notes lost: %+v", personal)
+	}
+	if items := catalogWorks(t, s, "list_id="+list["id"].(string)); len(items) != 1 || items[0].ID != work.ID {
+		t.Fatalf("list identity lost: %+v", items)
 	}
 }
