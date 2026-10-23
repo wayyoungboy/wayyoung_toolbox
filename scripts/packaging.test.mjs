@@ -28,3 +28,13 @@ test('stop timeout must preserve the pid marker and never force-kill unfinished 
   assert.match(result.stdout, /signal:-TERM/);
   assert.doesNotMatch(result.stdout, /signal:-KILL|removed-pid/);
 });
+
+test('browser decoder licenses are present and staged with the combined binary',()=>{
+ const build=fs.readFileSync(new URL('./build.mjs',import.meta.url),'utf8');
+ for(const decoder of ['xz','lz4','compress']){
+  const relative=`modules/media/licenses/browser-decoders/${decoder}.LICENSE`;
+  const license=fs.readFileSync(new URL(`../${relative}`,import.meta.url),'utf8');
+  assert.match(license,/Redistribution and use in source and binary forms/);
+  assert.ok(build.includes(`browser-decoders/${decoder}.LICENSE`),`missing staging for ${decoder}`);
+ }
+});
