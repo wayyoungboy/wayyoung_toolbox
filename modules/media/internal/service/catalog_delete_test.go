@@ -168,7 +168,9 @@ func TestCatalogDeletionPreservesCustomSharedArtworkForUnscannedNeighbor(t *test
 	root := t.TempDir()
 	catalogWrite(t, root, "DEMO-123.mp4", "video")
 	catalogWrite(t, root, "DEMO-123.nfo", `<movie><title>First</title><art><poster>art/shared.png</poster></art></movie>`)
-	if err:=os.Mkdir(filepath.Join(root,"art"),0700);err!=nil{t.Fatal(err)}
+	if err := os.Mkdir(filepath.Join(root, "art"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	catalogWrite(t, root, "art/shared.png", "image")
 	lib := catalogLibrary(t, s, root)
 	catalogScan(t, s, lib)
@@ -182,11 +184,25 @@ func TestCatalogDeletionPreservesCustomSharedArtworkForUnscannedNeighbor(t *test
 	}
 }
 
-func TestCatalogDeletionDoesNotForgetInterruptedCapture(t *testing.T){
- s:=testService(t);root:=t.TempDir();catalogWrite(t,root,"DEMO-123.mp4","video")
- lib:=catalogLibrary(t,s,root);catalogScan(t,s,lib);ids:=[]string{catalogWorks(t,s,"")[0].ID}
- stage:=filepath.Join(root,".catalog-delete-interrupted");if err:=os.Mkdir(stage,0700);err!=nil{t.Fatal(err)}
- if err:=os.Rename(filepath.Join(root,"DEMO-123.mp4"),filepath.Join(stage,"file"));err!=nil{t.Fatal(err)}
- w:=catalogRequest(t,s,"POST","/api/catalog/deletion/preview",map[string]any{"work_ids":ids})
- if w.Code!=409{t.Fatalf("interrupted capture forgotten: %d %s",w.Code,w.Body.String())}
+func TestCatalogDeletionDoesNotForgetInterruptedCapture(t *testing.T) {
+	s := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "video")
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	ids := []string{catalogWorks(t, s, "")[0].ID}
+	stage := filepath.Join(root, ".catalog-delete-interrupted")
+	if err := os.Mkdir(stage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(root, "DEMO-123.mp4"), filepath.Join(stage, "file")); err != nil {
+		t.Fatal(err)
+	}
+	w := catalogRequest(t, s, "POST", "/api/catalog/deletion/preview", map[string]any{"work_ids": ids})
+	if w.Code != 409 {
+		t.Fatalf("interrupted capture forgotten: %d %s", w.Code, w.Body.String())
+	}
+	catalogScan(t,s,lib)
+	w=catalogRequest(t,s,"POST","/api/catalog/deletion/preview",map[string]any{"work_ids":ids})
+	if w.Code!=409{t.Fatalf("scan bypassed interrupted capture guard: %d %s",w.Code,w.Body.String())}
 }
