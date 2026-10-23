@@ -14,7 +14,7 @@
 
 影片从订阅到媒体库的流程、目录规划和失败恢复方法见 [影片采集流程说明](docs/MEDIA_WORKFLOW.md)。
 
-0.7.3 整合个人媒体中心的观看与管理流程，保留馆藏筛选和分页状态，提供原文件播放、自动兼容与软件转码；兼容播放器支持完整影片定位、暂停/结束回收和有界缓存。演员资料、评分、已看、历史与播放列表，以及 RSS、下载和 JAVSP 流程继续保留。本项目仍为阶段性测试版，并非 Peach 全功能替代版。当前能力、测试方法与限制见 [馆藏与播放说明](docs/MEDIA_CENTER_STATUS.md)，完整目标见 [功能基线与验收范围](docs/MEDIA_CENTER_GOAL.md)。
+0.7.4 在已有馆藏、兼容播放和个人记录上增加默认关闭的本地偏好分析：选择参与的来源、查看推荐理由，以及按稳定身份关注演员。不会联网获取新作，也不读取电脑浏览器。RSS、下载和 JAVSP 流程继续保留。本项目仍为阶段性测试版，并非 Peach 全功能替代版。当前能力、测试方法与限制见 [媒体中心阶段说明](docs/MEDIA_CENTER_STATUS.md)，逐项缺口见 [功能交付对照](docs/MEDIA_CENTER_PARITY.md)，完整目标见 [功能基线与验收范围](docs/MEDIA_CENTER_GOAL.md)。
 
 ## 使用顺序与权限
 
@@ -55,7 +55,7 @@ npm test
 npm run build
 ```
 
-产物为 `dist/wayyoung_toolbox_0.7.3_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
+产物为 `dist/wayyoung_toolbox_0.7.4_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
 
 ```bash
 SKIP_FNPACK=1 npm run build
