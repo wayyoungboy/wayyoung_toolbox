@@ -45,6 +45,7 @@ describe('native information architecture', () => {
     expect(resolveDestination('dashboard')).toEqual({ page: 'dashboard', tab: '' });
     expect(resolveDestination('people')).toEqual({page:'people',tab:''});
     expect(resolveDestination('personal','lists')).toEqual({page:'personal',tab:'lists'});
+    expect(resolveDestination('personal','taste')).toEqual({page:'personal',tab:'taste'});
   });
 
   it('keeps the four acquisition stages inside one pipeline workspace', () => {

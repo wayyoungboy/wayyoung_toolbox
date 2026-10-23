@@ -1,0 +1,21 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {api} from './api';
+afterEach(()=>vi.unstubAllGlobals());
+it('keeps local taste and follows behind explicit CSRF and revision writes',async()=>{
+ const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>url.endsWith('/session')?{csrf:'csrf'}:{}}));vi.stubGlobal('fetch',fetch);
+ const controller=new AbortController();
+ await api.catalogTaste({offset:24,signal:controller.signal});
+ await api.catalogTasteConfig({signal:controller.signal});
+ await api.catalogTasteSave({enabled:true,sources:{collection:true,history:false,feedback:true,follows:false},version:3});
+ await api.catalogTasteReset(4,'清除偏好');
+ await api.catalogActorFollow('actor /?',true,2);
+ await api.catalogActors({following:true});
+ expect(fetch.mock.calls[0][0]).toContain('/catalog/taste?limit=24&offset=24');
+ expect(fetch.mock.calls[0][1].signal).toBe(controller.signal);
+ const writes=fetch.mock.calls.filter(([,options])=>options.method);
+ expect(writes).toHaveLength(3);
+ expect(writes.every(([,options])=>options.headers['X-Catalog-CSRF']==='csrf')).toBe(true);
+ expect(writes[2][0]).toContain('/actors/actor%20%2F%3F/follow');
+ expect(writes[2][1].body).toBe('{"following":true,"version":2}');
+ expect(fetch.mock.calls.at(-1)[0]).toContain('following=true');
+});
