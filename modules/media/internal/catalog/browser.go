@@ -85,16 +85,8 @@ func (s *Store) browserCode(e browserdata.Entry) string {
 	}
 	raw, _ := url.PathUnescape(u.Path)
 	raw += " " + u.Query().Get("v") + " " + u.Query().Get("id")
-	code, pathOK := s.resolveCode(raw)
-	titleCode, titleOK := s.resolveCode(e.Title)
-	if pathOK && titleOK && code != titleCode {
-		return ""
-	}
-	if pathOK {
+	if code, ok := s.resolveCode(raw + " " + e.Title); ok {
 		return code
-	}
-	if titleOK {
-		return titleCode
 	}
 	return ""
 }
