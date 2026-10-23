@@ -1,7 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
+	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -18,6 +21,75 @@ type browserTestSource struct {
 	Records int    `json:"records"`
 	Matched int    `json:"matched"`
 }
+
+func TestCatalogBrowserMigrationKeepsConsentAndIsIdempotent(t *testing.T) {
+	s, _, _ := personalFixture(t)
+	if _, err := s.db.db.Exec(`UPDATE catalog_taste_config SET enabled=1,sources='{"collection":true,"history":false,"feedback":true,"follows":false}',version=7`); err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []int64{8, 8} {
+		store, err := catalog.New(s.db.db, unambiguousMediaID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.db.catalog = store
+		config := catalogJSON[tasteTestConfig](t, s, "GET", "/api/catalog/taste/config", nil, 200)
+		if !config.Enabled || config.Version != version || config.Sources["browser"] || !config.Sources["collection"] || config.Sources["history"] || !config.Sources["feedback"] || config.Sources["follows"] {
+			t.Fatalf("migration changed consent: %+v", config)
+		}
+	}
+}
+
+type gatedBrowserBody struct {
+	data    *bytes.Reader
+	started chan struct{}
+	release chan struct{}
+	first   bool
+}
+
+func (r *gatedBrowserBody) Read(p []byte) (int, error) {
+	if !r.first {
+		r.first = true
+		close(r.started)
+		<-r.release
+	}
+	return r.data.Read(p)
+}
+
+func TestCatalogBrowserDeleteWhileUploadIsReadingCannotResurrectSource(t *testing.T) {
+	s, _, _ := personalFixture(t)
+	body := browserPayload("Concurrent history", "history", `[{"url":"https://www.javbus.com/DEMO-100","dt":1700000000}]`)
+	browserPreview(t, s, body)
+	first := browserCommit(t, s, body)
+	body = browserPayload("Concurrent history", "history", `[{"url":"https://www.javbus.com/DEMO-100","dt":1700000001}]`)
+	body["source_id"] = first.Source.ID
+	body["version"] = first.Source.Version
+	browserPreview(t, s, body)
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gated := &gatedBrowserBody{data: bytes.NewReader(encoded), started: make(chan struct{}), release: make(chan struct{})}
+	request := httptest.NewRequest("POST", "/api/catalog/browser/import", io.NopCloser(gated))
+	request.Header.Set("X-Trim-Isadmin", "true")
+	request.Header.Set("X-Catalog-CSRF", s.catalogCSRF)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() { defer close(done); s.Handler().ServeHTTP(response, request) }()
+	<-gated.started
+	catalogJSON[map[string]bool](t, s, "DELETE", "/api/catalog/browser/sources/"+first.Source.ID, map[string]any{"version": first.Source.Version, "confirmation": "删除来源"}, 200)
+	close(gated.release)
+	<-done
+	if response.Code != 404 {
+		t.Fatalf("in-flight deleted upload: %d", response.Code)
+	}
+	list := catalogJSON[map[string][]browserTestSource](t, s, "GET", "/api/catalog/browser/sources", nil, 200)
+	if len(list["items"]) != 0 {
+		t.Fatal("in-flight upload resurrected source")
+	}
+}
+
 type browserTestResult struct {
 	Source    browserTestSource `json:"source"`
 	Duplicate bool              `json:"duplicate"`
