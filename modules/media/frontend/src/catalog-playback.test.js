@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createProgressSaver, createPlaybackSession, formatPlaybackTime, preferredAsset } from './catalog-playback';
+import { createProgressSaver, createPlaybackSession, formatPlaybackTime, preferredAsset, playbackModeLabel } from './catalog-playback';
+
+it('labels the active playback mode instead of calling a transcoded stream original playback',()=>{
+ expect(playbackModeLabel('direct')).toBe('原文件播放');expect(playbackModeLabel('auto')).toBe('自动兼容播放');expect(playbackModeLabel('software')).toBe('软件转码播放');
+});
 
 describe('playback persistence', () => {
   it('uses a stable session for one player and distinct sessions for reopening',async()=>{
