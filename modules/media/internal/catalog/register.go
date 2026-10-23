@@ -134,9 +134,11 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 		return root, err
 	}
 	type prepared struct {
-		target  RegistrationTarget
-		library Library
-		asset   discoveredAsset
+		target           RegistrationTarget
+		library          Library
+		asset            discoveredAsset
+		previousLibrary  int64
+		previousRelative string
 	}
 	items := make([]prepared, 0, len(targets))
 	directories := map[string]directorySidecars{}
@@ -178,7 +180,8 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 	}
 	// Re-check every exact output after sidecar reads. No library directory IO
 	// happens while holding the SQL transaction or blocking cancellation writes.
-	for _, item := range items {
+	for index := range items {
+		item := &items[index]
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
@@ -191,20 +194,9 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 		if err != nil {
 			return result, err
 		}
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return result, err
-	}
-	defer tx.Rollback()
-	batches := map[int64][]discoveredAsset{}
-	for _, item := range items {
-		asset := item.asset
 		if item.target.PreviousPath != "" && item.target.PreviousPath != item.target.Path {
 			previous, relative, found := registrationRelative(libraries, item.target.PreviousPath)
 			if found {
-				// Only a missing old path and a matching stored fingerprint prove
-				// a move. A still-existing source could be a copy or hard link.
 				root, err := open(previous)
 				if err != nil {
 					return result, err
@@ -212,14 +204,34 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 				if _, err := root.Lstat(relative); !os.IsNotExist(err) {
 					return result, ErrConflict
 				}
-				var oldID string
-				err = tx.QueryRowContext(ctx, "SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND file_identity=? ORDER BY id LIMIT 1", previous.ID, relative, asset.FileIdentity).Scan(&oldID)
+				item.previousLibrary, item.previousRelative = previous.ID, relative
+			}
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return result, err
+	}
+	defer tx.Rollback()
+	batches := map[int64][]discoveredAsset{}
+	moveAssets := map[string]bool{}
+	for _, item := range items {
+		asset := item.asset
+		if item.previousLibrary != 0 {
+			var oldID, destinationID string
+			err = tx.QueryRowContext(ctx, "SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND file_identity=? ORDER BY id LIMIT 1", item.previousLibrary, item.previousRelative, asset.FileIdentity).Scan(&oldID)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return result, err
+			}
+			if oldID != "" {
+				err = tx.QueryRowContext(ctx, "SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND file_identity=? ORDER BY id LIMIT 1", item.library.ID, asset.Path, asset.FileIdentity).Scan(&destinationID)
 				if err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return result, err
 				}
-				if oldID != "" {
-					asset.ID = oldID
+				if moveAssets[oldID] || (destinationID != "" && destinationID != oldID) {
+					return result, ErrConflict
 				}
+				moveAssets[oldID], asset.ID = true, oldID
 			}
 		}
 		batches[item.library.ID] = append(batches[item.library.ID], asset)
@@ -232,6 +244,11 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 		}
 		result.LibraryIDs = append(result.LibraryIDs, libraryID)
 		for _, asset := range assets {
+			// Reconcile generations only for this exact output path; this is not
+			// evidence that any other file in the library has disappeared.
+			if _, err := tx.ExecContext(ctx, "UPDATE catalog_assets SET available=0 WHERE library_id=? AND path=? AND id<>?", libraryID, asset.Path, asset.ID); err != nil {
+				return result, err
+			}
 			result.WorkIDs = append(result.WorkIDs, asset.WorkID)
 		}
 	}
