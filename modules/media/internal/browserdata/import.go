@@ -48,10 +48,11 @@ type Snapshot struct {
 	Digest     string  `json:"digest"`
 }
 type parser struct {
-	ctx      context.Context
-	kind     string
-	snapshot Snapshot
-	expanded int
+	ctx       context.Context
+	kind      string
+	snapshot  Snapshot
+	expanded  int
+	textBytes int
 }
 
 func Parse(ctx context.Context, name, kind string, data []byte) (Snapshot, error) {
@@ -91,12 +92,15 @@ func Parse(ctx context.Context, name, kind string, data []byte) (Snapshot, error
 		a, b := p.snapshot.Entries[i], p.snapshot.Entries[j]
 		return a.URL+"\x00"+a.VisitedAt < b.URL+"\x00"+b.VisitedAt
 	})
-	encoded, err := json.Marshal(p.snapshot.Entries)
-	if err != nil {
-		return Snapshot{}, ErrFormat
+	h := sha256.New()
+	_, _ = h.Write([]byte(kind + "\x00"))
+	encoder := json.NewEncoder(h)
+	for _, entry := range p.snapshot.Entries {
+		if err := encoder.Encode(entry); err != nil {
+			return Snapshot{}, ErrFormat
+		}
 	}
-	h := sha256.Sum256(append([]byte(kind+"\x00"), encoded...))
-	p.snapshot.Digest = hex.EncodeToString(h[:])
+	p.snapshot.Digest = hex.EncodeToString(h.Sum(nil))
 	return p.snapshot, nil
 }
 
@@ -150,6 +154,10 @@ func (p *parser) add(raw, title, at string) error {
 		return nil
 	}
 	if len(title) > maxText || !utf8.ValidString(title) {
+		return ErrLimit
+	}
+	p.textBytes += len(u) + len(title) + len(at) + 64
+	if p.textBytes > 16<<20 {
 		return ErrLimit
 	}
 	title = strings.TrimSpace(strings.Map(func(r rune) rune {
@@ -322,6 +330,9 @@ func (p *parser) json(data []byte, jsonl bool) error {
 	}
 	if history, ok := object["Browser History"]; ok {
 		if p.kind != "history" {
+			return ErrFormat
+		}
+		if !bytes.HasPrefix(bytes.TrimSpace(history), []byte("[")) {
 			return ErrFormat
 		}
 		return p.json(history, false)
