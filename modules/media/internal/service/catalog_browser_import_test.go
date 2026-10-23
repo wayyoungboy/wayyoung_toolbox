@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -87,6 +88,25 @@ func TestCatalogBrowserDeleteWhileUploadIsReadingCannotResurrectSource(t *testin
 	list := catalogJSON[map[string][]browserTestSource](t, s, "GET", "/api/catalog/browser/sources", nil, 200)
 	if len(list["items"]) != 0 {
 		t.Fatal("in-flight upload resurrected source")
+	}
+}
+
+func TestCatalogBrowserBrokenCompressionIsInvalidInputNotServerFailure(t *testing.T) {
+	s, _, _ := personalFixture(t)
+	var b bytes.Buffer
+	w := gzip.NewWriter(&b)
+	w.Write([]byte(`[]`))
+	w.Close()
+	compressed := b.Bytes()
+	body := browserPayload("Broken archive", "history", `[]`)
+	body["filename"] = "history.json.gz"
+	body["data"] = base64.StdEncoding.EncodeToString(compressed[:len(compressed)-2])
+	if response := catalogRequest(t, s, "POST", "/api/catalog/browser/import/preview", body); response.Code != 400 {
+		t.Fatalf("broken upload classified as server failure: %d", response.Code)
+	}
+	list := catalogJSON[map[string][]browserTestSource](t, s, "GET", "/api/catalog/browser/sources", nil, 200)
+	if len(list["items"]) != 0 {
+		t.Fatal("broken compression published data")
 	}
 }
 

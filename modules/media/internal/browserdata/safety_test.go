@@ -230,3 +230,13 @@ func TestBrowserJSONTraversalBudgetAndStableDigest(t *testing.T) {
 		t.Error("streaming digest changed existing source identity")
 	}
 }
+
+func TestBrowserDoesNotPickFirstConflictingIdentifier(t *testing.T) {
+	got, err := Parse(context.Background(), "history.json", "history", []byte(`[{"url":"https://www.javbus.com/?id=DEMO-100&id=DEMO-101","dt":1700000000}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Entries) != 0 || got.Skipped != 1 {
+		t.Fatal("conflicting repeated query identity was silently reduced to the first value")
+	}
+}
