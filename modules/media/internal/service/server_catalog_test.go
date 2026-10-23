@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,40 @@ type catalogTestLibrary struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	Root string `json:"root"`
+}
+
+func TestCatalogSearchesKeywordsAndSupportsExactActorAndTagFilters(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "first")
+	catalogWrite(t, root, "DEMO-123.nfo", `<movie><title>First title</title><originaltitle>Original journey</originaltitle><plot>A quiet mountain valley</plot><studio>Example studio</studio><actor><name>Test Actor</name></actor><genre>Travel</genre></movie>`)
+	catalogWrite(t, root, "DEMO-456.mp4", "second")
+	catalogWrite(t, root, "DEMO-456.nfo", `<movie><title>Second title</title><actor><name>Test Actor Extra</name></actor><genre>City</genre></movie>`)
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	for _, test := range []struct{ parameter, value, code string }{
+		{"query", "Original journey", "DEMO-123"}, {"query", "mountain valley", "DEMO-123"},
+		{"query", "Example studio", "DEMO-123"}, {"query", "Travel", "DEMO-123"},
+		{"actor", "Test Actor", "DEMO-123"}, {"tag", "Travel", "DEMO-123"},
+		{"tag", "City", "DEMO-456"},
+	} {
+		works := catalogWorks(t, service, test.parameter+"="+url.QueryEscape(test.value))
+		if len(works) != 1 || works[0].Code != test.code {
+			t.Errorf("%s=%q: %+v", test.parameter, test.value, works)
+		}
+	}
+	if len(catalogWorks(t, service, "actor=Test+Actor&tag=City")) != 0 {
+		t.Fatal("actor/tag intersection ignored")
+	}
+	if len(catalogWorks(t, service, "actor=Test")) != 0 {
+		t.Fatal("exact actor filter became prefix match")
+	}
+	for _, key := range []string{"actor", "tag"} {
+		response := catalogRequest(t, service, "GET", "/api/catalog/works?"+key+"="+strings.Repeat("x", 501), nil)
+		if response.Code != 400 {
+			t.Fatalf("unbounded %s filter: %d", key, response.Code)
+		}
+	}
 }
 
 func TestCatalogMigratesPreviousSchemaWithoutSilentlyTrustingAnotherRoot(t *testing.T) {

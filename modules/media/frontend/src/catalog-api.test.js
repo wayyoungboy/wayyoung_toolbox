@@ -7,7 +7,7 @@ it('passes catalog filters and abort signals to the real HTTP API', async () => 
   const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [], total: 0 }) });
   vi.stubGlobal('fetch', fetch);
   const controller = new AbortController();
-  await api.catalogWorks({ query: 'test & title', view: 'favorites', libraryID: '3', offset: 48, signal: controller.signal });
+  await api.catalogWorks({ query: 'test & title', actor: 'Test Actor', tag: '测试样本', view: 'favorites', libraryID: '3', offset: 48, signal: controller.signal });
   const [target, options] = fetch.mock.calls[0];
   const url = new URL(target, 'http://localhost');
   expect(url.pathname).toMatch(/\/api\/catalog\/works$/);
@@ -15,6 +15,8 @@ it('passes catalog filters and abort signals to the real HTTP API', async () => 
   expect(url.searchParams.get('favorite')).toBe('true');
   expect(url.searchParams.get('library_id')).toBe('3');
   expect(url.searchParams.get('offset')).toBe('48');
+  expect(url.searchParams.get('actor')).toBe('Test Actor');
+  expect(url.searchParams.get('tag')).toBe('测试样本');
   expect(options.signal).toBe(controller.signal);
 });
 
