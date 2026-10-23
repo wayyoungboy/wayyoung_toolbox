@@ -2,7 +2,9 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -11,13 +13,213 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
 )
 
 type catalogTestLibrary struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	Root string `json:"root"`
+}
+
+func TestCatalogMigratesPreviousSchemaWithoutSilentlyTrustingAnotherRoot(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "video")
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	work := catalogDetail(t, service, catalogWorks(t, service, "")[0].ID)
+	if _, err := service.db.db.Exec("ALTER TABLE catalog_libraries DROP COLUMN root_identity"); err != nil {
+		t.Fatal(err)
+	}
+	store, err := catalog.New(service.db.db, unambiguousMediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.db.catalog = store
+	if _, err := store.Scan(context.Background(), library.ID); !errors.Is(err, catalog.ErrConflict) {
+		t.Fatalf("unpinned migrated root: %v", err)
+	}
+	response := catalogRequest(t, service, "PATCH", fmt.Sprintf("/api/catalog/libraries/%d", library.ID), map[string]any{"root": root})
+	if response.Code != 200 {
+		t.Fatalf("explicit root confirmation: %d %s", response.Code, response.Body.String())
+	}
+	catalogScan(t, service, library)
+	again := catalogDetail(t, service, work.ID)
+	if len(again.Assets) != 1 || again.Assets[0].ID != work.Assets[0].ID {
+		t.Fatalf("migration changed identities: %+v", again)
+	}
+}
+
+func TestCatalogRefusesMultipleIdentifiersInsideOneNFOField(t *testing.T) {
+	for _, identity := range []string{`<num>DEMO-123 OTHER-999</num>`, `<uniqueid type="num">DEMO-123 OTHER-999</uniqueid>`} {
+		t.Run(identity, func(t *testing.T) {
+			service := testService(t)
+			root := t.TempDir()
+			catalogWrite(t, root, "DEMO-123.mp4", "video")
+			catalogWrite(t, root, "DEMO-123.nfo", `<movie>`+identity+`<title>Ambiguous metadata</title></movie>`)
+			library := catalogLibrary(t, service, root)
+			catalogScan(t, service, library)
+			work := catalogWorks(t, service, "")[0]
+			if work.Title == "Ambiguous metadata" {
+				t.Fatalf("ambiguous NFO accepted: %+v", work)
+			}
+		})
+	}
+}
+
+func TestCatalogNFOProblemsDoNotForgetKnownIdentityOrResurrectPersonalFlags(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "_646-C.mp4", "video")
+	catalogWrite(t, root, "_646-C.nfo", `<movie><num>DEMO-646</num><title>Known title</title></movie>`)
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	work := catalogWorks(t, service, "")[0]
+	if response := catalogRequest(t, service, "PATCH", "/api/catalog/works/"+work.ID+"/personal", map[string]bool{"favorite": true}); response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	if err := os.Remove(filepath.Join(root, "_646-C.nfo")); err != nil {
+		t.Fatal(err)
+	}
+	catalogScan(t, service, library)
+	if current := catalogWorks(t, service, "")[0]; current.ID != work.ID || current.Title != "Known title" {
+		t.Fatalf("lost known identity after missing NFO: %+v", current)
+	}
+	catalogWrite(t, root, "_646-C.nfo", `<movie><num>OTHER-646</num><title>Corrected identity</title></movie>`)
+	catalogScan(t, service, library)
+	corrected := catalogWorks(t, service, "")[0]
+	if response := catalogRequest(t, service, "PATCH", "/api/catalog/works/"+corrected.ID+"/personal", map[string]bool{"favorite": false}); response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	catalogWrite(t, root, "_646-C.nfo", `<movie><num>DEMO-646</num><title>Known title</title></movie>`)
+	catalogScan(t, service, library)
+	if favorites := catalogWorks(t, service, "favorite=true"); len(favorites) != 0 {
+		t.Fatalf("resurrected canceled favorite: %+v", favorites)
+	}
+}
+
+func TestCatalogConcurrentProgressUsesOneRevisionAndCanceledScanKeepsInventory(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "0123456789")
+	for _, hidden := range []string{".hidden", "#recycle", "@eaDir"} {
+		if err := os.Mkdir(filepath.Join(root, hidden), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		catalogWrite(t, filepath.Join(root, hidden), "DEMO-999.mp4", "hidden")
+	}
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	works := catalogWorks(t, service, "")
+	if len(works) != 1 {
+		t.Fatalf("hidden directories imported: %+v", works)
+	}
+	asset := catalogDetail(t, service, works[0].ID).Assets[0]
+	start := make(chan struct{})
+	statuses := make(chan int, 2)
+	var wait sync.WaitGroup
+	for index := 0; index < 2; index++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			request := httptest.NewRequest("PUT", "/api/catalog/assets/"+asset.ID+"/progress", strings.NewReader(`{"position":3,"duration":10,"revision":0}`))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("X-Trim-Isadmin", "true")
+			request.Header.Set("X-Catalog-CSRF", service.catalogCSRF)
+			response := httptest.NewRecorder()
+			service.Handler().ServeHTTP(response, request)
+			statuses <- response.Code
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(statuses)
+	counts := map[int]int{}
+	for status := range statuses {
+		counts[status]++
+	}
+	if counts[200] != 1 || counts[409] != 1 {
+		t.Fatalf("concurrent CAS: %v", counts)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.db.catalog.Scan(ctx, library.ID); err == nil {
+		t.Fatal("canceled scan succeeded")
+	}
+	if work := catalogDetail(t, service, works[0].ID); !work.Assets[0].Available {
+		t.Fatal("canceled scan erased inventory")
+	}
+	for _, test := range []struct {
+		method, byteRange string
+		status            int
+	}{{"HEAD", "", 200}, {"GET", "bytes=100-101", 416}} {
+		request := httptest.NewRequest(test.method, "/api/catalog/assets/"+asset.ID+"/stream", nil)
+		request.Header.Set("X-Trim-Isadmin", "true")
+		request.Header.Set("Range", test.byteRange)
+		response := httptest.NewRecorder()
+		service.Handler().ServeHTTP(response, request)
+		if response.Code != test.status {
+			t.Fatalf("%s %s: %d", test.method, test.byteRange, response.Code)
+		}
+		if test.method == "HEAD" && response.Body.Len() != 0 {
+			t.Fatal("HEAD returned media body")
+		}
+	}
+}
+
+func TestCatalogListsLibrariesAndRejectsInvalidSidecarResponses(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "video")
+	catalogWrite(t, root, "DEMO-123.nfo", `<movie><title>Kept title</title><art><poster>../secret.png</poster></art></movie>`)
+	catalogWrite(t, root, "DEMO-123.zh.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nSubtitle\n")
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	response := catalogRequest(t, service, "GET", "/api/catalog/libraries", nil)
+	if response.Code != 200 || !strings.Contains(response.Body.String(), `"asset_count":1`) {
+		t.Fatalf("libraries: %d %s", response.Code, response.Body.String())
+	}
+	work := catalogDetail(t, service, catalogWorks(t, service, "")[0].ID)
+	asset := work.Assets[0]
+	response = catalogRequest(t, service, "GET", "/api/catalog/assets/"+asset.ID+"/poster", nil)
+	if response.Code != 404 {
+		t.Fatalf("unsafe artwork served: %d", response.Code)
+	}
+	for _, test := range []struct {
+		suffix string
+		status int
+	}{{"subtitles/0", 200}, {"subtitles/1", 404}, {"subtitles/-1", 400}} {
+		response = catalogRequest(t, service, "GET", "/api/catalog/assets/"+asset.ID+"/"+test.suffix, nil)
+		if response.Code != test.status {
+			t.Fatalf("%s: %d %s", test.suffix, response.Code, response.Body.String())
+		}
+	}
+	catalogWrite(t, root, "DEMO-123.zh.vtt", "not WebVTT")
+	if response := catalogRequest(t, service, "GET", "/api/catalog/assets/"+asset.ID+"/subtitles/0", nil); response.Code != 400 {
+		t.Fatalf("invalid VTT: %d", response.Code)
+	}
+	for _, target := range []string{"limit=0", "limit=bad", "offset=-1", "library_id=-1", "favorite=bad", "continue=bad", "query=" + strings.Repeat("x", 501)} {
+		if response := catalogRequest(t, service, "GET", "/api/catalog/works?"+target, nil); response.Code != 400 {
+			t.Fatalf("invalid filter %q: %d", target, response.Code)
+		}
+	}
+	if len(catalogWorks(t, service, "query=%25")) != 0 {
+		t.Fatal("literal percent became wildcard")
+	}
+	if len(catalogWorks(t, service, fmt.Sprintf("library_id=%d", library.ID))) != 1 {
+		t.Fatal("library filter missed known asset")
+	}
+	if response := catalogRequest(t, service, "PATCH", "/api/catalog/works/"+work.ID+"/personal", map[string]any{}); response.Code != 400 {
+		t.Fatalf("empty personal patch=%d", response.Code)
+	}
+	if response := catalogRequest(t, service, "PATCH", "/api/catalog/works/"+work.ID, map[string]any{"title": " "}); response.Code != 400 {
+		t.Fatalf("empty title patch=%d", response.Code)
+	}
 }
 
 type catalogTestAsset struct {
