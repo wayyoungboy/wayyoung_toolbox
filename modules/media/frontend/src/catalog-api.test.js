@@ -3,6 +3,15 @@ import { api } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
 
+it('closes an established playback session with a single unload-safe request',async()=>{
+ const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>url.endsWith('/catalog/session')?{csrf:'held-token'}:{id:'playing'}}));
+ vi.stubGlobal('fetch',fetch);
+ await api.playbackStart({asset_id:'asset',mode:'software'});
+ fetch.mockClear();await api.playbackStop('playing');
+ expect(fetch).toHaveBeenCalledTimes(1);
+ const [url,options]=fetch.mock.calls[0];expect(url).toContain('/playback/sessions/playing');expect(options.method).toBe('DELETE');expect(options.keepalive).toBe(true);expect(options.headers['X-Catalog-CSRF']).toBe('held-token');
+});
+
 it('treats an invalid successful deletion response as unknown, not success', async()=>{
  const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>{if(url.endsWith('/session'))return {csrf:'token'};throw new SyntaxError('truncated');}}));
  vi.stubGlobal('fetch',fetch);
