@@ -178,7 +178,7 @@ func scanWork(row rowScanner) (Work, error) {
 
 func (s *Store) Works(ctx context.Context, filter Filter) (Page, error) {
 	result := Page{Items: []Work{}, Limit: filter.Limit, Offset: filter.Offset}
-	if filter.Limit < 1 || filter.Limit > 100 || filter.Offset < 0 || filter.LibraryID < 0 || len(filter.Query) > 500 {
+	if filter.Limit < 1 || filter.Limit > 100 || filter.Offset < 0 || filter.LibraryID < 0 || len(filter.Query) > 500 || len(filter.Actor) > 500 || len(filter.Tag) > 500 {
 		return result, ErrInvalid
 	}
 	conditions := []string{"EXISTS (SELECT 1 FROM catalog_assets a WHERE a.work_id=w.id)"}
@@ -186,8 +186,17 @@ func (s *Store) Works(ctx context.Context, filter Filter) (Page, error) {
 	if filter.Query != "" {
 		literal := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.TrimSpace(filter.Query))
 		like := "%" + literal + "%"
-		conditions = append(conditions, `(w.title LIKE ? ESCAPE '\' OR w.code LIKE ? ESCAPE '\' OR w.actors LIKE ? ESCAPE '\')`)
-		args = append(args, like, like, like)
+		conditions = append(conditions, `(w.title LIKE ? ESCAPE '\' OR w.code LIKE ? ESCAPE '\' OR w.actors LIKE ? ESCAPE '\'
+OR w.genres LIKE ? ESCAPE '\' OR w.original_title LIKE ? ESCAPE '\' OR w.plot LIKE ? ESCAPE '\' OR w.studio LIKE ? ESCAPE '\')`)
+		args = append(args, like, like, like, like, like, like, like)
+	}
+	if actor := strings.TrimSpace(filter.Actor); actor != "" {
+		conditions = append(conditions, `EXISTS (SELECT 1 FROM json_each(w.actors) WHERE value=? COLLATE NOCASE)`)
+		args = append(args, actor)
+	}
+	if tag := strings.TrimSpace(filter.Tag); tag != "" {
+		conditions = append(conditions, `EXISTS (SELECT 1 FROM json_each(w.genres) WHERE value=? COLLATE NOCASE)`)
+		args = append(args, tag)
 	}
 	if filter.LibraryID != 0 {
 		conditions = append(conditions, `EXISTS (SELECT 1 FROM catalog_assets a WHERE a.work_id=w.id AND a.library_id=?)`)

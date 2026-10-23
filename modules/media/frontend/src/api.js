@@ -30,9 +30,11 @@ export const api = {
   catalogAddLibrary: (payload) => catalogMutation('/catalog/libraries', 'POST', payload),
   catalogRelinkLibrary: (id, root) => catalogMutation(`/catalog/libraries/${encodeURIComponent(id)}`, 'PATCH', { root }),
   catalogScan: (id, { signal } = {}) => catalogMutation(`/catalog/libraries/${encodeURIComponent(id)}/scan`, 'POST', {}, { signal }),
-  catalogWorks: ({ query = '', view = 'all', libraryID = '', offset = 0, signal } = {}) => {
+  catalogWorks: ({ query = '', actor = '', tag = '', view = 'all', libraryID = '', offset = 0, signal } = {}) => {
     const parameters = new URLSearchParams({ query, offset: String(offset), limit: '48' });
     if (libraryID) parameters.set('library_id', libraryID);
+    if (actor) parameters.set('actor', actor);
+    if (tag) parameters.set('tag', tag);
     if (view === 'favorites') parameters.set('favorite', 'true');
     if (view === 'continue') parameters.set('continue', 'true');
     return request(`/catalog/works?${parameters}`, { signal });

@@ -15,6 +15,8 @@ export default function Catalog() {
   const [selected, setSelected] = useState('');
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
+  const [actor, setActor] = useState('');
+  const [tag, setTag] = useState('');
   const [view, setView] = useState('all');
   const [libraryID, setLibraryID] = useState('');
   const [offset, setOffset] = useState(0);
@@ -40,19 +42,28 @@ export default function Catalog() {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError('');
-    api.catalogWorks({ query, view, libraryID, offset, signal: controller.signal })
+    api.catalogWorks({ query, actor, tag, view, libraryID, offset, signal: controller.signal })
       .then(result => { if (!controller.signal.aborted) setPage(result); })
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [query, view, libraryID, offset, revision]);
+  }, [query, actor, tag, view, libraryID, offset, revision]);
+  const relatedSearch = ({ actor = '', tag = '' }) => {
+    setSelected(''); setInput(''); setQuery(''); setView('all'); setLibraryID(''); setOffset(0); setActor(actor); setTag(tag);
+  };
 
   return <div className="page catalog-page">
     <header className="page-header"><div><h1>馆藏</h1><p>你的影片、资料与观看记录</p></div><Button onClick={() => setManager(true)}>媒体库管理</Button></header>
     <div className="catalog-toolbar">
       <nav className="catalog-views" aria-label="馆藏筛选">{views.map(([key, label]) => <button type="button" aria-pressed={view === key} className={view === key ? 'selected' : ''} key={key} onClick={() => { setView(key); setOffset(0); }}>{label}</button>)}</nav>
-      <div className="catalog-search"><input type="search" aria-label="搜索馆藏" placeholder="搜索标题、番号或演员" maxLength={500} value={input} onChange={event => setInput(event.target.value)} /></div>
+      <div className="catalog-search"><input type="search" aria-label="搜索馆藏" placeholder="搜索演员、番号、标题或关键词" maxLength={500} value={input} onChange={event => setInput(event.target.value)} /></div>
     </div>
+    {(actor || tag || query) && <div className="catalog-filter-chips" aria-label="当前搜索条件">
+      {actor && <button type="button" onClick={() => { setActor(''); setOffset(0); }}>演员：{actor} ×</button>}
+      {tag && <button type="button" onClick={() => { setTag(''); setOffset(0); }}>标签：{tag} ×</button>}
+      {query && <span>关键词：{query}</span>}
+      <button type="button" className="catalog-text-button" onClick={() => { setActor(''); setTag(''); setInput(''); setQuery(''); setOffset(0); }}>清除搜索条件</button>
+    </div>}
     <div className="catalog-results-heading"><span>{loading ? '正在读取馆藏…' : `${page.total} 部作品`}</span><label>媒体库<select aria-label="筛选媒体库" value={libraryID} onChange={event => { setLibraryID(event.target.value); setOffset(0); }}><option value="">全部媒体库</option>{libraries.map(library => <option key={library.id} value={library.id}>{library.name}</option>)}</select></label></div>
     {error && <div className="catalog-alert" role="alert">{error} <button className="catalog-text-button" type="button" onClick={refresh}>重试</button></div>}
     <section aria-label="馆藏作品" aria-busy={loading}>
@@ -62,6 +73,6 @@ export default function Catalog() {
     </section>
     {page.total > 48 && <nav className="catalog-pagination" aria-label="馆藏分页"><Button disabled={loading || offset === 0} onClick={() => setOffset(value => Math.max(0, value - 48))}>上一页</Button><span>{Math.floor(offset / 48) + 1} / {Math.ceil(page.total / 48)}</span><Button disabled={loading || offset + 48 >= page.total} onClick={() => setOffset(value => value + 48)}>下一页</Button></nav>}
     {manager && <CatalogLibraryManager libraries={libraries} completedRoot={completedRoot} onChanged={libraryChanged} onClose={() => setManager(false)} />}
-    {selected && <CatalogDetails key={selected} id={selected} onClose={() => setSelected('')} onChanged={refresh} />}
+    {selected && <CatalogDetails key={selected} id={selected} onClose={() => setSelected('')} onChanged={refresh} onSearch={relatedSearch} />}
   </div>;
 }

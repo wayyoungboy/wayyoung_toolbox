@@ -5,6 +5,7 @@ import { api } from '../api';
 import { formatPlaybackTime, preferredAsset } from '../catalog-playback';
 import { CatalogPoster } from './CatalogCards';
 import CatalogPlayer from './CatalogPlayer';
+import CatalogMetadata from './CatalogMetadata';
 
 const issueLabels = {
   identity_unknown: '番号待确认，不会猜测缺失前缀', identity_conflict: '文件名与 NFO 番号冲突',
@@ -13,7 +14,7 @@ const issueLabels = {
   identity_retained: '本地资料暂不可用，沿用此文件上次已确认的番号与资料',
 };
 
-export default function CatalogDetails({ id, onClose, onChanged }) {
+export default function CatalogDetails({ id, onClose, onChanged, onSearch }) {
   const [work, setWork] = useState(null);
   const [selectedID, setSelectedID] = useState('');
   const [playing, setPlaying] = useState(null);
@@ -56,13 +57,7 @@ export default function CatalogDetails({ id, onClose, onChanged }) {
               <div className="catalog-actions"><Button htmlType="submit" theme="solid" disabled={busy || !title.trim()}>保存标题</Button><Button disabled={busy} onClick={() => { setTitle(work.title); setEditing(false); }}>取消</Button></div>
               <small>手工标题优先保留。仅修改本应用馆藏，不改写原视频和 NFO。</small>
             </form> : <button type="button" className="catalog-text-button" onClick={() => setEditing(true)}>修正标题{work.title_locked ? ' · 已人工锁定' : ''}</button>}
-            <dl className="catalog-metadata">
-              <div><dt>演员</dt><dd>{work.actors?.join('、') || '暂无演员资料'}</dd></div>
-              {work.studio && <div><dt>厂牌</dt><dd>{work.studio}</dd></div>}
-              {work.release_date && <div><dt>发行</dt><dd>{work.release_date}</dd></div>}
-              <div><dt>资料来源</dt><dd>{work.metadata_source === 'local_nfo' ? '本地 NFO' : '文件名，等待补充资料'}</dd></div>
-            </dl>
-            {work.genres?.length > 0 && <div className="catalog-tags">{work.genres.map(genre => <span key={genre}>{genre}</span>)}</div>}
+            <CatalogMetadata work={work} onSearch={onSearch} />
             <div className="catalog-actions">
               <Button aria-pressed={work.favorite} disabled={busy} onClick={() => update(() => api.catalogPersonal(id, { favorite: !work.favorite }))}>{work.favorite ? '♥ 已收藏' : '♡ 收藏'}</Button>
               <Button aria-pressed={work.watch_later} disabled={busy} onClick={() => update(() => api.catalogPersonal(id, { watch_later: !work.watch_later }))}>{work.watch_later ? '已加入稍后观看' : '稍后观看'}</Button>

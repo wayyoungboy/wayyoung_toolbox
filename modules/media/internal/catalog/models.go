@@ -81,6 +81,8 @@ type Work struct {
 }
 
 type Filter struct {
+	Actor     string
+	Tag       string
 	Query     string
 	LibraryID int64
 	Favorite  bool

@@ -198,7 +198,7 @@ func (s *Service) handleCatalogRelink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleCatalogWorks(w http.ResponseWriter, r *http.Request) {
-	filter := catalog.Filter{Query: r.URL.Query().Get("query"), Limit: 48}
+	filter := catalog.Filter{Query: r.URL.Query().Get("query"), Actor: r.URL.Query().Get("actor"), Tag: r.URL.Query().Get("tag"), Limit: 48}
 	for key, destination := range map[string]*int{"limit": &filter.Limit, "offset": &filter.Offset} {
 		if value := r.URL.Query().Get(key); value != "" {
 			parsed, err := strconv.Atoi(value)

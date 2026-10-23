@@ -83,3 +83,7 @@
   .catalog-library-row { align-items: start; flex-direction: column; }
   .catalog-results-heading select { max-width: 140px; }
 }
+.catalog-actor-links, .catalog-filter-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.catalog-filter-chips { margin: 0 0 18px; color: var(--subtle-text); font-size: 13px; }
+.catalog-filter-chips > button:not(.catalog-text-button), .catalog-tags > button { border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; background: #fff; color: inherit; cursor: pointer; }
+.catalog-tags > button:hover, .catalog-filter-chips > button:hover { color: #1677ff; border-color: #1677ff; }
