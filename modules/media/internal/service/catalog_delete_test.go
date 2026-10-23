@@ -2,8 +2,11 @@ package service
 
 import (
 	"encoding/json"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -120,5 +123,42 @@ func TestCatalogDeletionNeedsAdministratorAndCSRF(t *testing.T) {
 		if w.Code != 403 {
 			t.Fatalf("no admin: %d", w.Code)
 		}
+	}
+}
+
+func TestCatalogDeletionKeepsFolderCoverForUnscannedNeighborAndRespectsRecoveryHold(t *testing.T) {
+	s := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "video")
+	// A valid local poster is registered before another movie is added.
+	file, err := os.Create(filepath.Join(root, "folder.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(file, image.NewRGBA(image.Rect(0, 0, 4, 6))); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	ids := []string{catalogWorks(t, s, "")[0].ID}
+	catalogWrite(t, root, "OTHER-999.mp4", "unscanned neighbor")
+	plan := deletePreview(t, s, ids)
+	raw, _ := json.Marshal(plan["files"])
+	if strings.Contains(string(raw), "folder.png") {
+		t.Fatal("shared folder poster included")
+	}
+	job := enqueueQueueTestJob(t, s.db, "recovery-held")
+	if _, err := s.db.db.Exec(`UPDATE media_jobs SET payload=json_set(payload,'$.hold_files',json('true')) WHERE id=?`, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	w := catalogRequest(t, s, "POST", "/api/catalog/deletion/execute", map[string]any{"work_ids": ids, "token": plan["token"], "confirmation": "永久删除"})
+	if w.Code != 409 {
+		t.Fatalf("recovery hold ignored: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "DEMO-123.mp4")); err != nil {
+		t.Fatal("held video removed")
 	}
 }

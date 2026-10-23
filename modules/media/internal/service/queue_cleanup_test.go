@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -47,6 +48,56 @@ func TestQueueCleanupArchivesOnlyConfirmedInactiveVersions(t *testing.T) {
 	events, err := s.db.MediaJobEvents(failed.ID)
 	if err != nil || len(events) < 2 || events[len(events)-1].Reason != "archived" {
 		t.Fatalf("archive not auditable: %+v %v", events, err)
+	}
+}
+
+func TestQueueCleanupStopsAutomaticRSSReconciliation(t *testing.T) {
+	f := newRSSExecutionFixture(t)
+	f.failLookupAfterAdd.Store(true)
+	job, _ := f.run(t)
+	if job.Status != "needs_attention" {
+		t.Fatalf("fixture: %+v", job)
+	}
+	payload := map[string]any{"jobs": []map[string]int64{{"id": job.ID, "version": job.Version}}}
+	if w := catalogRequest(t, f.s, "POST", "/api/queue/cleanup", payload); w.Code != 200 {
+		t.Fatalf("cleanup: %d", w.Code)
+	}
+	before := f.queries.Load()
+	if err := f.s.reconcileRSSSubmissions(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if before != f.queries.Load() {
+		t.Fatal("archived task still makes qB requests")
+	}
+}
+
+func TestQueueCleanupCandidatesAreAgeBoundedAndExcludeHeldAndActive(t *testing.T) {
+	s := testService(t)
+	for _, scenario := range []string{"old", "recent", "held", "active"} {
+		job := enqueueQueueTestJob(t, s.db, scenario)
+		if scenario != "active" {
+			if _, err := s.db.db.Exec(`UPDATE media_jobs SET status='failed' WHERE id=?`, job.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if scenario != "recent" {
+			if _, err := s.db.db.Exec(`UPDATE media_jobs SET updated_at='2020-01-01T00:00:00Z' WHERE id=?`, job.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if scenario == "held" {
+			if _, err := s.db.db.Exec(`UPDATE media_jobs SET payload=json_set(payload,'$.hold_files',json('true')) WHERE id=?`, job.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	w := catalogRequest(t, s, "GET", "/api/queue/cleanup?older_days=30", nil)
+	var page MediaQueuePage
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || page.Total != 1 || len(page.Jobs) != 1 || page.Jobs[0].Key != "old" {
+		t.Fatalf("candidates: %d %+v", w.Code, page)
 	}
 }
 
