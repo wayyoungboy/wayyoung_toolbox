@@ -35,6 +35,11 @@ async function playbackSessionMutation(id,action,payload){
 }
 
 export const api = {
+  catalogTaste: ({offset=0,signal}={})=>request(`/catalog/taste?${new URLSearchParams({limit:'24',offset:String(offset)})}`,{signal}),
+  catalogTasteConfig: ({signal}={})=>request('/catalog/taste/config',{signal}),
+  catalogTasteSave: payload=>catalogMutation('/catalog/taste/config','PUT',payload),
+  catalogTasteReset: (version,confirmation)=>catalogMutation('/catalog/taste/reset','POST',{version,confirmation}),
+  catalogActorFollow: (id,following,version)=>catalogMutation(`/catalog/actors/${encodeURIComponent(id)}/follow`,'PUT',{following,version}),
   prepareCatalogSession,
   playbackInfo: (id,{signal}={})=>request(`/catalog/assets/${encodeURIComponent(id)}/info`,{signal}),
   playbackResources: ()=>request('/playback/resources'),
@@ -47,7 +52,7 @@ export const api = {
   },
   playbackStop: id=>playbackSessionMutation(id,'',{}),
   playbackPulse: (id,paused)=>playbackSessionMutation(id,'/heartbeat',{paused}),
-  catalogActors: ({ query='', offset=0, signal }={}) => request(`/catalog/actors?${new URLSearchParams({query,offset:String(offset),limit:'48'})}`,{signal}),
+  catalogActors: ({ query='', offset=0, following=false, signal }={}) => request(`/catalog/actors?${new URLSearchParams({query,offset:String(offset),limit:'48',following:String(following)})}`,{signal}),
   catalogActor: (id,{signal}={}) => request(`/catalog/actors/${encodeURIComponent(id)}`,{signal}),
   catalogActorPatch: (id,payload) => catalogMutation(`/catalog/actors/${encodeURIComponent(id)}`,'PATCH',payload),
   catalogActorPortrait: (id,payload) => catalogMutation(`/catalog/actors/${encodeURIComponent(id)}/portrait`,'PUT',payload),

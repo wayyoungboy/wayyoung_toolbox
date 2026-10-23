@@ -36,7 +36,8 @@ function ActorProfile({id,onNavigate}){
     <div><p className="catalog-help">演员 · {actor.work_count} 部馆藏作品</p><h1>{actor.display_name}</h1>{actor.display_name!==actor.name&&<p className="catalog-help">原始名称：{actor.name}</p>}
      {actor.aliases.length>0&&<p className="catalog-help">别名：{actor.aliases.join('、')}</p>}
      <p className="actor-biography">{actor.biography||'暂无人物简介，可以补充本地资料。'}</p>
-     <div className="catalog-actions"><Button disabled={busy} onClick={()=>{setEditing(true);setForm({display_name:actor.display_name,biography:actor.biography,aliases:actor.aliases.join('\n')});}}>编辑人物资料</Button><Button onClick={()=>onNavigate('catalog','',null,{actor_name:actor.name})}>在馆藏中查看</Button></div>
+     <div className="catalog-actions"><Button disabled={busy} onClick={()=>{setEditing(true);setForm({display_name:actor.display_name,biography:actor.biography,aliases:actor.aliases.join('\n')});}}>编辑人物资料</Button><Button onClick={()=>onNavigate('catalog','',null,{actor_name:actor.name})}>在馆藏中查看</Button><Button disabled={busy} onClick={()=>mutate(()=>api.catalogActorFollow(id,!actor.following,actor.follow_version),actor.following?'已取消本地关注':'已本地关注人物')}>{actor.following?'取消本地关注':'本地关注演员'}</Button></div>
+     <p className="catalog-help">本地关注可参与偏好分析，不会联网订阅新作。<button className="catalog-text-button" type="button" onClick={()=>onNavigate('personal','taste')}>查看偏好与推荐</button></p>
      <div className="actor-image-actions"><label>上传人物头像<input type="file" aria-label="上传人物头像" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={upload}/></label>{actor.has_portrait&&<button type="button" className="catalog-text-button" disabled={busy} onClick={()=>{if(window.confirm('移除本应用保存的人物头像？不删除媒体目录中的文件。'))mutate(()=>api.catalogActorPortraitDelete(id,actor.version),'人物头像已移除');}}>移除头像</button>}<small>JPEG / PNG / WebP，最多 3 MiB；仅保存到本应用。</small></div>
     </div>
    </header>
@@ -56,13 +57,14 @@ function ActorProfile({id,onNavigate}){
 }
 
 export default function People({actorID,onNavigate}){
- const [query,setQuery]=useState(''),[offset,setOffset]=useState(0);
- const load=useCallback(signal=>api.catalogActors({query,offset,signal}),[query,offset]);
+ const [query,setQuery]=useState(''),[offset,setOffset]=useState(0),[following,setFollowing]=useState(false);
+ const load=useCallback(signal=>api.catalogActors({query,offset,following,signal}),[query,offset,following]);
  const {data,loading,error,refresh}=useRemoteResource(load);
  if(actorID)return <section className="page catalog-page people-page"><ActorProfile key={actorID} id={actorID} onNavigate={onNavigate}/></section>;
  return <section className="page catalog-page people-page">
   <header className="page-header"><div><h1>人物</h1><p>按演员浏览馆藏，保存本地人物资料与头像</p></div><input className="personal-search" type="search" aria-label="搜索人物" placeholder="搜索名字或别名" maxLength={500} value={query} onChange={event=>{setQuery(event.target.value);setOffset(0);}}/></header>
   {error&&<p className="catalog-alert" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
+  <div className="catalog-actions"><button className="catalog-text-button" type="button" aria-pressed={!following} onClick={()=>{setFollowing(false);setOffset(0);}}>全部人物</button><button className="catalog-text-button" type="button" aria-pressed={following} onClick={()=>{setFollowing(true);setOffset(0);}}>本地已关注</button><button className="catalog-text-button" type="button" onClick={()=>onNavigate('personal','taste')}>偏好与推荐</button></div>
   <p className="catalog-help">{loading?'正在读取人物…':`${data?.total||0} 位演员`}</p>
   <div className="people-grid">{(data?.items||[]).map(actor=><button key={actor.id} type="button" className="person-card" aria-label={`查看演员：${actor.display_name}`} onClick={()=>onNavigate('people','',null,{actor:actor.id})}><ActorPortrait key={`${actor.id}:${actor.portrait_revision}`} actor={actor}/><strong>{actor.display_name}</strong><span>{actor.work_count} 部馆藏作品</span></button>)}</div>
   {!loading&&!error&&data?.total===0&&<p className="catalog-help">没有匹配的人物。扫描含演员资料的本地 NFO 后会建立人物索引，不会猜测缺失资料。</p>}
