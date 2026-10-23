@@ -269,6 +269,10 @@ try {
     await page.locator('video').evaluate(video=>video.pause());
     await check(async()=>await page.evaluate(async id=>(await (await fetch(`api/playback/sessions/${id}`)).json()).paused,first.id),'pause did not suspend encoder');
     await screenshot('desktop-compatible-playback');
+    await page.setViewportSize({width:390,height:844});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'mobile compatible player overflow');
+    await screenshot('mobile-compatible-playback');
+    await page.setViewportSize({width:1440,height:1000});
     await page.getByRole('slider',{name:'完整影片进度'}).evaluate(element=>{
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(element,'8');
       element.dispatchEvent(new Event('input',{bubbles:true}));
@@ -290,6 +294,20 @@ try {
     await page.getByLabel('播放方式',{exact:true}).selectOption('software');await reloadSession;
     await page.reload();
     await check(async()=>await page.evaluate(async()=>(await (await fetch('api/playback/resources')).json()).active===0),'reload did not delete established session');
+    await page.getByRole('button',{name:'继续播放',exact:true}).click();
+    await page.getByLabel('播放方式',{exact:true}).selectOption('software');
+    await page.getByText('播放结束，转码会话已回收。',{exact:false}).waitFor({timeout:25000});
+    assert.equal(await page.evaluate(async()=>(await(await fetch('api/playback/resources')).json()).active),0,'natural end retained session');
+    await page.getByRole('button',{name:'从头重新播放',exact:true}).click();
+    await check(()=>page.locator('video').evaluate(video=>video.currentTime>1.2),'restart failed');
+    const fatalPosition=await page.locator('video').evaluate(video=>video.currentTime);
+    await page.locator('video').evaluate(video=>video.dispatchEvent(new Event('error')));
+    await page.getByText('当前兼容流无法播放，会话已停止，请切换播放方式后重试。',{exact:true}).waitFor();
+    await check(async()=>await page.evaluate(async()=>(await(await fetch('api/playback/resources')).json()).active===0),'fatal event retained session');
+    assert.equal(await page.locator('video').getAttribute('src'),null,'fatal event retained MediaSource');
+    const workID=new URL(page.url()).searchParams.get('work');
+    await check(async()=>await page.evaluate(async({id,position})=>(await(await fetch('api/catalog/works/'+id)).json()).assets[0].progress.position>=position-.3,{id:workID,position:fatalPosition}),'fatal event lost last progress');
+    await page.getByRole('dialog',{name:'午后时光',exact:true}).getByRole('button',{name:'close',exact:true}).click();
     await page.getByRole('dialog',{name:'作品详情',exact:true}).getByRole('button',{name:'close',exact:true}).click();
   }
   assert.deepEqual(errors, [], 'browser runtime errors');
