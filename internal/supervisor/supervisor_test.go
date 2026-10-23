@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -79,6 +80,48 @@ func TestDefaultDefinitionsUseUnifiedInProcessRoutes(t *testing.T) {
 		if definition.Prefix != want {
 			t.Fatalf("module %s prefix=%q want=%q", definition.ID, definition.Prefix, want)
 		}
+	}
+}
+
+func TestMediaDefinitionVersionMatchesRunningHealth(t *testing.T) {
+	app, data := t.TempDir(), t.TempDir()
+	var definition Definition
+	for _, candidate := range DefaultDefinitions(app) {
+		if candidate.ID == "media" {
+			definition = candidate
+		}
+	}
+	if definition.ID == "" {
+		t.Fatal("media definition missing")
+	}
+	manager, err := New(app, data, []Definition{definition})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.Start(context.Background())
+	t.Cleanup(manager.Close)
+	if err := manager.SetEnabled("media", true, ""); err != nil {
+		t.Fatal(err)
+	}
+	_, handler, err := manager.Route("media")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, definition.Prefix+"/api/health", nil)
+	request.Header.Set("X-Trim-Isadmin", "true")
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("health status=%d body=%s", response.Code, response.Body.String())
+	}
+	var health struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &health); err != nil {
+		t.Fatal(err)
+	}
+	if definition.Version != health.Version || health.Version == "" {
+		t.Fatalf("media module list version %q differs from running health %q", definition.Version, health.Version)
 	}
 }
 
