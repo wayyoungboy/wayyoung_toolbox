@@ -102,6 +102,80 @@ func TestCatalogNFOProblemsDoNotForgetKnownIdentityOrResurrectPersonalFlags(t *t
 	}
 }
 
+func TestCatalogRelinkRequiresScanAndRetainsProgress(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "video")
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	work := catalogDetail(t, service, catalogWorks(t, service, "")[0].ID)
+	asset := work.Assets[0]
+	if response := catalogRequest(t, service, "PUT", "/api/catalog/assets/"+asset.ID+"/progress", map[string]any{"position": 20, "duration": 100, "revision": 0}); response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	path := fmt.Sprintf("/api/catalog/libraries/%d", library.ID)
+	if response := catalogRequest(t, service, "PATCH", path, map[string]string{"root": "/"}); response.Code != 400 {
+		t.Fatalf("unsafe relink: %d", response.Code)
+	}
+	otherRoot := t.TempDir()
+	other := catalogLibrary(t, service, otherRoot)
+	if response := catalogRequest(t, service, "PATCH", fmt.Sprintf("/api/catalog/libraries/%d", other.ID), map[string]string{"root": root}); response.Code != 409 {
+		t.Fatalf("duplicate relink: %d", response.Code)
+	}
+	catalogWrite(t, otherRoot, "DEMO-123.mp4", "video")
+	if response := catalogRequest(t, service, "PATCH", path, map[string]string{"root": root}); response.Code != 200 {
+		t.Fatalf("confirm root: %d", response.Code)
+	}
+	if response := catalogRequest(t, service, "GET", "/api/catalog/assets/"+asset.ID+"/stream", nil); response.Code != 409 {
+		t.Fatalf("relink served unscanned files: %d", response.Code)
+	}
+	catalogScan(t, service, library)
+	if again := catalogDetail(t, service, work.ID); again.Assets[0].Progress.Position != 20 || !again.Assets[0].Available {
+		t.Fatalf("relink lost state: %+v", again)
+	}
+}
+
+func TestCatalogMergeKeepsDestinationManualTitleAndReportsConflict(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "known")
+	catalogWrite(t, root, "DEMO-123.nfo", `<movie><title>Known title</title></movie>`)
+	catalogWrite(t, root, "_646-C.mp4", "unknown")
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	var known, unknown catalogTestWork
+	for _, work := range catalogWorks(t, service, "") {
+		if work.Code != "" {
+			known = work
+		} else {
+			unknown = work
+		}
+	}
+	for id, title := range map[string]string{known.ID: "Destination manual title", unknown.ID: "Incoming manual title"} {
+		if response := catalogRequest(t, service, "PATCH", "/api/catalog/works/"+id, map[string]string{"title": title}); response.Code != 200 {
+			t.Fatal(response.Body.String())
+		}
+	}
+	catalogWrite(t, root, "_646-C.nfo", `<movie><num>DEMO-123</num><title>Known title</title></movie>`)
+	response := catalogRequest(t, service, "POST", fmt.Sprintf("/api/catalog/libraries/%d/scan", library.ID), map[string]any{})
+	var result struct {
+		Issues int `json:"issue_count"`
+	}
+	decodeResponseJSON(t, response, &result)
+	if response.Code != 200 || result.Issues != 2 {
+		t.Fatalf("scan did not report both manual conflicts: %d %s", response.Code, response.Body.String())
+	}
+	merged := catalogDetail(t, service, known.ID)
+	if merged.Title != "Destination manual title" || len(merged.Assets) != 2 {
+		t.Fatalf("lost destination title: %+v", merged)
+	}
+	for _, asset := range merged.Assets {
+		if !strings.Contains(strings.Join(asset.Issues, ","), "manual_title_conflict") {
+			t.Fatalf("missing conflict: %+v", asset)
+		}
+	}
+}
+
 func TestCatalogConcurrentProgressUsesOneRevisionAndCanceledScanKeepsInventory(t *testing.T) {
 	service := testService(t)
 	root := t.TempDir()
