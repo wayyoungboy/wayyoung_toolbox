@@ -43,6 +43,7 @@ type Service struct {
 	prefix             string
 	localDev           bool
 	catalogCSRF        string
+	browserImportMu    sync.Mutex
 	dataDir            string
 	playbackMu         sync.Mutex
 	playback           *playback.Manager

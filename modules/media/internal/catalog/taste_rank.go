@@ -127,6 +127,17 @@ func rankTaste(ctx context.Context, works []tasteWork, followed []Actor, sources
 		if w.Watched {
 			exclude[w.ID] = true
 		}
+		if sources["browser"] {
+			if item.BrowserHistory {
+				weights["browser"] += .5
+			}
+			if item.BrowserBookmark {
+				weights["browser"] += 1.5
+			}
+			if weights["browser"] > 0 {
+				exclude[w.ID] = true
+			}
+		}
 		for _, source := range tasteSourceLabels {
 			weight := weights[source.key]
 			if weight <= 0 {

@@ -12,6 +12,7 @@ import (
 
 func (s *Service) registerCatalogPersonalRoutes(mux *http.ServeMux) {
 	s.registerCatalogTasteRoutes(mux)
+	s.registerBrowserRoutes(mux)
 	mux.HandleFunc("GET /api/catalog/actors", s.handleCatalogActors)
 	mux.HandleFunc("GET /api/catalog/actors/{id}", s.handleCatalogActor)
 	mux.HandleFunc("PATCH /api/catalog/actors/{id}", s.catalogSameOrigin(s.handleCatalogActorPatch))

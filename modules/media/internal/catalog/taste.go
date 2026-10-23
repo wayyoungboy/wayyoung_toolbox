@@ -55,6 +55,7 @@ type TasteReport struct {
 
 var tasteSourceLabels = []struct{ key, label string }{
 	{"collection", "馆藏与收藏"}, {"history", "播放记录"}, {"feedback", "评分与反馈"}, {"follows", "本地演员关注"},
+	{"browser", "已导入浏览器资料"},
 }
 
 func initializeTaste(tx *sql.Tx) error {
@@ -63,12 +64,16 @@ func initializeTaste(tx *sql.Tx) error {
  sources TEXT NOT NULL CHECK(json_valid(sources)),version INTEGER NOT NULL DEFAULT 1
 );
 INSERT OR IGNORE INTO catalog_taste_config(id,enabled,sources,version)
- VALUES(1,0,'{"collection":true,"history":true,"feedback":true,"follows":true}',1);
+ VALUES(1,0,'{"collection":true,"history":true,"feedback":true,"follows":true,"browser":false}',1);
+UPDATE catalog_taste_config SET sources=json_set(sources,'$.browser',json('false')),version=version+1 WHERE json_type(sources,'$.browser') IS NULL;
 CREATE TABLE IF NOT EXISTS catalog_actor_follows(
  actor_id TEXT PRIMARY KEY REFERENCES catalog_actors(id) ON DELETE CASCADE,
  following INTEGER NOT NULL CHECK(following IN (0,1)),version INTEGER NOT NULL,updated_at TEXT NOT NULL
 );`)
-	return err
+	if err != nil {
+		return err
+	}
+	return initializeBrowser(tx)
 }
 
 func readTasteConfig(ctx context.Context, db interface {
@@ -183,9 +188,11 @@ func (s *Store) SetActorFollow(ctx context.Context, id string, following bool, v
 }
 
 type tasteWork struct {
-	Work    Work
-	Actors  []Actor
-	History int
+	Work            Work
+	Actors          []Actor
+	History         int
+	BrowserHistory  bool
+	BrowserBookmark bool
 }
 
 func (s *Store) Taste(ctx context.Context, limit, offset int) (TasteReport, error) {
@@ -213,8 +220,12 @@ func (s *Store) Taste(ctx context.Context, limit, offset int) (TasteReport, erro
  (SELECT COUNT(*) FROM catalog_actor_follows WHERE following=1)`).Scan(&collection, &historyRecords, &historyWorks, &feedback, &follows); err != nil {
 		return report, err
 	}
-	counts := []int{collection, historyRecords, feedback, follows}
-	works := []int{collection, historyWorks, feedback, 0}
+	var browserRecords, browserWorks int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*),COUNT(DISTINCT CASE WHEN e.code<>'' AND EXISTS(SELECT 1 FROM catalog_works w WHERE w.code=e.code) THEN e.code END) FROM catalog_browser_entries e`).Scan(&browserRecords, &browserWorks); err != nil {
+		return report, err
+	}
+	counts := []int{collection, historyRecords, feedback, follows, browserRecords}
+	works := []int{collection, historyWorks, feedback, 0, browserWorks}
 	for i, source := range tasteSourceLabels {
 		report.Sources = append(report.Sources, TasteSource{Key: source.key, Label: source.label, Enabled: report.Config.Enabled && report.Config.Sources[source.key], Records: counts[i], Works: works[i]})
 	}
@@ -304,6 +315,28 @@ func loadTasteWorks(ctx context.Context, tx *sql.Tx) ([]tasteWork, error) {
 		}
 		if i, ok := index[id]; ok {
 			all[i].History = count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	rows, err = tx.QueryContext(ctx, `SELECT w.id,MAX(s.kind='history'),MAX(s.kind='bookmarks') FROM catalog_browser_entries e JOIN catalog_browser_sources s ON s.id=e.source_id JOIN catalog_works w ON w.code=e.code WHERE e.code<>'' GROUP BY w.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var history, bookmark bool
+		if err := rows.Scan(&id, &history, &bookmark); err != nil {
+			return nil, err
+		}
+		if i, ok := index[id]; ok {
+			all[i].BrowserHistory = history
+			all[i].BrowserBookmark = bookmark
 		}
 	}
 	return all, rows.Err()
