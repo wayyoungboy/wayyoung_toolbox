@@ -291,10 +291,11 @@ try {
     await check(async()=>await page.evaluate(async()=>(await (await fetch('api/playback/resources')).json()).active===0),'close leaked playback process');
     await page.getByRole('button',{name:'继续播放',exact:true}).click();
     const reloadSession=page.waitForResponse(response=>response.url().endsWith('/playback/sessions')&&response.request().method()==='POST');
-    await page.getByLabel('播放方式',{exact:true}).selectOption('software');await reloadSession;
+    await page.getByLabel('播放方式',{exact:true}).selectOption('software');
+    const resumed=await(await reloadSession).json();assert(resumed.offset+resumed.seek>=8,'switching before original metadata loads must preserve saved position');
     await page.reload();
     await check(async()=>await page.evaluate(async()=>(await (await fetch('api/playback/resources')).json()).active===0),'reload did not delete established session');
-    await page.getByRole('button',{name:'继续播放',exact:true}).click();
+    await page.getByRole('button',{name:/^(播放|继续播放)$/}).click();
     await page.getByLabel('播放方式',{exact:true}).selectOption('software');
     await page.getByText('播放结束，转码会话已回收。',{exact:false}).waitFor({timeout:25000});
     assert.equal(await page.evaluate(async()=>(await(await fetch('api/playback/resources')).json()).active),0,'natural end retained session');

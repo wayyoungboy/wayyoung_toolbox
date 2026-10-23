@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createProgressSaver, createPlaybackSession, formatPlaybackTime, preferredAsset, playbackModeLabel } from './catalog-playback';
+import { createProgressSaver, createPlaybackSession, formatPlaybackTime, preferredAsset, playbackModeLabel, loadedPlaybackProgress } from './catalog-playback';
+
+it('does not replace a resume position with zero before original metadata loads',()=>{
+ expect(loadedPlaybackProgress({readyState:0,currentTime:0,duration:NaN})).toBeNull();
+ expect(loadedPlaybackProgress({readyState:1,currentTime:8,duration:15})).toEqual({position:8,duration:15});
+});
 
 it('labels the active playback mode instead of calling a transcoded stream original playback',()=>{
  expect(playbackModeLabel('direct')).toBe('原文件播放');expect(playbackModeLabel('auto')).toBe('自动兼容播放');expect(playbackModeLabel('software')).toBe('软件转码播放');
