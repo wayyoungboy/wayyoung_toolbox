@@ -10,8 +10,9 @@ import {
 } from './information-architecture';
 
 describe('native information architecture', () => {
-  it('exposes the five queue-oriented primary destinations', () => {
+  it('makes the personal catalog primary without removing acquisition workspaces', () => {
     expect(primaryNavigation.map((item) => item.key)).toEqual([
+      'catalog',
       'dashboard',
       'subscriptions',
       'queue',
@@ -19,6 +20,7 @@ describe('native information architecture', () => {
       'settings',
     ]);
     expect(primaryNavigation.map((item) => item.label)).toEqual([
+      '馆藏',
       '工作台',
       '订阅来源',
       '处理队列',
@@ -34,7 +36,9 @@ describe('native information architecture', () => {
     expect(resolveDestination('javsp')).toEqual({ page: 'settings', tab: 'javsp' });
     expect(resolveDestination('anime')).toEqual({ page: 'settings', tab: 'anime' });
     expect(resolveDestination('queue', 'bad')).toEqual({ page: 'queue', tab: 'jobs' });
-    expect(resolveDestination('missing')).toEqual({ page: 'dashboard', tab: '' });
+    expect(resolveDestination('missing')).toEqual({ page: 'catalog', tab: '' });
+    expect(resolveDestination(null)).toEqual({ page: 'catalog', tab: '' });
+    expect(resolveDestination('dashboard')).toEqual({ page: 'dashboard', tab: '' });
   });
 
   it('keeps the four acquisition stages inside one pipeline workspace', () => {
