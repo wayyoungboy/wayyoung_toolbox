@@ -17,8 +17,16 @@ type tasteEvidence struct {
 	weight         float64
 }
 type tasteSignal struct {
-	feature  tasteFeature
-	evidence []tasteEvidence
+	feature tasteFeature
+	sources map[string]*tasteAggregate
+}
+type tasteAggregate struct {
+	weight float64
+	count  int
+	own    map[string]float64
+	// Six representatives suffice to return five after excluding the candidate.
+	// Never build a full evidence slice for every recommendation.
+	workIDs []string
 }
 
 func tasteFeatures(item tasteWork) []tasteFeature {
@@ -57,10 +65,22 @@ func rankTaste(ctx context.Context, works []tasteWork, followed []Actor, sources
 		key := feature.kind + ":" + feature.key
 		signal := signals[key]
 		if signal == nil {
-			signal = &tasteSignal{feature: feature}
+			signal = &tasteSignal{feature: feature, sources: map[string]*tasteAggregate{}}
 			signals[key] = signal
 		}
-		signal.evidence = append(signal.evidence, e)
+		aggregate := signal.sources[e.source]
+		if aggregate == nil {
+			aggregate = &tasteAggregate{own: map[string]float64{}, workIDs: []string{}}
+			signal.sources[e.source] = aggregate
+		}
+		aggregate.weight += e.weight
+		aggregate.count++
+		if e.workID != "" {
+			if _, exists := aggregate.own[e.workID]; !exists && len(aggregate.workIDs) < 6 {
+				aggregate.workIDs = append(aggregate.workIDs, e.workID)
+			}
+			aggregate.own[e.workID] += e.weight
+		}
 	}
 	for _, item := range works {
 		if err := ctx.Err(); err != nil {
@@ -126,10 +146,12 @@ func rankTaste(ctx context.Context, works []tasteWork, followed []Actor, sources
 	for _, signal := range signals {
 		facet := TasteFacet{Kind: signal.feature.kind, Key: signal.feature.key, Label: signal.feature.label, Sources: []string{}}
 		keys := map[string]bool{}
-		for _, e := range signal.evidence {
-			facet.Weight += e.weight
-			facet.EvidenceCount++
-			keys[e.source] = true
+		for _, source := range tasteSourceLabels {
+			if aggregate := signal.sources[source.key]; aggregate != nil {
+				facet.Weight += aggregate.weight
+				facet.EvidenceCount += aggregate.count
+				keys[source.key] = true
+			}
 		}
 		facet.Sources = sortedTasteSources(keys)
 		facets = append(facets, facet)
@@ -159,16 +181,18 @@ func rankTaste(ctx context.Context, works []tasteWork, followed []Actor, sources
 				continue
 			}
 			for _, source := range tasteSourceLabels {
+				aggregate := signal.sources[source.key]
+				if aggregate == nil {
+					continue
+				}
 				reason := TasteReason{Kind: feature.kind, Label: feature.label, Source: source.key, WorkIDs: []string{}}
-				for _, e := range signal.evidence {
-					if e.source == source.key && e.workID != w.ID {
-						reason.Weight += e.weight
-						if e.workID != "" {
-							reason.WorkIDs = append(reason.WorkIDs, e.workID)
-						}
+				reason.Weight = aggregate.weight - aggregate.own[w.ID]
+				for _, id := range aggregate.workIDs {
+					if id != w.ID && len(reason.WorkIDs) < 5 {
+						reason.WorkIDs = append(reason.WorkIDs, id)
 					}
 				}
-				if reason.Weight > 0 {
+				if reason.Weight > 1e-12 {
 					candidate.Reasons = append(candidate.Reasons, reason)
 					candidate.Score += reason.Weight
 				}
@@ -186,11 +210,6 @@ func rankTaste(ctx context.Context, works []tasteWork, followed []Actor, sources
 		})
 		if len(candidate.Reasons) > 4 {
 			candidate.Reasons = candidate.Reasons[:4]
-		}
-		for i := range candidate.Reasons {
-			if len(candidate.Reasons[i].WorkIDs) > 5 {
-				candidate.Reasons[i].WorkIDs = candidate.Reasons[i].WorkIDs[:5]
-			}
 		}
 		items = append(items, candidate)
 	}
