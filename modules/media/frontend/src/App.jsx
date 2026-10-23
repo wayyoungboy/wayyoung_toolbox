@@ -8,6 +8,7 @@ import { resolveDestination } from './information-architecture';
 import { queueJobID } from './queue-view';
 
 const Tasks = lazy(() => import('./pages/Tasks'));
+const Catalog = lazy(() => import('./pages/Catalog'));
 const Queue = lazy(() => import('./pages/Queue'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
 const SettingsWorkspace = lazy(() => import('./pages/SettingsWorkspace'));
@@ -53,6 +54,7 @@ export default function App() {
   };
 
   const pages = {
+    catalog: <Catalog />,
     dashboard: <Dashboard onNavigate={navigate} />,
     subscriptions: <Tasks />,
     queue: <Queue tab={destination.tab} jobID={destination.jobID} onTabChange={(tab) => navigate('queue', tab)} onNavigate={navigate} />,

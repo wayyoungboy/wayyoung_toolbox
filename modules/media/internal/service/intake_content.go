@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	errIntakeConflict = errors.New("目标已存在但未通过完整内容核验，请人工处理")
+	errIntakeConflict = errors.New("文件处理存在冲突，请核对具体原因")
 	errIntakePending  = errors.New("来源已接管，待恢复文件处理")
 )
 
@@ -167,7 +167,7 @@ func removeVerifiedIntakeDuplicate(ctx context.Context, source, destination *os.
 			var right map[string]intakeContentEntry
 			right, err = intakeContentManifest(ctx, destination, relative)
 			if err == nil && !equalIntakeManifests(left, right) {
-				err = errIntakeConflict
+				err = fmt.Errorf("%w：目标与来源的文件清单、大小或完整内容不同", errIntakeConflict)
 			}
 		}
 		if err != nil {

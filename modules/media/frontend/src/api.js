@@ -17,7 +17,30 @@ async function request(path, options = {}) {
   return data;
 }
 
+// Short-lived process token, fetched from an authenticated same-origin endpoint.
+// A failed mutation is never replayed automatically (progress may have committed).
+async function catalogMutation(path, method, payload, options = {}) {
+  const { csrf } = await request('/catalog/session', { signal: options.signal });
+  if (!csrf) throw new Error('馆藏请求校验失效，请刷新页面');
+  return request(path, { ...options, method, headers: { 'X-Catalog-CSRF': csrf }, body: JSON.stringify(payload) });
+}
+
 export const api = {
+  catalogLibraries: ({ signal } = {}) => request('/catalog/libraries', { signal }),
+  catalogAddLibrary: (payload) => catalogMutation('/catalog/libraries', 'POST', payload),
+  catalogRelinkLibrary: (id, root) => catalogMutation(`/catalog/libraries/${encodeURIComponent(id)}`, 'PATCH', { root }),
+  catalogScan: (id, { signal } = {}) => catalogMutation(`/catalog/libraries/${encodeURIComponent(id)}/scan`, 'POST', {}, { signal }),
+  catalogWorks: ({ query = '', view = 'all', libraryID = '', offset = 0, signal } = {}) => {
+    const parameters = new URLSearchParams({ query, offset: String(offset), limit: '48' });
+    if (libraryID) parameters.set('library_id', libraryID);
+    if (view === 'favorites') parameters.set('favorite', 'true');
+    if (view === 'continue') parameters.set('continue', 'true');
+    return request(`/catalog/works?${parameters}`, { signal });
+  },
+  catalogWork: (id, { signal } = {}) => request(`/catalog/works/${encodeURIComponent(id)}`, { signal }),
+  catalogPersonal: (id, payload) => catalogMutation(`/catalog/works/${encodeURIComponent(id)}/personal`, 'PATCH', payload),
+  catalogTitle: (id, title) => catalogMutation(`/catalog/works/${encodeURIComponent(id)}`, 'PATCH', { title }),
+  catalogProgress: (id, payload) => catalogMutation(`/catalog/assets/${encodeURIComponent(id)}/progress`, 'PUT', payload, { keepalive: true }),
   completedLibrary: ({ query = '', offset = 0, limit = 50, signal } = {}) => request(`/library/completed?${new URLSearchParams({ query, offset: String(offset), limit: String(limit) })}`, { signal }),
   scanCompletedLibrary: ({ signal } = {}) => request('/library/completed/scan', { method: 'POST', body: '{}', signal }),
   queue: ({ status = '', before = 0, limit = 50, signal } = {}) => {

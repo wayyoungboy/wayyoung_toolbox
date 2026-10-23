@@ -1,0 +1,85 @@
+.catalog-page { --catalog-ink: #17212f; --catalog-muted: #6a7587; color: var(--catalog-ink); }
+.catalog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.catalog-views { display: flex; gap: 24px; flex-shrink: 0; }
+.catalog-views button { border: 0; border-bottom: 2px solid transparent; color: var(--catalog-muted); background: none; padding: 15px 0; font-size: 14px; cursor: pointer; }
+.catalog-views button.selected { color: var(--app-blue); border-bottom-color: var(--app-blue); font-weight: 600; }
+.catalog-search { flex: 0 1 320px; padding-bottom: 8px; }
+.catalog-search input, .catalog-library-form input, .catalog-title-form input, .catalog-asset-select select { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; color: inherit; background: var(--surface); }
+.catalog-search input:focus, .catalog-library-form input:focus, .catalog-title-form input:focus, .catalog-asset-select select:focus { outline: 2px solid var(--app-blue); outline-offset: 1px; }
+.catalog-results-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--catalog-muted); font-size: 12px; margin: 18px 0 22px; }
+.catalog-results-heading label { display: flex; align-items: center; gap: 8px; }
+.catalog-results-heading select { max-width: 200px; padding: 6px; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; }
+.catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 30px 20px; align-items: start; }
+.catalog-card { min-width: 0; display: grid; gap: 7px; appearance: none; text-align: left; color: inherit; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 7px; }
+.catalog-card:focus-visible { outline: 3px solid var(--app-blue); outline-offset: 6px; }
+.catalog-cover-wrap { position: relative; min-width: 0; }
+.catalog-poster { aspect-ratio: 2 / 3; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.catalog-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.catalog-card:hover .catalog-poster { outline: 2px solid #b7d5ff; }
+.catalog-no-poster { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; color: var(--catalog-muted); font-size: 12px; }
+.catalog-no-poster > span { font-size: 42px; font-weight: 300; color: #a9b5c5; }
+.catalog-favorite { position: absolute; top: 10px; right: 10px; color: white; text-shadow: 0 1px 5px #000; font-size: 20px; }
+.catalog-editions, .catalog-offline { position: absolute; bottom: 8px; left: 8px; right: 8px; background: #102035dc; color: white; padding: 5px 7px; border-radius: 4px; font-size: 10px; line-height: 1.4; }
+.catalog-offline { background: #754520ee; }
+.catalog-card-code { color: var(--catalog-muted); font-size: 11px; margin-top: 4px; }
+.catalog-card-title { font-size: 14px; line-height: 1.5; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.catalog-card-meta { color: var(--catalog-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.catalog-empty { display: flex; flex-direction: column; align-items: center; padding: 70px 20px; text-align: center; }
+.catalog-empty > span { font-size: 58px; color: #b7c9e1; }
+.catalog-empty h2 { font-size: 21px; margin: 20px 0 0; }
+.catalog-empty p { max-width: 400px; color: var(--catalog-muted); line-height: 1.8; margin: 10px 0 24px; }
+.catalog-pagination { display: flex; justify-content: center; align-items: center; gap: 18px; padding: 32px 0 4px; }
+.catalog-loading { color: var(--catalog-muted); padding: 40px 0; }
+.catalog-alert, .catalog-notice { font-size: 13px; line-height: 1.7; padding: 10px 14px; border-radius: 6px; background: #fff3ee; color: #8b351a; overflow-wrap: anywhere; }
+.catalog-notice { background: #edf8f2; color: #16633c; }
+.catalog-help { color: var(--subtle-text); line-height: 1.7; font-size: 13px; }
+.catalog-library-list { display: grid; gap: 12px; margin: 20px 0; }
+.catalog-library-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 6px; }
+.catalog-library-row > div { min-width: 0; display: grid; gap: 7px; }
+.catalog-library-row code { font-size: 11px; overflow-wrap: anywhere; color: var(--subtle-text); }
+.catalog-library-row small { color: var(--subtle-text); }
+.catalog-library-row > button { flex-shrink: 0; }
+.catalog-library-form { display: grid; gap: 15px; border-top: 1px solid var(--border); padding-top: 15px; }
+.catalog-library-form h3 { margin: 0; }
+.catalog-library-form label, .catalog-title-form label { display: grid; gap: 8px; font-size: 13px; }
+.catalog-field { display: grid; gap: 8px; }
+.catalog-library-form > button { justify-self: start; }
+.catalog-path-input { display: flex; gap: 8px; align-items: center; }
+.catalog-path-input > input { flex: 1; }
+.catalog-detail-layout { display: grid; grid-template-columns: minmax(160px, 235px) minmax(0, 1fr); gap: 32px; }
+.catalog-detail-copy { min-width: 0; }
+.catalog-detail-code { font-size: 12px; color: var(--subtle-text); margin: 2px 0 12px; }
+.catalog-detail-copy h2 { margin: 0 0 10px; font-size: 24px; line-height: 1.5; overflow-wrap: anywhere; }
+.catalog-text-button { border: 0; padding: 0; background: none; color: var(--app-blue); cursor: pointer; font-size: 12px; }
+.catalog-metadata { display: grid; gap: 12px; font-size: 13px; margin: 24px 0; }
+.catalog-metadata > div { display: grid; grid-template-columns: 60px 1fr; gap: 12px; }
+.catalog-metadata dt { color: var(--subtle-text); }
+.catalog-metadata dd { margin: 0; overflow-wrap: anywhere; }
+.catalog-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 20px; }
+.catalog-tags > span { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; color: var(--subtle-text); }
+.catalog-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.catalog-title-form { display: grid; gap: 10px; margin: 15px 0; }
+.catalog-title-form small { color: var(--subtle-text); font-size: 11px; }
+.catalog-synopsis, .catalog-asset-section { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 18px; }
+.catalog-synopsis h3, .catalog-asset-section h3 { font-size: 15px; margin: 0 0 14px; }
+.catalog-synopsis p { white-space: pre-wrap; line-height: 1.9; color: var(--subtle-text); font-size: 13px; overflow-wrap: anywhere; }
+.catalog-asset-section h3 small { font-size: 12px; font-weight: 400; color: var(--subtle-text); margin-left: 8px; }
+.catalog-asset-select { display: grid; gap: 8px; font-size: 12px; color: var(--subtle-text); }
+.catalog-issues { margin-top: 20px; font-size: 12px; color: #855000; line-height: 1.8; }
+.catalog-issues summary { cursor: pointer; }
+.catalog-player-modal video { width: 100%; max-height: 70vh; display: block; background: #08111c; }
+.catalog-player-caption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 14px; color: var(--subtle-text); font-size: 12px; overflow-wrap: anywhere; }
+[data-theme="dark"] .catalog-page { --catalog-ink: #e1e8f2; --catalog-muted: #a2aec0; }
+@media (max-width: 700px) {
+  .catalog-page { padding: 22px 16px 32px; }
+  .catalog-toolbar { align-items: stretch; flex-direction: column; gap: 4px; }
+  .catalog-search { flex: none; }
+  .catalog-views { gap: 22px; }
+  .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 14px; }
+  .catalog-detail-layout { grid-template-columns: 100px minmax(0, 1fr); gap: 16px; }
+  .catalog-detail-copy h2 { font-size: 18px; }
+  .catalog-metadata { gap: 9px; margin: 16px 0; font-size: 12px; }
+  .catalog-metadata > div { grid-template-columns: 48px 1fr; gap: 5px; }
+  .catalog-library-row { align-items: start; flex-direction: column; }
+  .catalog-results-heading select { max-width: 140px; }
+}

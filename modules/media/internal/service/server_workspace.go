@@ -12,14 +12,15 @@ import (
 )
 
 type pipelineStage struct {
-	Key       string  `json:"key"`
-	Label     string  `json:"label"`
-	Status    string  `json:"status"`
-	Summary   string  `json:"summary"`
-	Detail    string  `json:"detail"`
-	Count     int     `json:"count"`
-	NextRunAt *string `json:"next_run_at,omitempty"`
-	Error     string  `json:"error,omitempty"`
+	Key            string  `json:"key"`
+	Label          string  `json:"label"`
+	Status         string  `json:"status"`
+	Summary        string  `json:"summary"`
+	Detail         string  `json:"detail"`
+	Count          int     `json:"count"`
+	AttentionCount int     `json:"attention_count"`
+	NextRunAt      *string `json:"next_run_at,omitempty"`
+	Error          string  `json:"error,omitempty"`
 }
 
 type pipelinePaths struct {
@@ -28,6 +29,7 @@ type pipelinePaths struct {
 	IntakeDestination  string   `json:"intake_destination"`
 	JavspInput         string   `json:"javsp_input"`
 	JavspOutputPattern string   `json:"javsp_output_pattern"`
+	CompletedDirectory string   `json:"completed_directory"`
 	Consistent         bool     `json:"consistent"`
 	Issues             []string `json:"issues"`
 	Warnings           []string `json:"warnings"`
@@ -95,7 +97,20 @@ func buildPipelinePaths(tasks []Task, intake IntakeConfig, javsp JavspConfig) pi
 		paths.Issues = append(paths.Issues, "入库目标目录与 JAVSP 扫描目录不一致")
 	}
 	if len(paths.RSSDownloadPaths) == 0 {
-		paths.Warnings = append(paths.Warnings, "RSS 任务使用 qBittorrent 默认下载目录，无法自动核对入库来源")
+		paths.Warnings = append(paths.Warnings, "尚无 RSS 订阅；可在未处理目录放入影片后手动扫描")
+	}
+	if !javsp.MoveFiles {
+		paths.Warnings = append(paths.Warnings, "当前为原地整理：视频保留在来源目录，不会移入成品媒体库")
+	} else if root, available, err := plannedJavspOutputRoot(javsp); err != nil || !available {
+		paths.Issues = append(paths.Issues, "无法确定整理完成目录，请在目录与命名中设置已存在的绝对目录")
+	} else {
+		paths.CompletedDirectory = root
+		if javsp.OutputDirectory == "" {
+			paths.Warnings = append(paths.Warnings, "整理完成目录未单独设置，输出模板以扫描目录为基准；修改扫描目录会改变成品位置")
+		}
+		if configuredPathWithin(intake.SourceDirectory, root) || configuredPathWithin(root, intake.SourceDirectory) {
+			paths.Issues = append(paths.Issues, "下载目录与整理完成目录重叠，下载和成品应分开存放")
+		}
 	}
 	paths.Consistent = len(paths.Issues) == 0
 	return paths
@@ -285,9 +300,12 @@ func (s *Service) handlePipeline(w http.ResponseWriter, r *http.Request) {
 		rssStatus = "idle"
 	}
 	stages := []pipelineStage{{Key: "rss", Label: "RSS 发现", Status: rssStatus, Summary: fmt.Sprintf("%d 个订阅，%d 个启用", len(tasks), enabledRSS), Detail: "按筛选规则发现影片并投递下载", Count: enabledRSS, NextRunAt: earliestTaskNextRun(tasks)}}
+	if settings.PreviewMode {
+		stages[0].Status, stages[0].Detail = "warning", "当前为预览模式，只检查来源，不投递下载"
+	}
 
 	qbStage := pipelineStage{Key: "qb", Label: "qBittorrent 下载", Status: "warning", Summary: "尚未连接", Detail: "等待检测下载状态"}
-	intakeStage := pipelineStage{Key: "intake", Label: "完成入库", Status: "idle", Summary: "0 个待入库", Detail: "只处理 100% 完成任务", NextRunAt: intake.NextRunAt}
+	intakeStage := pipelineStage{Key: "intake", Label: "下载完成搬运", Status: "idle", Summary: "0 个待搬运", Detail: "只处理 100% 完成任务，搬入未处理目录", NextRunAt: intake.NextRunAt}
 	qbCtx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 	if session, openErr := s.collector.OpenQBSession(qbCtx, settings); openErr != nil {
@@ -332,14 +350,14 @@ func (s *Service) handlePipeline(w http.ResponseWriter, r *http.Request) {
 				if len(candidates) == 0 {
 					intakeStage.Status = "idle"
 				}
-				intakeStage.Summary = fmt.Sprintf("%d 个待入库", len(candidates))
-				intakeStage.Detail = fmt.Sprintf("自动入库%s", map[bool]string{true: "已启用", false: "已关闭"}[intake.Enabled])
+				intakeStage.Summary = fmt.Sprintf("%d 个待搬运", len(candidates))
+				intakeStage.Detail = fmt.Sprintf("定时搬运%s；搬运完成后等待整理入库", map[bool]string{true: "已启用", false: "已关闭"}[intake.Enabled])
 			}
 		}
 	}
 	stages = append(stages, qbStage, intakeStage)
 
-	javspStatus := "ok"
+	javspStatus := "idle"
 	javspRunning := !s.javspLock.TryLock()
 	if !javspRunning {
 		s.javspLock.Unlock()
@@ -355,7 +373,11 @@ func (s *Service) handlePipeline(w http.ResponseWriter, r *http.Request) {
 	if javspRunning {
 		javspSummary = "正在整理"
 	}
-	stages = append(stages, pipelineStage{Key: "javsp", Label: "JAVSP 整理", Status: javspStatus, Summary: javspSummary, Detail: fmt.Sprintf("自动整理%s", map[bool]string{true: "已启用", false: "已关闭"}[javsp.Enabled]), NextRunAt: javsp.NextRunAt})
+	stages = append(stages, pipelineStage{Key: "javsp", Label: "刮削整理入库", Status: javspStatus, Summary: javspSummary, Detail: fmt.Sprintf("入库后整理%s · 定时扫描%s", map[bool]string{true: "已启用", false: "已关闭"}[intake.RunJavsp], map[bool]string{true: "已启用", false: "已关闭"}[javsp.Enabled]), NextRunAt: javsp.NextRunAt})
+	if err := s.db.annotatePipelineQueue(r.Context(), stages); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"stages": stages, "paths": buildPipelinePaths(tasks, intake, javsp), "recent_runs": recent,

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -430,6 +431,27 @@ func TestMediaQueueIntakeBusyIsQueuedWithoutTouchingFiles(t *testing.T) {
 	job, err := f.s.db.MediaJob(jobs[0].ID)
 	if err != nil || job.Status != "success" {
 		t.Fatalf("queue did not drain: %+v %v", job, err)
+	}
+}
+
+func TestIntakeManualRunReportsPreviouslyBlockedCandidate(t *testing.T) {
+	f := newIntakeQueueFixture(t)
+	if err := os.WriteFile(f.target, []byte("different content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := f.s.runIntake(context.Background(), "manual")
+	if err != nil || first.Failed != 1 {
+		t.Fatalf("first collision was not recorded: %+v %v", first, err)
+	}
+	stops := f.stops.Load()
+	second, err := f.s.runIntake(context.Background(), "manual")
+	if err != nil || second.Failed != 1 || second.Moved != 0 || len(second.Errors) != 1 ||
+		!strings.Contains(second.Errors[0], "仍需处理") || f.stops.Load() != stops {
+		t.Fatalf("repeat action hid existing conflict or touched qB: %+v %v", second, err)
+	}
+	runs, err := f.s.db.ListMaintenanceRunsByKinds(1, "intake")
+	if err != nil || len(runs) != 1 || runs[0]["status"] != "partial" || runs[0]["found_count"] != 1 {
+		t.Fatalf("manual run showed success despite blocked candidate: %+v %v", runs, err)
 	}
 }
 

@@ -62,15 +62,15 @@ export default function Dashboard({ onNavigate }) {
       <div className="workbench-grid">
         <section className={`workbench-card path-card ${data?.paths?.consistent ? 'healthy' : 'attention'}`}>
           <div className="section-heading">
-            <div><h2>目录链路</h2><p>确认下载、入库与 JAVSP 扫描目录能连续流转。</p></div>
+            <div><h2>目录链路</h2><p>下载 → 未处理 → 成品媒体库。媒体库指向最终的整理完成目录。</p></div>
             <span>{loadError ? '状态未知' : data?.paths?.consistent ? '配置连贯' : '需要检查'}</span>
           </div>
           <div className="compact-path-chain">
             <div><small>下载</small><code>{data?.paths?.rss_download_paths?.join('、') || 'qB 默认目录'}</code></div>
             <i>→</i>
-            <div><small>入库</small><code>{data?.paths?.intake_source || '--'}</code></div>
+            <div><small>未处理</small><code>{data?.paths?.intake_destination || '--'}</code></div>
             <i>→</i>
-            <div><small>整理</small><code>{data?.paths?.javsp_input || '--'}</code></div>
+            <div><small>成品媒体库</small><code>{data?.paths?.completed_directory || '原地整理或尚未设置'}</code></div>
           </div>
           <button type="button" className="text-action" onClick={() => onNavigate('pipeline')}>查看完整链路与阶段操作</button>
         </section>

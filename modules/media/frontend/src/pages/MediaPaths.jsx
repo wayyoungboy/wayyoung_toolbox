@@ -11,7 +11,7 @@ import { api } from '../api';
 const directoryFields = [
   { key: 'download_directory', label: '下载来源目录', hint: '未单独设置保存路径的 RSS 新任务使用此目录；入库检查此处的完整下载。旧队列任务和订阅独立路径保持不变。' },
   { key: 'pending_directory', label: '未处理目录', hint: '搬运到此处后自动排队；保存时同时设为 JAVSP 扫描目录。' },
-  { key: 'completed_directory', label: '整理完成目录', hint: '独立的完成目录。留空沿用旧相对模板；原地模式不使用此目录。' },
+  { key: 'completed_directory', label: '整理完成目录', hint: '填写飞牛影视媒体库所使用的绝对目录。留空会按扫描目录和模板计算成品位置，容易随扫描目录变化。' },
 ];
 const namingFields = [
   ['output_folder_pattern', '输出文件夹模板'], ['path_basename_pattern', '视频文件名模板'],
@@ -122,7 +122,7 @@ export default function MediaPaths() {
           <p>{field.hint}</p>
         </li>)}
       </ol>
-      <p className="muted-text">目录必须已存在并已授予应用访问权限。保存不移动现有文件，不会修改已排队任务的来源或已确认整理计划。</p>
+      <p className="muted-text">目录必须已存在并已授予应用访问权限。保存不会搬迁已有文件；旧任务的输出如果不在新的完成目录内，会暂停等待核对。</p>
       <label className="switch-row setting-switch"><span><strong>整理时移动视频</strong><small>关闭后在来源旁生成元数据，不把视频移入完成目录。</small></span><Switch aria-label="整理时移动视频" checked={config.move_files} disabled={locked} onChange={value => set('move_files', value)} /></label>
       <section className="settings-section">
         <div className="settings-title"><h2>命名规则</h2><p>文件名不含扩展名。支持原有模板变量，例如 {'{num}'}、{'{title}'}、{'{actress}'}、{'{year}'}；其余高级规则仍在 JAVSP 设置中。</p></div>

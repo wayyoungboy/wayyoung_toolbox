@@ -306,7 +306,7 @@ func prepareMoviePlan(ctx context.Context, job MediaJob, cfg JavspConfig, plan J
 		// even on retry. Verified metadata_ready plans bypass scraping entirely.
 		if !sources[path] {
 			if _, err := root.Lstat(rel); err == nil {
-				return stored, fmt.Errorf("%w：整理目标已经存在：%s", errIntakeConflict, path)
+				return stored, fmt.Errorf("%w：整理目标已经存在，尚未确认是否为同一版本；本次未覆盖：%s", errIntakeConflict, path)
 			} else if !os.IsNotExist(err) {
 				return stored, err
 			}

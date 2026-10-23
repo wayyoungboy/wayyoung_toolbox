@@ -220,8 +220,19 @@ func (s *Service) runIntakeAtRevision(ctx context.Context, trigger string, revis
 			continue
 		}
 		result.Candidates[i].JobID = job.ID
-		if job.Status == "pending" {
+		switch {
+		case job.Status == "pending":
 			result.Queued++
+		case retryableMediaStatus(job.Status):
+			result.Failed++
+			reason := job.Error
+			if reason == "" {
+				reason = "队列任务尚未处理，请在任务队列中重试或取消"
+			}
+			result.Errors = append(result.Errors, fmt.Sprintf("%s：队列任务 #%d 仍需处理：%s", candidate.Name, job.ID, reason))
+		case job.Status == "success":
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s：队列任务 #%d 已完成但 qB 任务仍存在，请检查是否重新添加", candidate.Name, job.ID))
 		}
 	}
 	s.wakeMediaQueue()
@@ -232,7 +243,7 @@ func (s *Service) runIntakeAtRevision(ctx context.Context, trigger string, revis
 	message := ""
 	if result.Failed > 0 {
 		status = "partial"
-		message = fmt.Sprintf("%d 个任务处理失败", result.Failed)
+		message = fmt.Sprintf("%d 个任务检查或处理未完成", result.Failed)
 	}
 	if err := s.db.FinishMaintenanceRun(runID, status, result.Scanned, len(result.Candidates), result.TasksDeleted, result.Errors, message); err != nil {
 		return result, err

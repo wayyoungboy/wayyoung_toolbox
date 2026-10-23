@@ -8,6 +8,7 @@ import {
 import { primaryNavigation } from '../information-architecture';
 
 const icons = {
+  catalog: IconHome,
   dashboard: IconHome,
   subscriptions: IconSignal,
   queue: IconList,
@@ -20,7 +21,7 @@ export default function Sidebar({ page, onChange, serviceOnline, version }) {
     <aside className="sidebar">
       <div className="brand">
         <img src={`${import.meta.env.BASE_URL}icon_64.png`} alt="" />
-        <span>影片采集任务中心</span>
+        <span>个人媒体中心</span>
       </div>
       <nav className="nav-list" aria-label="应用导航">
         {primaryNavigation.map((item, index) => {

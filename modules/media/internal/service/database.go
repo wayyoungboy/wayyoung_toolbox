@@ -13,11 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
 	_ "modernc.org/sqlite"
 )
 
 type Database struct {
 	db        *sql.DB
+	catalog   *catalog.Store
 	lockFile  *os.File
 	closeOnce sync.Once
 	closeErr  error
@@ -45,6 +47,11 @@ func OpenDatabase(path string) (*Database, error) {
 		return nil, err
 	}
 	if err := database.initializeMediaQueue(); err != nil {
+		database.Close()
+		return nil, err
+	}
+	database.catalog, err = catalog.New(db, unambiguousMediaID)
+	if err != nil {
 		database.Close()
 		return nil, err
 	}

@@ -10,7 +10,7 @@ const modules = {
   media: path.join(root, 'modules/media'),
   music: path.join(root, 'modules/music'),
 };
-const version = '0.6.7';
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 const stage = path.join(root, 'dist/stage/wayyoung_toolbox');
 const output = path.join(root, `dist/wayyoung_toolbox_${version}_x86_64.fpk`);
 

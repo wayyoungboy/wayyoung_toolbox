@@ -208,6 +208,135 @@ func TestCatalogReplacingAFileCreatesANewVersionWithoutInheritingPersonalState(t
 	}
 }
 
+func TestCatalogAssetSchemaMigrationRetainsIDsAndProgress(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "video")
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	work := catalogDetail(t, service, catalogWorks(t, service, "")[0].ID)
+	asset := work.Assets[0]
+	if response := catalogRequest(t, service, "PUT", "/api/catalog/assets/"+asset.ID+"/progress", map[string]any{"position": 50, "duration": 100, "revision": 0}); response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	if _, err := service.db.db.Exec(`ALTER TABLE catalog_assets DROP COLUMN file_identity; CREATE UNIQUE INDEX legacy_asset_path ON catalog_assets(library_id,path);`); err != nil {
+		t.Fatal(err)
+	}
+	store, err := catalog.New(service.db.db, unambiguousMediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.db.catalog = store
+	catalogScan(t, service, library)
+	after := catalogDetail(t, service, work.ID)
+	if len(after.Assets) != 1 || after.Assets[0].ID != asset.ID || after.Assets[0].Progress.Position != 50 {
+		t.Fatalf("asset migration lost state: %+v", after)
+	}
+	// Reopening and rescanning a second time must retain migrated, non-v2 IDs.
+	store, err = catalog.New(service.db.db, unambiguousMediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.db.catalog = store
+	catalogScan(t, service, library)
+	after = catalogDetail(t, service, work.ID)
+	if len(after.Assets) != 1 || after.Assets[0].ID != asset.ID {
+		t.Fatalf("migrated asset changed on second scan: %+v", after)
+	}
+	var violations int
+	rows, err := service.db.db.Query("PRAGMA foreign_key_check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		violations++
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	rows.Close()
+	if violations != 0 {
+		t.Fatalf("foreign key violations=%d", violations)
+	}
+}
+
+func TestCatalogFailedPublicationRollsBackMetadataAssetsAndPersonalState(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "DEMO-123.mp4", "video")
+	catalogWrite(t, root, "DEMO-123.nfo", `<movie><title>Original title</title></movie>`)
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	work := catalogWorks(t, service, "")[0]
+	if response := catalogRequest(t, service, "PATCH", "/api/catalog/works/"+work.ID+"/personal", map[string]bool{"favorite": true}); response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	catalogWrite(t, root, "DEMO-123.nfo", `<movie><title>Should roll back</title></movie>`)
+	catalogWrite(t, root, "DEMO-222.mp4", "second video")
+	if _, err := service.db.db.Exec(`CREATE TRIGGER catalog_test_failure BEFORE INSERT ON catalog_assets WHEN NEW.path='DEMO-222.mp4' BEGIN SELECT RAISE(ABORT,'test scan publication failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.db.catalog.Scan(context.Background(), library.ID); err == nil {
+		t.Fatal("injected publication failure did not fail")
+	}
+	after := catalogWorks(t, service, "")
+	if len(after) != 1 || after[0].Title != "Original title" || !after[0].Favorite {
+		t.Fatalf("partial transaction leaked: %+v", after)
+	}
+	if detail := catalogDetail(t, service, work.ID); len(detail.Assets) != 1 || !detail.Assets[0].Available {
+		t.Fatalf("partial asset transaction: %+v", detail)
+	}
+}
+
+func TestCatalogReadsOnlyBoundedLocalArtworkAndHandlesMissingRecords(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "images"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	catalogWrite(t, root, "DEMO-123.mp4", "video")
+	catalogWrite(t, root, "DEMO-123.nfo", `<movie><title>Local art</title><art><poster>images/cover.png</poster></art></movie>`)
+	poster, err := os.Create(filepath.Join(root, "images", "cover.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(poster, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		poster.Close()
+		t.Fatal(err)
+	}
+	poster.Close()
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	asset := catalogDetail(t, service, catalogWorks(t, service, "")[0].ID).Assets[0]
+	if response := catalogRequest(t, service, "GET", "/api/catalog/assets/"+asset.ID+"/poster", nil); response.Code != 200 {
+		t.Fatalf("local art: %d", response.Code)
+	}
+	catalogWrite(t, filepath.Join(root, "images"), "cover.png", "<svg>not a raster image</svg>")
+	if response := catalogRequest(t, service, "GET", "/api/catalog/assets/"+asset.ID+"/poster", nil); response.Code != 400 {
+		t.Fatalf("untrusted poster type: %d", response.Code)
+	}
+	for _, test := range []struct {
+		method, target string
+		payload        any
+		status         int
+	}{
+		{"GET", "/api/catalog/assets/missing/stream", nil, 404},
+		{"GET", "/api/catalog/works/missing", nil, 404},
+		{"PATCH", "/api/catalog/libraries/999999", map[string]string{"root": root}, 404},
+		{"PATCH", "/api/catalog/libraries/invalid", map[string]string{"root": root}, 400},
+		{"PATCH", "/api/catalog/works/missing/personal", map[string]bool{"favorite": true}, 404},
+		{"PATCH", "/api/catalog/works/missing", map[string]string{"title": "Valid title"}, 404},
+		{"POST", "/api/catalog/libraries/999999/scan", map[string]any{}, 404},
+		{"POST", "/api/catalog/libraries/invalid/scan", map[string]any{}, 400},
+	} {
+		response := catalogRequest(t, service, test.method, test.target, test.payload)
+		if response.Code != test.status {
+			t.Fatalf("%s %s: %d %s", test.method, test.target, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestCatalogConcurrentProgressUsesOneRevisionAndCanceledScanKeepsInventory(t *testing.T) {
 	service := testService(t)
 	root := t.TempDir()

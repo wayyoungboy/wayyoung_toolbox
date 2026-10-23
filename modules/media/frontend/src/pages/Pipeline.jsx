@@ -26,7 +26,7 @@ function PipelineOverview({ data, onOpen }) {
     <div className="pipeline-overview-content">
       <section className={`path-diagnostic ${paths.consistent ? 'healthy' : 'attention'}`}>
         <div className="section-heading">
-          <div><h2>目录链路</h2><p>下载、入库与整理目录必须连续，影片才能自动流转。</p></div>
+          <div><h2>目录链路</h2><p>下载完成先搬到未处理目录；刮削、命名和整理成功后才算入库。</p></div>
           <span>{paths.consistent ? '配置连贯' : `${paths.issues?.length || 0} 项需处理`}</span>
         </div>
         <div className="path-chain">
@@ -36,7 +36,7 @@ function PipelineOverview({ data, onOpen }) {
           <i>→</i>
           <div><small>JAVSP 输入</small><code>{paths.javsp_input}</code></div>
           <i>→</i>
-          <div><small>整理规则</small><code>{paths.javsp_output_pattern}</code></div>
+          <div><small>成品媒体库</small><code>{paths.completed_directory || '原地整理或尚未设置'}</code><small>目录模板：{paths.javsp_output_pattern || '--'}</small></div>
         </div>
         {(paths.issues || []).map((issue) => <div className="pipeline-issue" key={issue}>{issue}</div>)}
         {(paths.warnings || []).map((warning) => <div className="pipeline-warning" key={warning}>{warning}</div>)}

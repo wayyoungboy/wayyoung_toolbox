@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,7 @@ type Service struct {
 	publicDir          string
 	prefix             string
 	localDev           bool
+	catalogCSRF        string
 	taskLocksMu        sync.Mutex
 	taskLocks          map[int64]*sync.Mutex
 	javspLock          sync.Mutex
@@ -82,7 +84,7 @@ func NewService(dataDir, publicDir, bundleDir, prefix string, localDev bool) (*S
 		slog.Warn("JAVSP advanced config migration skipped", "error", readErr)
 	}
 	service := &Service{db: db, collector: Collector{}, javsp: runner, anidb: newAniDBTitleCache(dataDir), publicDir: publicDir,
-		prefix: strings.TrimRight(prefix, "/"), localDev: localDev, taskLocks: map[int64]*sync.Mutex{},
+		prefix: strings.TrimRight(prefix, "/"), localDev: localDev, catalogCSRF: rand.Text(), taskLocks: map[int64]*sync.Mutex{},
 		rssSlots: make(chan struct{}, 2), queueWake: make(chan struct{}, 1), shutdownDone: make(chan struct{})}
 	if err := service.recoverCanceledMediaJobs(); err != nil {
 		db.Close()
@@ -143,6 +145,7 @@ func decodeJSON(writer http.ResponseWriter, request *http.Request, target any) e
 
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
+	s.registerCatalogRoutes(mux)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": Version, "runtime": "go", "process_model": "single"})
 	})

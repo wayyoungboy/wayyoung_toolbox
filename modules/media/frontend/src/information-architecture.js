@@ -1,4 +1,5 @@
 export const primaryNavigation = [
+  { key: 'catalog', label: '馆藏', group: 'watching' },
   { key: 'dashboard', label: '工作台', group: 'primary' },
   { key: 'subscriptions', label: '订阅来源', group: 'primary' },
   { key: 'queue', label: '处理队列', group: 'primary' },
@@ -15,7 +16,7 @@ export const settingsTabs = [
   { key: 'anime', label: '番剧工具（保留）' },
 ];
 
-// Old bookmarks and internal links converge on the same five workspaces.
+// Existing acquisition bookmarks remain reachable alongside the watching entry.
 export function resolveDestination(page, tab = '') {
   if (page === 'tasks') page = 'subscriptions';
   if (page === 'runs') return { page: 'queue', tab: 'history' };
@@ -26,8 +27,8 @@ export function resolveDestination(page, tab = '') {
   }
   if (page === 'settings') return { page, tab: settingsTabs.some((item) => item.key === tab) ? tab : 'paths' };
   if (page === 'queue') return { page, tab: tab === 'history' ? tab : 'jobs' };
-  if (['dashboard', 'subscriptions', 'maintenance'].includes(page)) return { page, tab: '' };
-  return { page: 'dashboard', tab: '' };
+  if (['catalog', 'dashboard', 'subscriptions', 'maintenance'].includes(page)) return { page, tab: '' };
+  return { page: 'catalog', tab: '' };
 }
 
 export const pipelineTabs = [
@@ -57,8 +58,8 @@ export function pipelineFailureStages(message) {
   return [
     ['rss', 'RSS 发现'],
     ['qb', 'qBittorrent 下载'],
-    ['intake', '完成入库'],
-    ['javsp', 'JAVSP 整理'],
+    ['intake', '下载完成搬运'],
+    ['javsp', '刮削整理入库'],
   ].map(([key, label]) => ({
     key,
     label,

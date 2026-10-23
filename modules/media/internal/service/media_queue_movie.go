@@ -96,6 +96,11 @@ func (s *Service) runQueuedMovie(ctx context.Context, job MediaJob) (JavspResult
 		return result, err
 	}
 	plan := job.MoviePlan
+	if plan != nil {
+		if err := validateMovieResumeOutput(cfg, *plan); err != nil {
+			return result, err
+		}
+	}
 	if plan == nil || !plan.MetadataReady {
 		sourceRoot, sources, err := queuedMovieSources(cfg.InputDirectory, job)
 		if err != nil {

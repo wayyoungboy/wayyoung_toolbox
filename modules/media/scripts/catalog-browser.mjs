@@ -25,7 +25,13 @@ const check = async (predicate, message) => {
   }
   throw new Error(message);
 };
-const screenshot = name => page.screenshot({ path: path.join(report, `${name}.png`), fullPage: true });
+const screenshot = async name => {
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  await page.screenshot({ path: path.join(report, `${name}.png`), fullPage: true });
+};
 
 try {
   await page.goto(url);
@@ -38,7 +44,7 @@ try {
   assert.equal(await page.locator('.catalog-card').count(), 0, 'adding a library must not scan automatically');
   await page.getByRole('button', { name: '扫描馆藏', exact: true }).click();
   await page.getByText('扫描完成：9 部作品、10 个文件', { exact: false }).waitFor();
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: 'close', exact: true }).click();
   await check(async () => await page.locator('.catalog-card').count() === 9, 'cover wall did not refresh');
   await screenshot('desktop-catalog');
   assert.equal(await page.locator('img[src=""]').count(), 0);
@@ -67,9 +73,9 @@ try {
   await video.evaluate(element => element.pause());
   assert.equal(await page.locator('track[kind="subtitles"]').count(), 1);
   await screenshot('desktop-player');
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: 'close', exact: true }).click();
   await page.getByRole('button', { name: '继续播放', exact: true }).waitFor();
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: 'close', exact: true }).click();
   await page.getByRole('searchbox', { name: '搜索馆藏' }).fill('');
   await page.getByRole('button', { name: '继续观看', exact: true }).click();
   await check(async () => await page.locator('.catalog-card').count() === 1, 'continue watching did not use saved progress');
@@ -80,8 +86,8 @@ try {
   await page.locator('.catalog-card').click();
   await page.getByRole('button', { name: '继续播放', exact: true }).click();
   await check(() => page.locator('video').evaluate(element => element.currentTime >= 4), 'playback did not resume saved position');
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: 'close', exact: true }).click();
+  await page.getByRole('button', { name: 'close', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: '全部影片', exact: true }).click();
   await check(async () => await page.locator('.catalog-card').count() === 9, 'mobile catalog failed');
@@ -93,6 +99,17 @@ try {
   await page.getByRole('heading', { name: '雾中的山谷 · 手工修正', exact: true }).waitFor();
   await screenshot('mobile-detail');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile detail horizontal overflow');
+  await page.getByRole('button', { name: 'close', exact: true }).click();
+  await page.getByRole('button', { name: '媒体库管理', exact: true }).click();
+  await page.getByRole('button', { name: '重新关联', exact: true }).click();
+  await page.getByRole('button', { name: '确认关联', exact: true }).click();
+  await page.getByText('目录已重新关联。', { exact: false }).waitFor();
+  await page.getByRole('button', { name: '扫描馆藏', exact: true }).click();
+  await page.getByText('扫描完成：9 部作品、10 个文件', { exact: false }).waitFor();
+  await page.getByRole('button', { name: 'close', exact: true }).click();
+  await page.locator('.catalog-card').click();
+  await page.getByRole('button', { name: '♥ 已收藏', exact: true }).waitFor();
+  await page.getByRole('button', { name: '继续播放', exact: true }).waitFor();
   assert.deepEqual(errors, [], 'browser runtime errors');
   console.log(JSON.stringify({ passed: true, fixtures: { works: 9, assets: 10 }, playback: 'real H.264 + AAC', checks: ['import', 'manual scan', 'native Host rewrite + CSRF', 'search', 'editions', 'favorite', 'manual title', 'play', 'seek', 'SRT track', 'progress', 'resume', 'reload', 'mobile', 'console'], screenshots: report }));
 } catch (error) {

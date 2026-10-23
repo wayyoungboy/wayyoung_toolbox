@@ -50,7 +50,9 @@ func TestMovieQueueSeparateOutputMovesAndResumesWithStoredRoots(t *testing.T) {
 			if hardLink && err != nil || !hardLink && !os.IsNotExist(err) {
 				t.Fatalf("wrong source disposition (hardlink=%t): %v", hardLink, err)
 			}
-			// A saved plan must not be reinterpreted using newly selected roots.
+			// A changed library pauses recovery without rewriting the saved file
+			// identities. Restoring the library permits safe resume.
+			originalOutput := cfg.OutputDirectory
 			cfg.InputDirectory, cfg.OutputDirectory = t.TempDir(), t.TempDir()
 			if _, err := f.s.db.UpdateJavspConfig(cfg); err != nil {
 				t.Fatal(err)
@@ -75,6 +77,20 @@ func TestMovieQueueSeparateOutputMovesAndResumesWithStoredRoots(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = f.s.db.Close() })
+			if err := f.s.drainPendingMovies(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			job, err = f.s.db.MediaJob(job.ID)
+			if err != nil || job.Status != "needs_attention" || f.runs != 1 {
+				t.Fatalf("recovery ignored changed library: %+v %v", job, err)
+			}
+			cfg.OutputDirectory = originalOutput
+			if _, err := f.s.db.UpdateJavspConfig(cfg); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.s.db.RetryMediaJob(job.ID, job.Version); err != nil {
+				t.Fatal(err)
+			}
 			if err := f.s.drainPendingMovies(context.Background()); err != nil {
 				t.Fatal(err)
 			}

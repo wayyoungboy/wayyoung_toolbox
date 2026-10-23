@@ -10,6 +10,6 @@ export default function NamingPreviewResult({ data }) {
       <div><dt>封面</dt><dd><code>{data.plan.poster_path}</code></dd></div>
       <div><dt>剧照</dt><dd><code>{data.plan.fanart_path}</code></dd></div>
     </dl>
-    <small>这是示例路径，不代表文件已存在或任务已完成。新规则保存后用于尚未规划的影片；已有整理凭据不会被改写。</small>
+    <small>这是示例路径，不代表文件已存在或任务已完成。新规则保存后用于尚未规划的影片；旧任务的输出如果不在新的完成目录内，会暂停等待核对。</small>
   </section>;
 }

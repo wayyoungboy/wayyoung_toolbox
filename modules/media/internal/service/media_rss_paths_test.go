@@ -172,7 +172,7 @@ func TestRSSDiscoveryUsesCommittedSharedDirectoryOnlyForNewEntries(t *testing.T)
 
 func TestPipelinePathsIncludesSharedDefaultAndPreservesOverrides(t *testing.T) {
 	intake := IntakeConfig{SourceDirectory: "/media/downloads", DestinationDirectory: "/media/pending"}
-	javsp := JavspConfig{InputDirectory: "/media/pending"}
+	javsp := JavspConfig{InputDirectory: "/media/pending", OutputDirectory: t.TempDir(), MoveFiles: true}
 	paths := buildPipelinePaths([]Task{{Name: "default"}}, intake, javsp)
 	if len(paths.RSSDownloadPaths) != 1 || paths.RSSDownloadPaths[0] != intake.SourceDirectory || len(paths.Warnings) != 0 || !paths.Consistent {
 		t.Fatalf("default RSS path not represented: %+v", paths)

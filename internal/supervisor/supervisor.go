@@ -93,8 +93,8 @@ func DefaultDefinitions(appDir string) []Definition {
 			Prefix:      prefix + "integrity", PublicDir: modulePath("integrity", "public"),
 		},
 		{
-			ID: "media", Name: "影片采集任务中心", Version: "0.0.20",
-			Description: "RSS、下载入库、JAVSP、番剧刮削和媒体维护。",
+			ID: "media", Name: "个人媒体中心", Version: "0.1.0",
+			Description: "馆藏、播放、观看记录与 RSS、下载入库、JAVSP 和媒体维护。",
 			Prefix:      prefix + "media", PublicDir: modulePath("media", "public"), BundleDir: modulePath("media", "javsp"),
 		},
 		{

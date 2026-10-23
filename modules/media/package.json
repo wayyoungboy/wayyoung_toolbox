@@ -1,14 +1,14 @@
 {
   "name": "fnos-media-acquisition-center",
-  "version": "0.0.20",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "npm --workspace frontend run dev",
     "build:frontend": "npm --workspace frontend run build",
     "build": "node scripts/build.mjs",
-    "test:go": "go test -race ./cmd/... ./internal/...",
-    "vet:go": "go vet ./cmd/... ./internal/...",
+    "test:go": "go test -race ./internal/... ./module/...",
+    "vet:go": "go vet ./internal/... ./module/...",
     "test:frontend": "npm --workspace frontend run test",
     "lint": "npm --workspace frontend run lint"
   },
