@@ -229,3 +229,20 @@ func TestCatalogIdentityMergeRetainsNonConflictingNotes(t *testing.T) {
  result:=catalogJSON[map[string]any](t,s,"GET","/api/catalog/works/"+target,nil,200)
  if result["rating"]!=float64(8)||result["feedback"]!="like"||result["watched"]!=true||result["notes_revision"]!=float64(2){t.Fatalf("merge lost notes: %+v",result)}
 }
+
+func TestCatalogIdentityMergeKeepsConflictingSourceNotes(t *testing.T) {
+ s:=testService(t); root:=t.TempDir()
+ catalogWrite(t,root,"_646-C.mp4","source");catalogWrite(t,root,"DEMO-646.mp4","target")
+ lib:=catalogLibrary(t,s,root);catalogScan(t,s,lib)
+ var source,target string
+ for _,work:=range catalogWorks(t,s,""){if work.Code=="DEMO-646"{target=work.ID}else{source=work.ID}}
+ for id,rating:=range map[string]int{source:8,target:9}{catalogJSON[map[string]any](t,s,"PATCH","/api/catalog/works/"+id+"/personal",map[string]any{"rating":rating,"notes_revision":0},200)}
+ catalogWrite(t,root,"_646-C.nfo",`<movie><num>DEMO-646</num><title>Resolved</title></movie>`);catalogScan(t,s,lib)
+ var rating int
+ if err:=s.db.db.QueryRow("SELECT rating FROM catalog_work_notes WHERE work_id=?",source).Scan(&rating);err!=nil||rating!=8{t.Fatalf("conflicting source discarded: rating=%d err=%v",rating,err)}
+ work:=catalogJSON[catalog.Work](t,s,"GET","/api/catalog/works/"+target,nil,200)
+ if work.Rating!=9{t.Fatalf("destination overwritten: %+v",work)}
+ found:=false
+ for _,asset:=range work.Assets{for _,issue:=range asset.Issues{if issue=="personal_notes_conflict"{found=true}}}
+ if !found{t.Fatal("conflict not surfaced")}
+}
