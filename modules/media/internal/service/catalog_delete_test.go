@@ -162,3 +162,14 @@ func TestCatalogDeletionKeepsFolderCoverForUnscannedNeighborAndRespectsRecoveryH
 		t.Fatal("held video removed")
 	}
 }
+
+func TestCatalogDeletionPreservesCustomSharedArtworkForUnscannedNeighbor(t *testing.T){
+ s:=testService(t);root:=t.TempDir();catalogWrite(t,root,"DEMO-123.mp4","video")
+ catalogWrite(t,root,"DEMO-123.nfo",`<movie><title>First</title><art><poster>art/shared.png</poster></art></movie>`)
+ catalogWrite(t,root,"art/shared.png","image")
+ lib:=catalogLibrary(t,s,root);catalogScan(t,s,lib);ids:=[]string{catalogWorks(t,s,"")[0].ID}
+ catalogWrite(t,root,"OTHER-999.mp4","neighbor")
+ catalogWrite(t,root,"OTHER-999.nfo",`<movie><title>Other</title><art><poster>art/shared.png</poster></art></movie>`)
+ plan:=deletePreview(t,s,ids);raw,_:=json.Marshal(plan["files"])
+ if strings.Contains(string(raw),"shared.png"){t.Fatal("custom shared artwork included in deletion")}
+}
