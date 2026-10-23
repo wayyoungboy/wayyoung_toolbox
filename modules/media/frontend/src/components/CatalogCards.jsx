@@ -8,11 +8,11 @@ export function CatalogPoster({ assetID, title = '', className = '' }) {
   </div>;
 }
 
-export default function CatalogCards({ items, onOpen, selecting = false, selectedIDs = [], onToggle }) {
+export default function CatalogCards({ items, onOpen, selecting = false, selectedIDs = [], onToggle, disabled = false }) {
   return <div className="catalog-grid">
     {items.map(work => <div key={work.id} className={`catalog-card-item${selectedIDs.includes(work.id) ? ' is-selected' : ''}`}>
-      {selecting && <label className="catalog-card-checkbox"><input type="checkbox" aria-label={`选择作品：${work.title}`} checked={selectedIDs.includes(work.id)} onChange={() => onToggle(work.id)} /><span>选择</span></label>}
-      <button className="catalog-card" type="button" onClick={() => selecting ? onToggle(work.id) : onOpen(work.id)}>
+      {selecting && <label className="catalog-card-checkbox"><input type="checkbox" disabled={disabled} aria-label={`选择作品：${work.title}`} checked={selectedIDs.includes(work.id)} onChange={() => onToggle(work.id)} /><span>选择</span></label>}
+      <button className="catalog-card" type="button" disabled={disabled} onClick={() => selecting ? onToggle(work.id) : onOpen(work.id)}>
       <div className="catalog-cover-wrap">
         <CatalogPoster key={work.cover_asset_id} assetID={work.cover_asset_id} title="" />
         {work.favorite && <span className="catalog-favorite" aria-label="已收藏">♥</span>}

@@ -254,9 +254,9 @@ try {
   await searchObserved;
   assert.ok(await page.locator('.catalog-card').evaluateAll(elements=>elements.length>0&&elements.every(element=>element.disabled)),'old search results remained actionable while replacement was pending');
   releaseSearch();
-  await page.unroute('**/api/catalog/works?*',holdSearch);
   await check(async()=>await page.locator('.catalog-card').count()===1,'second playlist work search failed');
   await check(async()=>await page.locator('.catalog-card-code').first().innerText()==='TEST-004','new query showed the previous single result');
+  await page.unroute('**/api/catalog/works?*',holdSearch);
   await page.locator('.catalog-card').click();
   await page.getByLabel('加入播放列表',{exact:true}).selectOption({label:'周末片单 · 已编辑'});
   await page.getByRole('button',{name:'添加到播放列表',exact:true}).click();

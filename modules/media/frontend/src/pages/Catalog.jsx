@@ -33,6 +33,8 @@ export default function Catalog({initial = {}, onNavigate}) {
   const [page, setPage] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const resultKey=JSON.stringify({query,actor,tag,sort,view,libraryID,listID,offset,revision});
+  const resultsPending=loading||input!==query||page.owner!==resultKey;
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   const loadLibraries = useCallback(async (signal) => {
     const [result, savedLists] = await Promise.all([api.catalogLibraries({ signal }), api.catalogLists({signal})]);
@@ -56,11 +58,11 @@ export default function Catalog({initial = {}, onNavigate}) {
     const controller = new AbortController();
     setLoading(true); setError('');
     api.catalogWorks({ query, actor, tag, sort, view, libraryID, listID, offset, signal: controller.signal })
-      .then(result => { if (!controller.signal.aborted) { const validOffset=catalogPageOffset(offset,result.total);if(validOffset!==offset)setOffset(validOffset);else setPage(result); } })
+      .then(result => { if (!controller.signal.aborted) { const validOffset=catalogPageOffset(offset,result.total);if(validOffset!==offset)setOffset(validOffset);else setPage({...result,owner:resultKey}); } })
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [query, actor, tag, sort, view, libraryID, listID, offset, revision]);
+  }, [query, actor, tag, sort, view, libraryID, listID, offset, revision,resultKey]);
   const relatedSearch = ({ actor = '', tag = '' }) => {
     setSelected(''); setInput(''); setQuery(''); setView('all'); setLibraryID(''); setListID(''); setOffset(0); setActor(actor); setTag(tag);
   };
@@ -81,10 +83,10 @@ export default function Catalog({initial = {}, onNavigate}) {
     </div>}
     <div className="catalog-results-heading"><span aria-live="polite">{loading ? '正在读取馆藏…' : `${page.total} 部作品`}{view==='continue'?' · 最近观看优先':''}</span><div className="catalog-result-filters"><label>排序<select aria-label="馆藏排序" value={sort} disabled={view==='continue'} onChange={event=>{setSort(event.target.value);setOffset(0);}}><option value="recent">最近加入</option><option value="title">标题</option><option value="year">发行年份</option></select></label><label>媒体库<select aria-label="筛选媒体库" value={libraryID} onChange={event => { setLibraryID(event.target.value); setOffset(0); }}><option value="">全部媒体库</option>{libraries.map(library => <option key={library.id} value={library.id}>{library.name}</option>)}</select></label><label>播放列表<select aria-label="馆藏播放列表" value={listID} onChange={event=>{setListID(event.target.value);setOffset(0);}}><option value="">全部作品</option>{lists.map(list=><option key={list.id} value={list.id}>{list.name}</option>)}</select></label><button className="catalog-text-button" type="button" onClick={()=>onNavigate('personal','lists')}>管理列表</button></div></div>
     {listID&&<p className="catalog-help">“最近加入”排序下按列表自定义顺序展示。</p>}
-    {selecting&&<div className="catalog-selection-bar" role="region" aria-label="馆藏批量操作"><strong>已选 {selectedIDs.length} 部</strong><Button disabled={loading||!!error} onClick={()=>setSelectedIDs(previous=>[...new Set([...previous,...page.items.map(item=>item.id)])].slice(0,100))}>选择本页</Button><Button disabled={!selectedIDs.length} onClick={()=>setSelectedIDs([])}>取消选择</Button><Button type="danger" disabled={!selectedIDs.length||loading||!!error} onClick={()=>setDeleting([...selectedIDs])}>永久删除</Button><small>最多 100 部；跨页保留选择，删除包含作品的所有版本。</small></div>}
+    {selecting&&<div className="catalog-selection-bar" role="region" aria-label="馆藏批量操作"><strong>已选 {selectedIDs.length} 部</strong><Button disabled={resultsPending||!!error} onClick={()=>setSelectedIDs(previous=>[...new Set([...previous,...page.items.map(item=>item.id)])].slice(0,100))}>选择本页</Button><Button disabled={!selectedIDs.length} onClick={()=>setSelectedIDs([])}>取消选择</Button><Button type="danger" disabled={!selectedIDs.length||resultsPending||!!error} onClick={()=>setDeleting([...selectedIDs])}>永久删除</Button><small>最多 100 部；跨页保留选择，删除包含作品的所有版本。</small></div>}
     {error && <div className="catalog-alert" role="alert">{error} <button className="catalog-text-button" type="button" onClick={refresh}>重试</button></div>}
-    <section aria-label="馆藏作品" aria-busy={loading}>
-      {!error && page.items.length > 0 && <CatalogCards items={page.items} onOpen={setSelected} selecting={selecting} selectedIDs={selectedIDs} onToggle={toggle} />}
+    <section aria-label="馆藏作品" aria-busy={resultsPending}>
+      {!error && page.items.length > 0 && <CatalogCards items={page.items} disabled={resultsPending} onOpen={setSelected} selecting={selecting} selectedIDs={selectedIDs} onToggle={toggle} />}
       {!loading && !error && page.items.length === 0 && <div className="catalog-empty"><span aria-hidden>▤</span><h2>{libraries.length ? '这里还没有影片' : '从已有影片开始'}</h2><p>{libraries.length ? '试试其他筛选条件，或在媒体库管理中扫描目录。' : '添加媒体目录，读取已有 NFO、封面和字幕。原文件不会被修改。'}</p><Button theme="solid" onClick={() => setManager(true)}>管理媒体库</Button></div>}
       {loading && page.items.length === 0 && <p className="catalog-loading" role="status">正在读取馆藏…</p>}
     </section>
