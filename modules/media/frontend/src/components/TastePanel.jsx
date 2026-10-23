@@ -18,8 +18,10 @@ function TasteSettings({report,busy,onSave,onClear}){
 }
 
 export default function TastePanel({report,busy=false,onSave,onClear,onOpen,onActor}){
+ const [sourcesExpanded,setSourcesExpanded]=useState(false);
+ const sourcesOpen=!report.config.enabled||sourcesExpanded;
  return <div className="taste-layout">
-  <aside><TasteSettings key={report.config.version} report={report} busy={busy} onSave={onSave} onClear={onClear}/></aside>
+  <aside><button type="button" className="taste-settings-toggle" aria-expanded={sourcesOpen} aria-controls="local-taste-sources" onClick={()=>setSourcesExpanded(value=>!value)}>分析来源与隐私</button><div id="local-taste-sources" className="taste-source-content" data-open={String(sourcesOpen)}><TasteSettings key={report.config.version} report={report} busy={busy} onSave={onSave} onClear={onClear}/></div></aside>
   <div className="taste-main">
    {!report.config.enabled?<div className="catalog-empty"><h2>尚未启用偏好分析</h2><p>启用后，根据你允许参与的本地资料，寻找馆藏中相关的未看作品。没有证据时不会伪装成个性化推荐。</p></div>:<>
     <section aria-label="偏好依据"><h2>你的本地偏好</h2><p className="catalog-help">演员、标签、厂牌和年代来自已有资料。播放记录只表示有过播放，不代表累计观看时长。每部作品每个来源只计一次。</p>
