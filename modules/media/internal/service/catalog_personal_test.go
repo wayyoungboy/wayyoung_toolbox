@@ -213,3 +213,19 @@ func TestCatalogIdentityCorrectionTransfersNotesAndLists(t *testing.T) {
 		t.Fatalf("list identity lost: %+v", items)
 	}
 }
+
+func TestCatalogIdentityMergeRetainsNonConflictingNotes(t *testing.T) {
+ s:=testService(t); root:=t.TempDir()
+ catalogWrite(t,root,"_646-C.mp4","source")
+ catalogWrite(t,root,"DEMO-646.mp4","target")
+ lib:=catalogLibrary(t,s,root);catalogScan(t,s,lib)
+ var source,target string
+ for _,work:=range catalogWorks(t,s,""){if work.Code=="DEMO-646"{target=work.ID}else{source=work.ID}}
+ if source==""||target==""{t.Fatal("fixture identities missing")}
+ catalogJSON[map[string]any](t,s,"PATCH","/api/catalog/works/"+source+"/personal",map[string]any{"rating":8,"feedback":"like","notes_revision":0},200)
+ catalogJSON[map[string]any](t,s,"PATCH","/api/catalog/works/"+target+"/personal",map[string]any{"watched":true,"notes_revision":0},200)
+ catalogWrite(t,root,"_646-C.nfo",`<movie><num>DEMO-646</num><title>Resolved</title></movie>`)
+ catalogScan(t,s,lib)
+ result:=catalogJSON[map[string]any](t,s,"GET","/api/catalog/works/"+target,nil,200)
+ if result["rating"]!=float64(8)||result["feedback"]!="like"||result["watched"]!=true||result["notes_revision"]!=float64(2){t.Fatalf("merge lost notes: %+v",result)}
+}
