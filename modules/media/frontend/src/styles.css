@@ -405,8 +405,8 @@ button, input, select { font: inherit; }
   .app-shell { height: auto; min-height: 100vh; flex-direction: column; }
   .sidebar { width: 100%; flex-basis: auto; border-right: 0; border-bottom: 1px solid var(--border); }
   .brand { height: 54px; padding: 0 14px; }
-  .nav-list { flex-direction: row; padding: 6px 8px; gap: 4px; }
-  .nav-item { justify-content: center; flex: 1; min-width: 0; height: 52px; padding: 4px 2px; gap: 4px; flex-direction: column; font-size: 11px; white-space: nowrap; }
+  .nav-list { flex-direction: row; flex-wrap: wrap; padding: 6px 8px; gap: 4px; }
+  .nav-item { justify-content: center; flex: 0 0 calc(25% - 3px); min-width: 0; height: 52px; padding: 4px 2px; gap: 4px; flex-direction: column; font-size: 11px; white-space: nowrap; }
   .nav-separator { display: none; }
   .sidebar-footer { display: none; }
   .main-content { width: 100%; overflow: visible; }

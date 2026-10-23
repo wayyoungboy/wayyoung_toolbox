@@ -6,15 +6,18 @@ import { formatPlaybackTime, preferredAsset } from '../catalog-playback';
 import { CatalogPoster } from './CatalogCards';
 import CatalogPlayer from './CatalogPlayer';
 import CatalogMetadata from './CatalogMetadata';
+import CatalogPersonalControls from './CatalogPersonalControls';
 
 const issueLabels = {
   identity_unknown: '番号待确认，不会猜测缺失前缀', identity_conflict: '文件名与 NFO 番号冲突',
   metadata_conflict: '不同版本的标题不一致', nfo_missing: '未找到适用的本地 NFO', nfo_invalid: 'NFO 格式无效',
   nfo_unreadable: 'NFO 暂不可读', title_missing: 'NFO 缺少标题', manual_title_conflict: '身份合并前的手工标题存在冲突，原记录保留',
   identity_retained: '本地资料暂不可用，沿用此文件上次已确认的番号与资料',
+  personal_notes_conflict: '身份合并时个人评分或标记冲突：保留目标值，源记录在数据库中保留，未自动覆盖',
+  personal_identity_conflict: '原身份拆分为多部作品：原个人记录与列表归属保留，未猜测迁移目标',
 };
 
-export default function CatalogDetails({ id, onClose, onChanged, onSearch }) {
+export default function CatalogDetails({ id, onClose, onChanged, onSearch, onActor, onManageLists }) {
   const [work, setWork] = useState(null);
   const [selectedID, setSelectedID] = useState('');
   const [playing, setPlaying] = useState(null);
@@ -57,11 +60,12 @@ export default function CatalogDetails({ id, onClose, onChanged, onSearch }) {
               <div className="catalog-actions"><Button htmlType="submit" theme="solid" disabled={busy || !title.trim()}>保存标题</Button><Button disabled={busy} onClick={() => { setTitle(work.title); setEditing(false); }}>取消</Button></div>
               <small>手工标题优先保留。仅修改本应用馆藏，不改写原视频和 NFO。</small>
             </form> : <button type="button" className="catalog-text-button" onClick={() => setEditing(true)}>修正标题{work.title_locked ? ' · 已人工锁定' : ''}</button>}
-            <CatalogMetadata work={work} onSearch={onSearch} />
+            <CatalogMetadata work={work} onSearch={onSearch} onActor={onActor} />
             <div className="catalog-actions">
               <Button aria-pressed={work.favorite} disabled={busy} onClick={() => update(() => api.catalogPersonal(id, { favorite: !work.favorite }))}>{work.favorite ? '♥ 已收藏' : '♡ 收藏'}</Button>
               <Button aria-pressed={work.watch_later} disabled={busy} onClick={() => update(() => api.catalogPersonal(id, { watch_later: !work.watch_later }))}>{work.watch_later ? '已加入稍后观看' : '稍后观看'}</Button>
             </div>
+            <CatalogPersonalControls work={work} busy={busy} update={update} onChanged={onChanged} onManageLists={onManageLists}/>
           </div>
         </div>
         {work.plot && <section className="catalog-synopsis"><h3>简介</h3><p>{work.plot}</p></section>}

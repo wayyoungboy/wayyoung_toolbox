@@ -1,0 +1,47 @@
+.personal-search { min-width: 0; width: min(320px,100%); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; color: inherit; background: var(--surface); }
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap: 24px; margin-top: 24px; }
+.person-card { display: grid; gap: 8px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.person-card strong { overflow-wrap: anywhere; font-size: 14px; }
+.person-card > span { color: var(--subtle-text); font-size: 12px; }
+.actor-portrait { display: grid; place-items: center; aspect-ratio: 3 / 4; overflow: hidden; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-soft); color: #a6b2c1; }
+.actor-portrait img { width: 100%; height: 100%; object-fit: cover; }
+.actor-portrait > span { font-size: 42px; }
+.actor-profile-header { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: 32px; margin: 24px 0; }
+.actor-profile-header h1 { margin: 8px 0; font-size: 30px; overflow-wrap: anywhere; }
+.actor-biography { white-space: pre-wrap; font-size: 14px; line-height: 1.8; max-width: 70ch; overflow-wrap: anywhere; }
+.actor-image-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.actor-image-actions label { font-size: 12px; display: grid; gap: 8px; }
+.actor-image-actions input { max-width: 230px; }
+.actor-image-actions small { width: 100%; color: var(--subtle-text); }
+.personal-edit-form { max-width: 720px; display: grid; gap: 16px; border-block: 1px solid var(--border); padding: 22px 0; margin-bottom: 24px; }
+.personal-edit-form label { display: grid; gap: 8px; font-size: 13px; }
+.personal-edit-form input,.personal-edit-form textarea { width: 100%; min-width: 0; background: var(--surface); color: inherit; border: 1px solid var(--border); border-radius: 5px; padding: 9px 12px; font: inherit; }
+.person-card:focus-visible { outline: 3px solid var(--app-blue); outline-offset: 5px; }
+.personal-counts { display: flex; flex-wrap: wrap; gap: 24px; padding: 12px 0 22px; margin: 0; border-bottom: 1px solid var(--border); }
+.personal-counts > div { display: grid; gap: 6px; }
+.personal-counts dt { font-size: 12px; color: var(--subtle-text); }
+.personal-counts dd { margin: 0; font-size: 20px; font-weight: 600; }
+.personal-history { list-style: none; margin: 0; padding: 0; }
+.personal-history > li { display: grid; grid-template-columns: 20px 60px minmax(0,1fr) auto; gap: 16px; align-items: center; padding: 18px 0; border-bottom: 1px solid var(--border); }
+.personal-history-copy { display: grid; gap: 8px; min-width: 0; }
+.personal-history-copy > button { text-align: left; justify-self: start; font-size: 14px; font-weight: 600; }
+.personal-history-copy small,.personal-history-copy time { font-size: 12px; color: var(--subtle-text); overflow-wrap: anywhere; }
+.personal-list-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+.personal-list-toolbar select { max-width: 300px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; }
+.personal-list-items { padding: 0; list-style: none; }
+.personal-list-items li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.personal-list-items li > span { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.personal-list-items img { width: 36px; aspect-ratio: 2 / 3; object-fit: cover; }
+.personal-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 0; border-top: 1px solid var(--border); margin-top: 20px; font-size: 12px; }
+.personal-controls label { display: flex; align-items: center; gap: 6px; }
+.personal-controls select { padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; }
+@media(max-width:700px){
+ .nav-list { flex-wrap: wrap; }
+ .nav-item { flex: 0 0 calc(25% - 3px); }
+ .actor-profile-header { grid-template-columns: 100px minmax(0,1fr); gap: 16px; }
+ .actor-profile-header h1 { font-size: 22px; }
+ .actor-image-actions input { max-width: 180px; }
+ .personal-history > li { grid-template-columns: 16px 45px minmax(0,1fr); gap: 10px; }
+ .personal-history > li > button { grid-column: 3; justify-self: start; }
+ .people-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 22px 16px; }
+}

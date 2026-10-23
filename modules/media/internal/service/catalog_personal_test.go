@@ -2,15 +2,235 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/gif"
 	"image/png"
+	"strings"
 	"testing"
 
 	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
 )
+
+func TestCatalogPersonalValidationAndListLifecycle(t *testing.T) {
+	s, _, works := personalFixture(t)
+	lists := catalogJSON[map[string][]catalog.Playlist](t, s, "GET", "/api/catalog/lists", nil, 200)
+	if len(lists["items"]) != 0 {
+		t.Fatal("unexpected lists")
+	}
+	for _, path := range []string{"/api/catalog/actors?limit=0", "/api/catalog/actors?offset=-1", "/api/catalog/history?limit=101", "/api/catalog/history?offset=bad", "/api/catalog/actors?query=" + strings.Repeat("a", 501), "/api/catalog/history?query=" + strings.Repeat("a", 501)} {
+		if w := catalogRequest(t, s, "GET", path, nil); w.Code != 400 {
+			t.Fatalf("accepted invalid query %s: %d", path, w.Code)
+		}
+	}
+	for _, path := range []string{"/api/catalog/actors/missing", "/api/catalog/actors/missing/portrait", "/api/catalog/lists/missing"} {
+		if w := catalogRequest(t, s, "GET", path, nil); w.Code != 404 {
+			t.Fatalf("missing %s: %d", path, w.Code)
+		}
+	}
+	for _, ids := range [][]string{{}, {"same", "same"}, {""}, make([]string, 101)} {
+		if w := catalogRequest(t, s, "POST", "/api/catalog/history/clear", map[string]any{"ids": ids}); w.Code != 400 {
+			t.Fatalf("invalid clear accepted: %d", w.Code)
+		}
+	}
+	for _, name := range []string{" ", strings.Repeat("a", 161)} {
+		if w := catalogRequest(t, s, "POST", "/api/catalog/lists", map[string]string{"name": name}); w.Code != 400 {
+			t.Fatalf("bad list name: %d", w.Code)
+		}
+	}
+	list := catalogJSON[catalog.Playlist](t, s, "POST", "/api/catalog/lists", map[string]string{"name": "Original"}, 201)
+	list = catalogJSON[catalog.Playlist](t, s, "PATCH", "/api/catalog/lists/"+list.ID, map[string]any{"name": "Edited", "description": "Kept", "version": list.Version}, 200)
+	if list.Name != "Edited" || list.Version != 2 {
+		t.Fatalf("edit failed: %+v", list)
+	}
+	for _, version := range []int{0, 1} {
+		expected := 409
+		if version == 0 {
+			expected = 400
+		}
+		if w := catalogRequest(t, s, "PATCH", "/api/catalog/lists/"+list.ID, map[string]any{"name": "Stale", "version": version}); w.Code != expected {
+			t.Fatalf("stale metadata accepted: %d", w.Code)
+		}
+	}
+	for _, ids := range [][]string{{works[0].ID, works[0].ID}, {""}, make([]string, 1001)} {
+		if w := catalogRequest(t, s, "PUT", "/api/catalog/lists/"+list.ID+"/items", map[string]any{"version": list.Version, "work_ids": ids}); w.Code != 400 {
+			t.Fatalf("invalid items accepted: %d", w.Code)
+		}
+	}
+	list = catalogJSON[catalog.Playlist](t, s, "PUT", "/api/catalog/lists/"+list.ID+"/items", map[string]any{"version": list.Version, "work_ids": []string{works[0].ID}}, 200)
+	all := catalogJSON[map[string][]catalog.Playlist](t, s, "GET", "/api/catalog/lists", nil, 200)
+	if len(all["items"]) != 1 || all["items"][0].WorkCount != 1 {
+		t.Fatalf("list index: %+v", all)
+	}
+	if w := catalogRequest(t, s, "DELETE", "/api/catalog/lists/"+list.ID, map[string]int{"version": 1}); w.Code != 409 {
+		t.Fatalf("stale delete: %d", w.Code)
+	}
+	if w := catalogRequest(t, s, "DELETE", "/api/catalog/lists/"+list.ID, map[string]int{"version": 0}); w.Code != 400 {
+		t.Fatalf("invalid delete: %d", w.Code)
+	}
+	catalogJSON[map[string]bool](t, s, "DELETE", "/api/catalog/lists/"+list.ID, map[string]any{"version": list.Version}, 200)
+	if w := catalogRequest(t, s, "DELETE", "/api/catalog/lists/"+list.ID, map[string]any{"version": list.Version}); w.Code != 404 {
+		t.Fatalf("deleted list: %d", w.Code)
+	}
+	for _, session := range []string{"short", strings.Repeat("x", 81), "invalid-session-!"} {
+		work := catalogDetail(t, s, works[0].ID)
+		if w := catalogRequest(t, s, "PUT", "/api/catalog/assets/"+work.Assets[0].ID+"/progress", map[string]any{"position": 1, "duration": 10, "revision": 0, "session_id": session}); w.Code != 400 {
+			t.Fatalf("invalid session: %d", w.Code)
+		}
+	}
+}
+
+func TestCatalogHistoryFailureRollsBackProgressAndWatched(t *testing.T) {
+	s, _, works := personalFixture(t)
+	work := catalogDetail(t, s, works[0].ID)
+	asset := work.Assets[0].ID
+	if _, err := s.db.db.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON catalog_history BEGIN SELECT RAISE(ABORT,'injected'); END`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.db.catalog.SaveProgress(context.Background(), asset, catalog.Progress{Position: 99, Duration: 100, SessionID: "test-atomic-rollback"})
+	if err == nil {
+		t.Fatal("fault injection did not fail")
+	}
+	current := catalogJSON[catalog.Work](t, s, "GET", "/api/catalog/works/"+work.ID, nil, 200)
+	if current.Watched || current.Assets[0].Progress.Revision != 0 {
+		t.Fatalf("partial transaction published: %+v", current)
+	}
+}
+
+func TestCatalogLegacyHistoryBackfillDoesNotResurrectClearedRecords(t *testing.T) {
+	s, _, works := personalFixture(t)
+	work := catalogDetail(t, s, works[0].ID)
+	asset := work.Assets[0].ID
+	catalogJSON[map[string]any](t, s, "PUT", "/api/catalog/assets/"+asset+"/progress", map[string]any{"position": 96, "duration": 100, "revision": 0}, 200)
+	for _, query := range []string{"DELETE FROM catalog_history", "DELETE FROM catalog_work_notes", "DELETE FROM catalog_state WHERE key='history_backfill_1'"} {
+		if _, err := s.db.db.Exec(query); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reopen := func() {
+		store, err := catalog.New(s.db.db, unambiguousMediaID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.db.catalog = store
+	}
+	reopen()
+	history := catalogJSON[catalog.HistoryPage](t, s, "GET", "/api/catalog/history", nil, 200)
+	if history.Total != 1 || !history.Items[0].Completed {
+		t.Fatalf("legacy missing: %+v", history)
+	}
+	catalogJSON[map[string]int](t, s, "POST", "/api/catalog/history/clear", map[string]any{"ids": []string{history.Items[0].ID}}, 200)
+	reopen()
+	if result := catalogJSON[catalog.HistoryPage](t, s, "GET", "/api/catalog/history", nil, 200); result.Total != 0 {
+		t.Fatal("cleared history resurrected")
+	}
+	if result := catalogJSON[catalog.Work](t, s, "GET", "/api/catalog/works/"+work.ID, nil, 200); !result.Watched {
+		t.Fatal("legacy completion lost")
+	}
+}
+
+func TestCatalogActorPortraitLifecycleAndBounds(t *testing.T) {
+	s, _, _ := personalFixture(t)
+	page := catalogJSON[catalog.ActorPage](t, s, "GET", "/api/catalog/actors?query=Test", nil, 200)
+	actor := page.Items[0]
+	path := "/api/catalog/actors/" + actor.ID
+	for _, patch := range []catalog.ActorPatch{
+		{DisplayName: "", Version: 1}, {DisplayName: "Control\nName", Version: 1},
+		{DisplayName: "Valid", Aliases: []string{""}, Version: 1},
+		{DisplayName: "Valid", Aliases: make([]string, 33), Version: 1},
+		{DisplayName: "Valid", Biography: strings.Repeat("x", 20001), Version: 1},
+		{DisplayName: "Valid", Version: 0},
+	} {
+		if w := catalogRequest(t, s, "PATCH", path, patch); w.Code != 400 {
+			t.Fatalf("bad actor patch: %d", w.Code)
+		}
+	}
+	actor = catalogJSON[catalog.Actor](t, s, "PATCH", path, catalog.ActorPatch{DisplayName: "Test Actor", Aliases: []string{"Alias", "alias"}, Version: 1}, 200)
+	if len(actor.Aliases) != 1 {
+		t.Fatal("normalized duplicate alias not coalesced")
+	}
+	if w := catalogRequest(t, s, "PATCH", "/api/catalog/actors/missing", catalog.ActorPatch{DisplayName: "Valid", Version: 1}); w.Code != 404 {
+		t.Fatalf("missing actor patch: %d", w.Code)
+	}
+	var valid, large, other bytes.Buffer
+	if err := png.Encode(&valid, image.NewRGBA(image.Rect(0, 0, 8, 10))); err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(&large, image.NewRGBA(image.Rect(0, 0, 4097, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if err := gif.Encode(&other, image.NewRGBA(image.Rect(0, 0, 1, 1)), nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, data := range [][]byte{large.Bytes(), other.Bytes(), valid.Bytes()[:33], make([]byte, (3<<20)+1)} {
+		if _, err := s.db.catalog.SetActorPortrait(context.Background(), actor.ID, actor.Version, data); err == nil {
+			t.Fatal("invalid image accepted")
+		}
+	}
+	if _, err := s.db.catalog.SetActorPortrait(context.Background(), actor.ID, 0, valid.Bytes()); err == nil {
+		t.Fatal("invalid image version accepted")
+	}
+	actor = catalogJSON[catalog.Actor](t, s, "PUT", path+"/portrait", map[string]any{"image": valid.Bytes(), "version": actor.Version}, 200)
+	if w := catalogRequest(t, s, "HEAD", path+"/portrait", nil); w.Code != 200 || w.Body.Len() != 0 {
+		t.Fatalf("portrait HEAD: %d", w.Code)
+	}
+	for _, target := range []string{path, "/api/catalog/actors/missing"} {
+		expected := 409
+		if strings.HasSuffix(target, "missing") {
+			expected = 404
+		}
+		if w := catalogRequest(t, s, "PUT", target+"/portrait", map[string]any{"image": valid.Bytes(), "version": 1}); w.Code != expected {
+			t.Fatalf("image CAS: %d", w.Code)
+		}
+	}
+	actor = catalogJSON[catalog.Actor](t, s, "DELETE", path+"/portrait", map[string]any{"version": actor.Version}, 200)
+	if actor.HasPortrait {
+		t.Fatal("portrait not removed")
+	}
+	if w := catalogRequest(t, s, "GET", path+"/portrait", nil); w.Code != 404 {
+		t.Fatalf("deleted portrait: %d", w.Code)
+	}
+	if w := catalogRequest(t, s, "DELETE", path+"/portrait", map[string]any{"image": valid.Bytes(), "version": actor.Version}); w.Code != 400 {
+		t.Fatalf("delete containing image: %d", w.Code)
+	}
+}
+
+func TestCatalogPersonalDatabaseUnavailableReturnsErrors(t *testing.T) {
+	s, _, works := personalFixture(t)
+	store := s.db.catalog
+	ctx := context.Background()
+	actor := catalogJSON[catalog.ActorPage](t, s, "GET", "/api/catalog/actors", nil, 200).Items[0]
+	if err := s.db.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	checks := map[string]func() error{
+		"actors": func() error { _, err := store.Actors(ctx, "", 48, 0); return err },
+		"actor":  func() error { _, err := store.Actor(ctx, actor.ID); return err },
+		"patch actor": func() error {
+			_, err := store.PatchActor(ctx, actor.ID, catalog.ActorPatch{DisplayName: actor.Name, Version: actor.Version})
+			return err
+		},
+		"portrait":      func() error { _, err := store.SetActorPortrait(ctx, actor.ID, actor.Version, nil); return err },
+		"portrait read": func() error { _, _, _, err := store.ActorPortrait(ctx, actor.ID); return err },
+		"history":       func() error { _, err := store.History(ctx, "", 48, 0); return err },
+		"clear":         func() error { _, err := store.ClearHistory(ctx, []string{"record"}); return err },
+		"lists":         func() error { _, err := store.Lists(ctx); return err },
+		"create list":   func() error { _, err := store.CreateList(ctx, "Example", ""); return err },
+		"edit list":     func() error { _, err := store.UpdateList(ctx, "id", "Example", "", 1); return err },
+		"replace items": func() error { _, err := store.ReplaceListItems(ctx, "id", 1, []string{works[0].ID}); return err },
+		"delete list":   func() error { return store.DeleteList(ctx, "id", 1) },
+	}
+	for name, check := range checks {
+		t.Run(name, func(t *testing.T) {
+			if err := check(); err == nil {
+				t.Fatal("unavailable database reported success")
+			}
+		})
+	}
+}
 
 func catalogJSON[T any](t *testing.T, s *Service, method, target string, body any, status int) T {
 	t.Helper()
@@ -168,7 +388,9 @@ func TestCatalogPersonalMarksAndOrderedPlaylists(t *testing.T) {
 		WorkIDs []string `json:"work_ids"`
 	}
 	list := catalogJSON[playlist](t, s, "POST", "/api/catalog/lists", map[string]string{"name": "Weekend", "description": "My list"}, 201)
-	if list.WorkIDs == nil { t.Fatal("empty playlist must include an empty work_ids array") }
+	if list.WorkIDs == nil {
+		t.Fatal("empty playlist must include an empty work_ids array")
+	}
 	list = catalogJSON[playlist](t, s, "PUT", "/api/catalog/lists/"+list.ID+"/items", map[string]any{"version": list.Version, "work_ids": []string{works[1].ID, works[0].ID}}, 200)
 	items := catalogWorks(t, s, "list_id="+list.ID)
 	if len(items) != 2 || items[0].ID != works[1].ID {

@@ -179,8 +179,9 @@ try {
   await page.getByRole('button',{name:'上移：午后时光',exact:true}).click();
   await readObserved;
   assert.equal(await page.getByRole('button',{name:'上移：午后时光',exact:true}).isDisabled(),true,'list edits must remain disabled until the new version is loaded');
-  releaseListRead();await page.unroute('**/api/catalog/lists/*',holdRead);
+  releaseListRead();
   await check(async()=>(await page.locator('.personal-list-items > li').first().innerText()).includes('午后时光'),'list reorder failed');
+  await page.unroute('**/api/catalog/lists/*',holdRead);
   await screenshot('desktop-playlist');
   await page.locator('.personal-list-items > li').first().getByRole('button',{name:'从列表移除',exact:true}).click();
   await check(async()=>await page.locator('.personal-list-items > li').count()===1,'list remove failed');

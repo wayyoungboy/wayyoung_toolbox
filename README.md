@@ -14,7 +14,7 @@
 
 影片从订阅到媒体库的流程、目录规划和失败恢复方法见 [影片采集流程说明](docs/MEDIA_WORKFLOW.md)。
 
-0.7.1 优化个人媒体中心的演员/关键词搜索、多选永久删除、稍后观看和过期任务归档，仍为阶段性测试版，并非 Peach 全功能替代版。当前能力、测试方法与限制见 [馆藏与播放说明](docs/MEDIA_CENTER_STATUS.md)，完整目标见 [功能基线与验收范围](docs/MEDIA_CENTER_GOAL.md)。
+0.7.2 打通个人媒体中心的馆藏、人物资料与个人记录：支持演员别名/头像、评分与已看标记、按播放会话保存历史，以及自定义有序播放列表。保留采集、整理和维护入口，仍为阶段性测试版，并非 Peach 全功能替代版。当前能力、测试方法与限制见 [馆藏与播放说明](docs/MEDIA_CENTER_STATUS.md)，完整目标见 [功能基线与验收范围](docs/MEDIA_CENTER_GOAL.md)。
 
 ## 使用顺序与权限
 
@@ -55,7 +55,7 @@ npm test
 npm run build
 ```
 
-产物为 `dist/wayyoung_toolbox_0.7.1_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
+产物为 `dist/wayyoung_toolbox_0.7.2_x86_64.fpk`。没有 `fnpack` 时可以先生成完整的打包目录：
 
 ```bash
 SKIP_FNPACK=1 npm run build

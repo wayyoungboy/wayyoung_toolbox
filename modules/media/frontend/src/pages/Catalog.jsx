@@ -7,21 +7,23 @@ import CatalogLibraryManager from '../components/CatalogLibraryManager';
 import CatalogDeleteDialog from '../components/CatalogDeleteDialog';
 import '../catalog.css';
 
-const views = [['all', '全部影片'], ['continue', '继续观看'], ['later','稍后观看'], ['favorites', '我的收藏']];
+const views = [['all', '全部影片'], ['continue', '继续观看'], ['later','稍后观看'], ['favorites', '我的收藏'], ['watched','已看'], ['unwatched','未看']];
 
-export default function Catalog() {
+export default function Catalog({initial = {}, onNavigate}) {
   const [libraries, setLibraries] = useState([]);
+  const [lists, setLists] = useState([]);
   const [completedRoot, setCompletedRoot] = useState('');
   const [manager, setManager] = useState(false);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(initial.work || '');
   const [selecting, setSelecting] = useState(false);
   const [selectedIDs, setSelectedIDs] = useState([]);
   const [deleting, setDeleting] = useState(null);
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
-  const [actor, setActor] = useState('');
-  const [tag, setTag] = useState('');
-  const [view, setView] = useState('all');
+  const [actor, setActor] = useState(initial.actor_name || '');
+  const [tag, setTag] = useState(initial.tag || '');
+  const [listID, setListID] = useState(initial.list || '');
+  const [view, setView] = useState(views.some(([key])=>key===initial.view) ? initial.view : 'all');
   const [sort, setSort] = useState('recent');
   const [libraryID, setLibraryID] = useState('');
   const [offset, setOffset] = useState(0);
@@ -31,8 +33,8 @@ export default function Catalog() {
   const [error, setError] = useState('');
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   const loadLibraries = useCallback(async (signal) => {
-    const result = await api.catalogLibraries({ signal });
-    if (!signal?.aborted) { setLibraries(result.items); setCompletedRoot(result.completed_root || ''); }
+    const [result, savedLists] = await Promise.all([api.catalogLibraries({ signal }), api.catalogLists({signal})]);
+    if (!signal?.aborted) { setLibraries(result.items); setCompletedRoot(result.completed_root || ''); setLists(savedLists.items); }
   }, []);
   const libraryChanged = async () => { await loadLibraries(); refresh(); };
   useEffect(() => {
@@ -47,14 +49,14 @@ export default function Catalog() {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError('');
-    api.catalogWorks({ query, actor, tag, sort, view, libraryID, offset, signal: controller.signal })
+    api.catalogWorks({ query, actor, tag, sort, view, libraryID, listID, offset, signal: controller.signal })
       .then(result => { if (!controller.signal.aborted) setPage(result); })
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [query, actor, tag, sort, view, libraryID, offset, revision]);
+  }, [query, actor, tag, sort, view, libraryID, listID, offset, revision]);
   const relatedSearch = ({ actor = '', tag = '' }) => {
-    setSelected(''); setInput(''); setQuery(''); setView('all'); setLibraryID(''); setOffset(0); setActor(actor); setTag(tag);
+    setSelected(''); setInput(''); setQuery(''); setView('all'); setLibraryID(''); setListID(''); setOffset(0); setActor(actor); setTag(tag);
   };
   const toggle = id => setSelectedIDs(previous => previous.includes(id) ? previous.filter(value => value !== id) : previous.length < 100 ? [...previous,id] : previous);
   const toggleSelection = () => { setSelecting(value => !value); setSelectedIDs([]); };
@@ -72,6 +74,7 @@ export default function Catalog() {
       <button type="button" className="catalog-text-button" onClick={() => { setActor(''); setTag(''); setInput(''); setQuery(''); setOffset(0); }}>清除搜索条件</button>
     </div>}
     <div className="catalog-results-heading"><span>{loading ? '正在读取馆藏…' : `${page.total} 部作品`}</span><div className="catalog-result-filters"><label>排序<select aria-label="馆藏排序" value={sort} disabled={view==='continue'} onChange={event=>{setSort(event.target.value);setOffset(0);}}><option value="recent">最近加入</option><option value="title">标题</option><option value="year">发行年份</option></select></label><label>媒体库<select aria-label="筛选媒体库" value={libraryID} onChange={event => { setLibraryID(event.target.value); setOffset(0); }}><option value="">全部媒体库</option>{libraries.map(library => <option key={library.id} value={library.id}>{library.name}</option>)}</select></label></div></div>
+    <div className="catalog-actions"><label>播放列表 <select aria-label="馆藏播放列表" value={listID} onChange={event=>{setListID(event.target.value);setOffset(0);}}><option value="">全部作品</option>{lists.map(list=><option key={list.id} value={list.id}>{list.name}</option>)}</select></label><button className="catalog-text-button" type="button" onClick={()=>onNavigate('personal','lists')}>管理播放列表</button>{listID&&<small>“最近加入”排序下按列表自定义顺序展示。</small>}</div>
     {selecting&&<div className="catalog-selection-bar" role="region" aria-label="馆藏批量操作"><strong>已选 {selectedIDs.length} 部</strong><Button disabled={loading||!!error} onClick={()=>setSelectedIDs(previous=>[...new Set([...previous,...page.items.map(item=>item.id)])].slice(0,100))}>选择本页</Button><Button disabled={!selectedIDs.length} onClick={()=>setSelectedIDs([])}>取消选择</Button><Button type="danger" disabled={!selectedIDs.length||loading||!!error} onClick={()=>setDeleting([...selectedIDs])}>永久删除</Button><small>最多 100 部；跨页保留选择，删除包含作品的所有版本。</small></div>}
     {error && <div className="catalog-alert" role="alert">{error} <button className="catalog-text-button" type="button" onClick={refresh}>重试</button></div>}
     <section aria-label="馆藏作品" aria-busy={loading}>
@@ -81,7 +84,7 @@ export default function Catalog() {
     </section>
     {page.total > 48 && <nav className="catalog-pagination" aria-label="馆藏分页"><Button disabled={loading || offset === 0} onClick={() => setOffset(value => Math.max(0, value - 48))}>上一页</Button><span>{Math.floor(offset / 48) + 1} / {Math.ceil(page.total / 48)}</span><Button disabled={loading || offset + 48 >= page.total} onClick={() => setOffset(value => value + 48)}>下一页</Button></nav>}
     {manager && <CatalogLibraryManager libraries={libraries} completedRoot={completedRoot} onChanged={libraryChanged} onClose={() => setManager(false)} />}
-    {selected && <CatalogDetails key={selected} id={selected} onClose={() => setSelected('')} onChanged={refresh} onSearch={relatedSearch} />}
+    {selected && <CatalogDetails key={selected} id={selected} onClose={() => setSelected('')} onChanged={refresh} onSearch={relatedSearch} onActor={id=>onNavigate('people','',null,{actor:id})} onManageLists={()=>onNavigate('personal','lists')} />}
     {deleting && <CatalogDeleteDialog ids={deleting} onClose={()=>setDeleting(null)} onDeleted={()=>{setSelectedIDs([]);setOffset(0);refresh();loadLibraries().catch(failure=>setError(failure.message));}} />}
   </div>;
 }
