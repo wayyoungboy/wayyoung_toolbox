@@ -56,7 +56,7 @@ func TestCatalogRegistrationTargetsOnlyOutputsAndNeverSweeps(t *testing.T) {
 	if err != nil || before[0].ScannedAt != after[0].ScannedAt {
 		t.Fatalf("targeted registration claimed a full scan: before=%+v after=%+v %v", before, after, err)
 	}
-	if matches := catalogWorks(t, s, "q=New+actor"); len(matches) != 1 || matches[0].Title != "New title" {
+	if matches := catalogWorks(t, s, "query=New+actor"); len(matches) != 1 || matches[0].Title != "New title" {
 		t.Fatalf("new metadata/actor not searchable: %+v", matches)
 	}
 	if _, err := s.db.catalog.RegisterFiles(context.Background(), []catalog.RegistrationTarget{registrationTarget(t, output)}, nil); err != nil {
@@ -158,7 +158,10 @@ func TestCatalogRegistrationMoveProofKeepsAssetProgressAndPersonalState(t *testi
 			t.Fatal(err)
 		}
 	}
-	detail := catalogDetail(t, s, work.ID)
+	detail, err := s.db.catalog.Work(context.Background(), work.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(detail.Assets) != 1 || detail.Assets[0].ID != assetID || detail.Assets[0].LibraryID != newLib.ID || detail.Assets[0].Progress.Position != 12 || !detail.Favorite || !detail.WatchLater {
 		t.Fatalf("proven move lost intent or duplicated file: %+v", detail)
 	}
