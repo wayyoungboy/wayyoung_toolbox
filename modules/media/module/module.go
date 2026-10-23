@@ -8,6 +8,9 @@ import (
 	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/service"
 )
 
+// Version is the media runtime version shared with embedding applications.
+const Version = service.Version
+
 type Options struct {
 	DataDir   string
 	PublicDir string
