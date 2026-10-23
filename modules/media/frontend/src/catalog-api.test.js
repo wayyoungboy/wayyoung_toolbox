@@ -3,6 +3,12 @@ import { api } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
 
+it('treats an invalid successful deletion response as unknown, not success', async()=>{
+ const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>{if(url.endsWith('/session'))return {csrf:'token'};throw new SyntaxError('truncated');}}));
+ vi.stubGlobal('fetch',fetch);
+ await expect(api.catalogDeleteExecute(['one'],'token','永久删除')).rejects.toThrow();
+});
+
 it('uses authenticated preview/execute and queue cleanup without automatic replay', async () => {
  const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>url.endsWith('/session')?{csrf:'test-csrf'}:{}}));
  vi.stubGlobal('fetch',fetch);
