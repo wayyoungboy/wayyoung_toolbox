@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -21,10 +22,14 @@ func TestActualFFmpegTranscodeSeekAndRemux(t *testing.T) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("sample: %v %s", err, output)
 	}
-	manager, err := New(Options{Dir: filepath.Join(dir, "cache"), DisableHardware: true, NoThrottle: true, Open: func(_ context.Context, id string) (Source, error) {
+	options := Options{Dir: filepath.Join(dir, "cache"), DisableHardware: true, NoThrottle: true, Open: func(_ context.Context, id string) (Source, error) {
 		f, err := os.Open(input)
 		return Source{File: f, Name: "TEST-101.mkv"}, err
-	}})
+	}}
+	if runtime.GOOS == "darwin" {
+		options.commandForTest = testCacheCommand
+	}
+	manager, err := New(options)
 	if err != nil {
 		t.Fatal(err)
 	}

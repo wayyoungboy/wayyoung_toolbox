@@ -5,8 +5,11 @@ import (
 	"errors"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -56,9 +59,19 @@ func TestHardwareFailureFallsBackAndCacheLimitStops(t *testing.T) {
 	}
 	limited, _ := testManager(t, func(options *Options) { options.MaxBytes = 32 })
 	_, err = limited.Start(context.Background(), Request{AssetID: "asset", Mode: "software"})
-	if err!=nil&&!errors.Is(err,ErrCacheLimit){t.Fatalf("cache cap: %v",err)}
-	timeout:=time.After(2*time.Second);tick:=time.NewTicker(10*time.Millisecond);defer tick.Stop()
-	for limited.Snapshot().Active!=0{select{case <-timeout:t.Fatal("oversized cache did not stop");case <-tick.C:}}
+	if err != nil && !errors.Is(err, ErrCacheLimit) {
+		t.Fatalf("cache cap: %v", err)
+	}
+	timeout := time.After(2 * time.Second)
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for limited.Snapshot().Active != 0 {
+		select {
+		case <-timeout:
+			t.Fatal("oversized cache did not stop")
+		case <-tick.C:
+		}
+	}
 }
 
 func TestStopDoesNotDeleteReplacementCacheDirectory(t *testing.T) {
@@ -101,6 +114,9 @@ func testManager(t *testing.T, edit func(*Options)) (*Manager, string) {
 			f, err := os.Open(source)
 			return Source{File: f, Name: "TEST-001.mkv"}, err
 		}}
+	if runtime.GOOS == "darwin" {
+		options.commandForTest = testCacheCommand
+	}
 	if edit != nil {
 		edit(&options)
 	}
@@ -116,6 +132,45 @@ func testManager(t *testing.T, edit func(*Options)) (*Manager, string) {
 		}
 	})
 	return manager, source
+}
+
+// macOS cannot traverse a directory via /dev/fd/N. The isolated test helper
+// performs fchdir(4)+exec, exercising the same pinned-directory guarantee as
+// the Linux production /proc/self/fd/4 path without a shell or path fallback.
+func testCacheCommand(ctx context.Context, tool string, args ...string) *exec.Cmd {
+	executable, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+	argv := append([]string{"-test.run=^TestPlaybackCommandHelper$", "--", tool}, args...)
+	command := exec.CommandContext(ctx, executable, argv...)
+	command.Env = append(os.Environ(), "WAYYOUNG_PLAYBACK_TEST_EXEC=1")
+	return command
+}
+func TestPlaybackCommandHelper(t *testing.T) {
+	if os.Getenv("WAYYOUNG_PLAYBACK_TEST_EXEC") != "1" {
+		return
+	}
+	at := 0
+	for index, arg := range os.Args {
+		if arg == "--" {
+			at = index + 1
+			break
+		}
+	}
+	if at == 0 || at >= len(os.Args) {
+		os.Exit(2)
+	}
+	if err := syscall.Fchdir(4); err != nil {
+		os.Exit(3)
+	}
+	argv := append([]string{}, os.Args[at:]...)
+	for i := range argv {
+		argv[i] = strings.ReplaceAll(argv[i], cacheDescriptorPath()+"/", "./")
+	}
+	if err := syscall.Exec(argv[0], argv, os.Environ()); err != nil {
+		os.Exit(4)
+	}
 }
 
 func TestProbeAndSessionCancellationReapProcessAndCache(t *testing.T) {
@@ -170,7 +225,7 @@ func TestProbeAndSessionCancellationReapProcessAndCache(t *testing.T) {
 func TestSessionRejectsChangedMediaAndInvalidRequests(t *testing.T) {
 	manager, source := testManager(t, nil)
 	ctx := context.Background()
-	for _, request := range []Request{{AssetID: "asset", Mode: "invalid"}, {AssetID: "asset", Mode: "auto", Start: -1}, {AssetID: "asset", Mode: "auto", Start: 301}, {AssetID: "missing", Mode: "auto"}} {
+	for _, request := range []Request{{AssetID: "asset", Mode: "auto|software"}, {AssetID: "asset", Mode: "invalid"}, {AssetID: "asset", Mode: "auto", Start: -1}, {AssetID: "asset", Mode: "auto", Start: 301}, {AssetID: "missing", Mode: "auto"}} {
 		if _, err := manager.Start(ctx, request); err == nil {
 			t.Fatalf("accepted invalid request: %+v", request)
 		}
@@ -184,6 +239,36 @@ func TestSessionRejectsChangedMediaAndInvalidRequests(t *testing.T) {
 	}
 	if _, err := manager.Read(ctx, session.ID, "index.m3u8"); !errors.Is(err, ErrChanged) {
 		t.Fatalf("changed source served: %v", err)
+	}
+}
+
+func TestFallbackCannotPublishPreviousAttempt(t *testing.T) {
+	manager, _ := testManager(t, func(options *Options) { options.PollInterval = time.Hour })
+	tool := filepath.Join(t.TempDir(), "early-failure")
+	script := `#!/bin/sh
+for arg; do output="$arg"; done
+dir=${output%/*}
+kind=SOFTWARE
+case "$*" in *h264_vaapi*) kind=HARDWARE;; esac
+if [ "$kind" = HARDWARE ]; then
+ i=0
+ while [ "$i" -lt 5000 ]; do : > "$dir/a$i";i=$((i+1));done
+fi
+printf '%s' "$kind" > "$dir/seg000000.ts"
+printf '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:2.0,\nseg000000.ts\n' > "$output"
+if [ "$kind" = HARDWARE ]; then exit 3;fi
+exec sleep 300
+`
+	if err := os.WriteFile(tool, []byte(script), 0700); err != nil { t.Fatal(err) }
+	manager.options.FFmpeg, manager.options.DisableHardware = tool, false
+	manager.caps = &Capabilities{Available: true, Encoders: []Encoder{{ID: "h264_vaapi", Verified: true}}}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	session, err := manager.Start(ctx, Request{AssetID: "asset", Mode: "hardware"})
+	if err != nil { t.Fatal(err) }
+	if session.Backend == "libx264" {
+		segment, err := manager.Read(ctx, session.ID, "seg000000.ts")
+		if err != nil || string(segment) != "SOFTWARE" { t.Fatalf("stale attempt published: %+v %q %v", session, segment, err) }
 	}
 }
 
