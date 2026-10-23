@@ -66,6 +66,14 @@ try {
   assert.equal(await page.locator('.actor-portrait img').count(),1);
   await page.getByRole('button',{name:'馆藏',exact:true}).click();
   await check(async()=>await page.locator('.catalog-card').count()===9,'return from actor failed');
+  await page.getByRole('button',{name:'个人记录',exact:true}).click();
+  await page.getByRole('heading',{name:'个人记录',exact:true}).waitFor();
+  await page.getByRole('tab',{name:'播放列表',exact:true}).click();
+  await page.getByRole('button',{name:'新建播放列表',exact:true}).click();
+  await page.getByLabel('新列表名称',{exact:true}).fill('周末片单');
+  await page.getByRole('button',{name:'创建播放列表',exact:true}).click();
+  await page.getByRole('heading',{name:'周末片单',exact:true}).waitFor();
+  await page.getByRole('button',{name:'馆藏',exact:true}).click();
   await page.getByRole('searchbox', { name: '搜索馆藏' }).fill('中性测试');
   await check(async()=>await page.locator('.catalog-card').count()===8,'plot keyword search failed');
   await page.getByRole('button',{name:'清除搜索条件',exact:true}).click();
@@ -87,6 +95,13 @@ try {
   await page.getByRole('button', { name: '♥ 已收藏', exact: true }).waitFor();
   await page.getByRole('dialog',{name:'作品详情',exact:true}).getByRole('button', { name: '稍后观看', exact: true }).click();
   await page.getByRole('button', { name: '已加入稍后观看', exact: true }).waitFor();
+  await page.getByLabel('个人评分',{exact:true}).selectOption('8');
+  await check(async()=>await page.getByLabel('个人评分',{exact:true}).inputValue()==='8','rating not saved');
+  await page.getByRole('button',{name:'喜欢',exact:true}).click();
+  await check(async()=>await page.getByRole('button',{name:'喜欢',exact:true}).getAttribute('aria-pressed')==='true','feedback not saved');
+  await page.getByLabel('加入播放列表',{exact:true}).selectOption({label:'周末片单'});
+  await page.getByRole('button',{name:'添加到播放列表',exact:true}).click();
+  await page.getByText('已加入播放列表',{exact:true}).waitFor();
   await page.getByRole('button', { name: '修正标题', exact: true }).click();
   await page.getByLabel('馆藏标题', { exact: true }).fill('雾中的山谷 · 手工修正');
   await page.getByRole('button', { name: '保存标题', exact: true }).click();
