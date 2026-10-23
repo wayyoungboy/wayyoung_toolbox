@@ -166,6 +166,16 @@ try {
   assert.ok((await page.getByRole('region',{name:'浏览器导入预览',exact:true}).innerText()).includes('2 条资料，1 条关联馆藏'),'preview did not distinguish unmatched browsing');
   assert.equal(await page.locator('.browser-source-list li').count(),0,'preview created a source');
   await screenshot('desktop-browser-import-preview');
+  await page.evaluate(()=>{document.documentElement.dataset.theme='dark';});
+  const browserDarkContrast=await page.evaluate(()=>{
+    const luminance=color=>{const c=color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return c[0]*.2126+c[1]*.7152+c[2]*.0722;};
+    return [['label','.browser-import label','main'],['input','.browser-import input:not([type=file])','.browser-import input:not([type=file])'],['preview','.browser-preview h3','.browser-preview'],['preview help','.browser-preview .catalog-help','.browser-preview']].map(([name,fg,bg])=>{const a=luminance(getComputedStyle(document.querySelector(fg)).color),b=luminance(getComputedStyle(document.querySelector(bg)).backgroundColor);return {name,ratio:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};});
+  });
+  assert.ok(browserDarkContrast.every(item=>item.ratio>=4.5),`browser workspace dark text contrast: ${JSON.stringify(browserDarkContrast)}`);
+  await page.getByRole('region',{name:'浏览器导入预览',exact:true}).scrollIntoViewIfNeeded();
+  await screenshot('desktop-browser-import-dark');
+  await page.evaluate(()=>{delete document.documentElement.dataset.theme;});
+  await screenshot('desktop-browser-import-preview-details');
   await page.getByRole('button',{name:'确认导入',exact:true}).click();
   await page.getByText('已导入 2 条新资料。偏好分析设置未改变。',{exact:true}).waitFor();
   await fillBrowserImport();await page.getByRole('button',{name:'确认导入',exact:true}).click();
