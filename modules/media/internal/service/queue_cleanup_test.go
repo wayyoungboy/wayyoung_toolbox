@@ -69,6 +69,10 @@ func TestQueueCleanupStopsAutomaticRSSReconciliation(t *testing.T) {
 	if before != f.queries.Load() {
 		t.Fatal("archived task still makes qB requests")
 	}
+	archived,err:=f.s.db.MediaJob(job.ID);if err!=nil{t.Fatal(err)}
+	var session *QBSession
+	detail,err:=f.s.executeRSSAcquisition(context.Background(),archived,f.settings,&session)
+	if err!=nil||detail.Status!="skipped"||session!=nil{t.Fatalf("archived discovery still failed or ran: %+v %v",detail,err)}
 }
 
 func TestQueueCleanupCandidatesAreAgeBoundedAndExcludeHeldAndActive(t *testing.T) {
