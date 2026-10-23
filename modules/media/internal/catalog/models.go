@@ -29,6 +29,7 @@ type Library struct {
 }
 
 type Progress struct {
+	SessionID string  `json:"session_id,omitempty"`
 	Position  float64 `json:"position"`
 	Duration  float64 `json:"duration"`
 	Revision  int64   `json:"revision"`
@@ -59,6 +60,11 @@ type Asset struct {
 }
 
 type Work struct {
+	Watched        bool     `json:"watched"`
+	Rating         int      `json:"rating"`
+	Feedback       string   `json:"feedback"`
+	NotesRevision  int64    `json:"notes_revision"`
+	ActorProfiles  []Actor  `json:"actor_profiles,omitempty"`
 	ID             string   `json:"id"`
 	Code           string   `json:"code"`
 	Title          string   `json:"title"`
@@ -82,6 +88,9 @@ type Work struct {
 }
 
 type Filter struct {
+	Watched    *bool
+	ActorID    string
+	ListID     string
 	WatchLater bool
 	Sort       string
 	Actor      string
@@ -110,8 +119,12 @@ type ScanResult struct {
 }
 
 type PersonalPatch struct {
-	Favorite   *bool `json:"favorite"`
-	WatchLater *bool `json:"watch_later"`
+	Watched       *bool   `json:"watched"`
+	Rating        *int    `json:"rating"`
+	Feedback      *string `json:"feedback"`
+	NotesRevision int64   `json:"notes_revision"`
+	Favorite      *bool   `json:"favorite"`
+	WatchLater    *bool   `json:"watch_later"`
 }
 
 type OpenedFile struct {

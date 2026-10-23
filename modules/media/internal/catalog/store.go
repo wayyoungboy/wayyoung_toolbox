@@ -99,6 +99,9 @@ CREATE INDEX IF NOT EXISTS catalog_progress_played ON catalog_progress(played_at
 	if err := migrateAssetVersions(tx); err != nil {
 		return nil, fmt.Errorf("migrate catalog versions: %w", err)
 	}
+	if err := initializePersonal(tx); err != nil {
+		return nil, fmt.Errorf("initialize personal media: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit catalog schema: %w", err)
 	}
@@ -151,7 +154,10 @@ w.actors,w.genres,w.metadata_source,w.title_locked,w.created_at,
 (SELECT COUNT(*) FROM catalog_assets a WHERE a.work_id=w.id AND a.available=1),
 COALESCE((SELECT a.id FROM catalog_assets a WHERE a.work_id=w.id AND a.available=1 AND a.poster_path!='' ORDER BY a.path LIMIT 1),''),
 COALESCE(p.favorite,0),COALESCE(p.watch_later,0),
-COALESCE((SELECT MAX(g.played_at) FROM catalog_progress g JOIN catalog_assets a ON a.id=g.asset_id WHERE a.work_id=w.id),'')`
+COALESCE((SELECT MAX(g.played_at) FROM catalog_progress g JOIN catalog_assets a ON a.id=g.asset_id WHERE a.work_id=w.id),'') AS last_played_at,` + watchedExpression + `,
+COALESCE((SELECT rating FROM catalog_work_notes n WHERE n.work_id=w.id),0),
+COALESCE((SELECT feedback FROM catalog_work_notes n WHERE n.work_id=w.id),''),
+COALESCE((SELECT revision FROM catalog_work_notes n WHERE n.work_id=w.id),0)`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -160,7 +166,7 @@ func scanWork(row rowScanner) (Work, error) {
 	var actors, genres string
 	err := row.Scan(&item.ID, &item.Code, &item.Title, &item.OriginalTitle, &item.Plot, &item.Studio,
 		&item.ReleaseDate, &item.Year, &actors, &genres, &item.MetadataSource, &item.TitleLocked, &item.CreatedAt,
-		&item.AssetCount, &item.AvailableCount, &item.CoverAssetID, &item.Favorite, &item.WatchLater, &item.LastPlayedAt)
+		&item.AssetCount, &item.AvailableCount, &item.CoverAssetID, &item.Favorite, &item.WatchLater, &item.LastPlayedAt, &item.Watched, &item.Rating, &item.Feedback, &item.NotesRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return item, ErrNotFound
 	}
@@ -182,20 +188,38 @@ func (s *Store) Works(ctx context.Context, filter Filter) (Page, error) {
 		return result, ErrInvalid
 	}
 	conditions := []string{"EXISTS (SELECT 1 FROM catalog_assets a WHERE a.work_id=w.id)"}
+	if len(filter.ActorID) > 100 || len(filter.ListID) > 100 {
+		return result, ErrInvalid
+	}
+	if filter.Watched != nil {
+		conditions = append(conditions, watchedExpression+"=?")
+	}
 	if filter.Sort != "" && filter.Sort != "recent" && filter.Sort != "title" && filter.Sort != "year" {
 		return result, ErrInvalid
 	}
 	args := []any{}
+	if filter.Watched != nil {
+		args = append(args, *filter.Watched)
+	}
+	if filter.ActorID != "" {
+		conditions = append(conditions, `EXISTS(SELECT 1 FROM catalog_work_actors wa WHERE wa.work_id=w.id AND wa.actor_id=?)`)
+		args = append(args, filter.ActorID)
+	}
+	if filter.ListID != "" {
+		conditions = append(conditions, `EXISTS(SELECT 1 FROM catalog_list_items li WHERE li.work_id=w.id AND li.list_id=?)`)
+		args = append(args, filter.ListID)
+	}
 	if filter.Query != "" {
 		literal := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.TrimSpace(filter.Query))
 		like := "%" + literal + "%"
 		conditions = append(conditions, `(w.title LIKE ? ESCAPE '\' OR w.code LIKE ? ESCAPE '\' OR w.actors LIKE ? ESCAPE '\'
-OR w.genres LIKE ? ESCAPE '\' OR w.original_title LIKE ? ESCAPE '\' OR w.plot LIKE ? ESCAPE '\' OR w.studio LIKE ? ESCAPE '\')`)
-		args = append(args, like, like, like, like, like, like, like)
+OR w.genres LIKE ? ESCAPE '\' OR w.original_title LIKE ? ESCAPE '\' OR w.plot LIKE ? ESCAPE '\' OR w.studio LIKE ? ESCAPE '\'
+OR EXISTS(SELECT 1 FROM catalog_work_actors wa JOIN catalog_actor_names n ON n.actor_id=wa.actor_id WHERE wa.work_id=w.id AND n.name_key LIKE ? ESCAPE '\'))`)
+		args = append(args, like, like, like, like, like, like, like, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(actorNameKey(filter.Query))+"%")
 	}
 	if actor := strings.TrimSpace(filter.Actor); actor != "" {
-		conditions = append(conditions, `EXISTS (SELECT 1 FROM json_each(w.actors) WHERE value=? COLLATE NOCASE)`)
-		args = append(args, actor)
+		conditions = append(conditions, `EXISTS (SELECT 1 FROM catalog_work_actors wa JOIN catalog_actor_names n ON n.actor_id=wa.actor_id WHERE wa.work_id=w.id AND n.name_key=?)`)
+		args = append(args, actorNameKey(actor))
 	}
 	if tag := strings.TrimSpace(filter.Tag); tag != "" {
 		conditions = append(conditions, `EXISTS (SELECT 1 FROM json_each(w.genres) WHERE value=? COLLATE NOCASE)`)
@@ -220,6 +244,10 @@ WHERE a.work_id=w.id AND a.available=1 AND g.position>0 AND g.completed=0)`)
 		return result, err
 	}
 	order := "w.created_at DESC,w.id"
+	if !filter.Continue && filter.ListID != "" && (filter.Sort == "" || filter.Sort == "recent") {
+		order = `(SELECT position FROM catalog_list_items li WHERE li.work_id=w.id AND li.list_id=?)`
+		args = append(args, filter.ListID)
+	}
 	if filter.Continue {
 		order = "last_played_at DESC,w.id"
 	} else if filter.Sort == "title" {
@@ -227,7 +255,7 @@ WHERE a.work_id=w.id AND a.available=1 AND g.position>0 AND g.completed=0)`)
 	} else if filter.Sort == "year" {
 		order = "w.year DESC,w.title,w.id"
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+workColumns+` AS last_played_at`+from+" ORDER BY "+order+" LIMIT ? OFFSET ?", append(args, filter.Limit, filter.Offset)...)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+workColumns+from+" ORDER BY "+order+" LIMIT ? OFFSET ?", append(args, filter.Limit, filter.Offset)...)
 	if err != nil {
 		return result, err
 	}
@@ -271,10 +299,20 @@ FROM catalog_assets a LEFT JOIN catalog_progress g ON g.asset_id=a.id WHERE a.wo
 		}
 		item.Assets = append(item.Assets, asset)
 	}
-	return item, rows.Err()
+	if err := rows.Err(); err != nil {
+		return item, err
+	}
+	if err := rows.Close(); err != nil {
+		return item, err
+	}
+	item.ActorProfiles, err = s.workActors(ctx, id)
+	return item, err
 }
 
 func ValidateProgress(value Progress) error {
+	if value.SessionID != "" && !validSessionID(value.SessionID) {
+		return ErrInvalid
+	}
 	if math.IsNaN(value.Position) || math.IsNaN(value.Duration) || math.IsInf(value.Position, 0) || math.IsInf(value.Duration, 0) ||
 		value.Position < 0 || value.Duration <= 0 || value.Duration > 7*24*3600 || value.Position > value.Duration || value.Revision < 0 {
 		return ErrInvalid
@@ -288,7 +326,15 @@ func (s *Store) SaveProgress(ctx context.Context, assetID string, value Progress
 	}
 	value.PlayedAt = timestamp()
 	value.Completed = value.Position >= value.Duration*0.95
-	result, err := s.db.ExecContext(ctx, `INSERT INTO catalog_progress(asset_id,position,duration,revision,completed,played_at)
+	if value.SessionID == "" {
+		value.SessionID = stableID("legacy", assetID, value.PlayedAt[:10])
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return value, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `INSERT INTO catalog_progress(asset_id,position,duration,revision,completed,played_at)
 SELECT ?,?,?,1,?,? WHERE ?=0 AND EXISTS(SELECT 1 FROM catalog_assets WHERE id=?)
 ON CONFLICT(asset_id) DO UPDATE SET position=excluded.position,duration=excluded.duration,revision=catalog_progress.revision+1,
 completed=excluded.completed,played_at=excluded.played_at WHERE catalog_progress.revision=?`,
@@ -303,7 +349,7 @@ completed=excluded.completed,played_at=excluded.played_at WHERE catalog_progress
 	if changed == 0 {
 		// Existing rows need a CAS UPDATE: the insert SELECT must not create a
 		// brand-new row from an arbitrary client-supplied nonzero revision.
-		result, err = s.db.ExecContext(ctx, `UPDATE catalog_progress SET position=?,duration=?,revision=revision+1,completed=?,played_at=? WHERE asset_id=? AND revision=?`,
+		result, err = tx.ExecContext(ctx, `UPDATE catalog_progress SET position=?,duration=?,revision=revision+1,completed=?,played_at=? WHERE asset_id=? AND revision=?`,
 			value.Position, value.Duration, value.Completed, value.PlayedAt, assetID, value.Revision)
 		if err != nil {
 			return value, err
@@ -315,19 +361,27 @@ completed=excluded.completed,played_at=excluded.played_at WHERE catalog_progress
 	}
 	if changed == 0 {
 		var present int
-		if err := s.db.QueryRowContext(ctx, "SELECT 1 FROM catalog_assets WHERE id=?", assetID).Scan(&present); errors.Is(err, sql.ErrNoRows) {
+		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM catalog_assets WHERE id=?", assetID).Scan(&present); errors.Is(err, sql.ErrNoRows) {
 			return value, ErrNotFound
 		} else if err != nil {
 			return value, err
 		}
 		return value, ErrConflict
 	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_history(id,asset_id,session_id,position,duration,completed,started_at,updated_at)
+ VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(asset_id,session_id) DO UPDATE SET position=excluded.position,duration=excluded.duration,
+ completed=MAX(catalog_history.completed,excluded.completed),updated_at=excluded.updated_at`, stableID("history", assetID, value.SessionID), assetID, value.SessionID, value.Position, value.Duration, value.Completed, value.PlayedAt, value.PlayedAt); err != nil {
+		return value, err
+	}
+	if err := tx.Commit(); err != nil {
+		return value, err
+	}
 	value.Revision++
 	return value, nil
 }
 
 func (s *Store) PatchPersonal(ctx context.Context, id string, patch PersonalPatch) (Work, error) {
-	if patch.Favorite == nil && patch.WatchLater == nil {
+	if patch.Favorite == nil && patch.WatchLater == nil && patch.Watched == nil && patch.Rating == nil && patch.Feedback == nil {
 		return Work{}, ErrInvalid
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -354,6 +408,9 @@ func (s *Store) PatchPersonal(ctx context.Context, id string, patch PersonalPatc
 		if _, err := tx.ExecContext(ctx, "UPDATE catalog_personal SET watch_later=? WHERE work_id=?", *patch.WatchLater, id); err != nil {
 			return Work{}, err
 		}
+	}
+	if err := updateWorkNotes(ctx, tx, id, patch); err != nil {
+		return Work{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Work{}, err

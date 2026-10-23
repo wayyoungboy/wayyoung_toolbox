@@ -18,6 +18,7 @@ import (
 )
 
 func (s *Service) registerCatalogRoutes(mux *http.ServeMux) {
+	s.registerCatalogPersonalRoutes(mux)
 	mux.HandleFunc("GET /api/catalog/session", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, map[string]string{"csrf": s.catalogCSRF})
@@ -254,6 +255,16 @@ func (s *Service) handleCatalogRelink(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) handleCatalogWorks(w http.ResponseWriter, r *http.Request) {
 	filter := catalog.Filter{Query: r.URL.Query().Get("query"), Actor: r.URL.Query().Get("actor"), Tag: r.URL.Query().Get("tag"), Sort: r.URL.Query().Get("sort"), Limit: 48}
+	filter.ActorID = r.URL.Query().Get("actor_id")
+	filter.ListID = r.URL.Query().Get("list_id")
+	if raw := r.URL.Query().Get("watched"); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			catalogError(w, catalog.ErrInvalid)
+			return
+		}
+		filter.Watched = &value
+	}
 	for key, destination := range map[string]*int{"limit": &filter.Limit, "offset": &filter.Offset} {
 		if value := r.URL.Query().Get(key); value != "" {
 			parsed, err := strconv.Atoi(value)

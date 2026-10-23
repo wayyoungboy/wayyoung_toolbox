@@ -412,6 +412,9 @@ issues=excluded.issues,subtitles=excluded.subtitles,metadata=excluded.metadata,s
 	if _, err := tx.ExecContext(ctx, "UPDATE catalog_libraries SET scanned_at=?,scan_error='' WHERE id=?", stamp, library.ID); err != nil {
 		return result, err
 	}
+	if err := syncActorsTx(ctx, tx); err != nil {
+		return result, err
+	}
 	if err := tx.Commit(); err != nil {
 		return result, err
 	}
