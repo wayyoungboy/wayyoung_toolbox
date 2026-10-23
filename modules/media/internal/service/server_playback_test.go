@@ -1,13 +1,25 @@
 package service
 
 import (
+	"context"
+	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
+	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/playback"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestPlaybackAPIRequiresAdministratorAndCSRF(t *testing.T) {
 	s := testService(t)
+	// Authorization/error mapping is a unit test, not a host-tool check.
+	// The missing asset must fail before either synthetic tool path executes.
+	t.Setenv("PATH", t.TempDir())
+	manager, err := playback.New(playback.Options{Dir: filepath.Join(t.TempDir(), "cache"), FFmpeg: "unused-ffmpeg", FFprobe: "unused-ffprobe", Open: func(context.Context, string) (playback.Source, error) { return playback.Source{}, catalog.ErrNotFound }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.playback = manager
 	for _, path := range []string{"/api/playback/resources", "/api/catalog/assets/missing/info", "/api/playback/sessions/missing/index.m3u8"} {
 		denied := httptest.NewRecorder()
 		s.Handler().ServeHTTP(denied, httptest.NewRequest("GET", path, nil))
