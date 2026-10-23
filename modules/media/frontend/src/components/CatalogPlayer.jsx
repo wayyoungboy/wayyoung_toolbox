@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@douyinfe/semi-ui/lib/es/modal';
 import { api } from '../api';
-import { catalogAssetURL, createProgressSaver, createPlaybackSession, formatPlaybackTime } from '../catalog-playback';
+import { catalogAssetURL, createProgressSaver, createPlaybackSession, formatPlaybackTime, playbackModeLabel } from '../catalog-playback';
 import CompatiblePlayer from './CompatiblePlayer';
 
 export default function CatalogPlayer({ asset, title, onClose }) {
@@ -92,6 +92,6 @@ export default function CatalogPlayer({ asset, title, onClose }) {
     </video>:<CompatiblePlayer key={`${mode}:${quality}:${attempt}`} asset={asset} title={title} mode={mode} quality={quality} resume={resume} videoRef={videoRef} flushRef={flushRef} stopRef={stopRef} onProgress={record} onRestart={()=>{resume.current=0;setAttempt(value=>value+1);}}/>}
     {error && <p className="catalog-alert" role="alert">{error}</p>}
     {saveError && <p className="catalog-alert" role="alert">{saveError}</p>}
-    <div className="catalog-player-caption"><span>{asset.path}</span><span>{asset.progress?.position > 0 ? `上次看到 ${formatPlaybackTime(asset.progress.position)}` : '原文件播放'}{closing ? ' · 正在保存…' : ''}</span></div>
+    <div className="catalog-player-caption"><span>{asset.path}</span><span>{playbackModeLabel(mode)}{asset.progress?.position > 0 ? ` · 上次看到 ${formatPlaybackTime(asset.progress.position)}` : ''}{closing ? ' · 正在保存…' : ''}</span></div>
   </Modal>;
 }

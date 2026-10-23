@@ -39,6 +39,7 @@ export function createPlaybackSession(){
  globalThis.crypto.getRandomValues(bytes);
  return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
 }
+export function playbackModeLabel(mode){return mode==='software'?'软件转码播放':mode==='auto'?'自动兼容播放':'原文件播放';}
 
 export function preferredAsset(assets = []) {
   return assets.filter(asset => asset.available).sort((a, b) => String(b.progress?.played_at || '').localeCompare(String(a.progress?.played_at || '')))[0] || null;
