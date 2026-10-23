@@ -171,6 +171,28 @@ try {
   await fillBrowserImport();await page.getByRole('button',{name:'确认导入',exact:true}).click();
   await page.getByText('这份资料已经导入，没有增加重复来源。',{exact:true}).waitFor();
   assert.equal(await page.locator('.browser-source-list li').count(),1);
+  const browserSourcesURL=`${url}api/catalog/browser/sources`;
+  const browserSource=await page.evaluate(async sourceURL=>(await (await fetch(sourceURL)).json()).items[0],browserSourcesURL);
+  await page.getByLabel('导入目标来源',{exact:true}).selectOption(browserSource.id);
+  await page.getByLabel('浏览器资料文件',{exact:true}).setInputFiles({...browserFile,name:'neutral-update.json',buffer:Buffer.from(JSON.stringify([{url:'https://www.javbus.com/TEST-001',dt:1700000001}]))});
+  await page.getByRole('button',{name:'预览导入',exact:true}).click();
+  await page.getByRole('heading',{name:'导入预览',exact:true}).waitFor();
+  await page.evaluate(async({base,source})=>{
+    const {csrf}=await(await fetch(`${base}api/catalog/session`)).json();
+    const body={name:'另一会话修正的来源',kind:'history',filename:'neutral.json',data:btoa(JSON.stringify([{url:'https://www.javbus.com/TEST-001',dt:1700000002}])),source_id:source.id,version:source.version};
+    const headers={'Content-Type':'application/json','X-Catalog-CSRF':csrf};
+    const preview=await(await fetch(`${base}api/catalog/browser/import/preview`,{method:'POST',headers,body:JSON.stringify(body)})).json();
+    const response=await fetch(`${base}api/catalog/browser/import`,{method:'POST',headers,body:JSON.stringify({...body,digest:preview.digest,confirmation:'导入资料'})});if(!response.ok)throw new Error('source conflict setup failed');
+  },{base:url,source:browserSource});
+  expectedConflictURLs.add(`${url}api/catalog/browser/import`);
+  await page.getByRole('button',{name:'确认导入',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'没有自动重试'}).waitFor();
+  await check(async()=>!await page.getByRole('button',{name:'重新读取来源',exact:true}).isDisabled(),'source conflict refresh did not settle');
+  assert.equal(await page.getByRole('button',{name:'预览导入',exact:true}).isDisabled(),true,'stale source draft silently adopted a newer version');
+  await page.getByRole('button',{name:'重新读取来源',exact:true}).click();
+  await check(async()=>await page.getByLabel('导入目标来源',{exact:true}).inputValue()==='','refresh did not require explicit source re-selection');
+  await page.getByRole('heading',{name:'另一会话修正的来源',exact:true}).waitFor();
+  expectedConflictURLs.delete(`${url}api/catalog/browser/import`);
   await page.getByRole('button',{name:'查看偏好与推荐',exact:true}).click();
   await page.getByRole('heading',{name:'尚未启用偏好分析',exact:true}).waitFor();
   await page.getByLabel('启用本地偏好分析',{exact:true}).check();
