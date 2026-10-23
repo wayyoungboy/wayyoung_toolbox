@@ -172,7 +172,10 @@ func stamp(value float64, unit float64, offset float64) string {
 }
 func numeric(raw json.RawMessage) float64 {
 	text := strings.Trim(string(raw), "\"")
-	n, _ := strconv.ParseFloat(text, 64)
+	n, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return math.NaN()
+	}
 	return n
 }
 
@@ -235,6 +238,9 @@ func (p *parser) jsonRecord(raw json.RawMessage, depth int) error {
 		if len(e.TimeUsec) > 0 {
 			at = stamp(numeric(e.TimeUsec), 1e6, 0)
 		} else if len(e.DT) > 0 {
+			if bytes.HasPrefix(bytes.TrimSpace(e.DT), []byte(`"`)) {
+				return ErrFormat
+			}
 			at = stamp(numeric(e.DT), 1, 0)
 		} else {
 			return ErrFormat
