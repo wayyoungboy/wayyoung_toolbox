@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {CatalogPoster} from './CatalogCards';
 
-const sourceLabels={collection:'馆藏与收藏',history:'播放记录',feedback:'评分与反馈',follows:'本地演员关注'};
+const sourceLabels={collection:'馆藏与收藏',history:'播放记录',feedback:'评分与反馈',follows:'本地演员关注',browser:'已导入浏览器资料'};
 const kindLabels={actor:'演员',tag:'标签',studio:'厂牌',era:'年代'};
 
 function TasteSettings({report,busy,onSave,onClear}){

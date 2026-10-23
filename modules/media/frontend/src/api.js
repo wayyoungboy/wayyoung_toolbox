@@ -35,6 +35,11 @@ async function playbackSessionMutation(id,action,payload){
 }
 
 export const api = {
+  catalogBrowserSources: ({signal}={})=>request('/catalog/browser/sources',{signal}),
+  catalogBrowserPreview: payload=>catalogMutation('/catalog/browser/import/preview','POST',payload),
+  catalogBrowserImport: payload=>catalogMutation('/catalog/browser/import','POST',payload),
+  catalogBrowserReading: (id,version,reading)=>catalogMutation(`/catalog/browser/sources/${encodeURIComponent(id)}`,'PUT',{version,reading}),
+  catalogBrowserDelete: (id,version,confirmation)=>catalogMutation(`/catalog/browser/sources/${encodeURIComponent(id)}`,'DELETE',{version,confirmation}),
   catalogTaste: ({offset=0,signal}={})=>request(`/catalog/taste?${new URLSearchParams({limit:'24',offset:String(offset)})}`,{signal}),
   catalogTasteConfig: ({signal}={})=>request('/catalog/taste/config',{signal}),
   catalogTasteSave: payload=>catalogMutation('/catalog/taste/config','PUT',payload),

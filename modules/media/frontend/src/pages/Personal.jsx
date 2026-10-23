@@ -9,6 +9,7 @@ import {offsetAfterRemoval,moveListWork} from '../personal-view';
 import '../catalog.css';
 import '../personal.css';
 const Taste=lazy(()=>import('./Taste'));
+const BrowserSources=lazy(()=>import('./BrowserSources'));
 
 function History({onNavigate,onChanged}){
  const [query,setQuery]=useState(''),[offset,setOffset]=useState(0),[selected,setSelected]=useState([]),[mutating,setBusy]=useState(false),[notice,setNotice]=useState('');
@@ -74,7 +75,7 @@ export default function Personal({tab,onTabChange,onNavigate}){
  return <section className="page catalog-page personal-page"><header className="page-header"><div><h1>个人记录</h1><p>观看历史、已看状态与个人播放列表，与你的原视频分开保存</p></div><Button onClick={()=>onNavigate('catalog','',null,{view:'watched'})}>查看已看作品</Button></header>
   {error&&<p className="catalog-alert" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
   {data&&<dl className="personal-counts">{[['已看作品',data.stats.watched_works],['收藏作品',data.stats.favorites],['观看会话',data.stats.history_sessions],['已评分',data.stats.rated_works]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
-  <WorkspaceTabs label="个人记录工作区" items={[{key:'history',label:'观看历史'},{key:'lists',label:'播放列表'},{key:'taste',label:'偏好与推荐'}]} selected={tab} onChange={onTabChange}/>
-  {tab==='taste'?<Suspense fallback={<p role="status">正在打开本地偏好…</p>}><Taste onNavigate={onNavigate}/></Suspense>:tab==='lists'?<Playlists lists={data?.lists||[]} onChanged={refresh} onNavigate={onNavigate}/>:<History onNavigate={onNavigate} onChanged={refresh}/>}
+  <WorkspaceTabs label="个人记录工作区" items={[{key:'history',label:'观看历史'},{key:'lists',label:'播放列表'},{key:'taste',label:'偏好与推荐'},{key:'sources',label:'浏览器资料'}]} selected={tab} onChange={onTabChange}/>
+  {tab==='sources'?<Suspense fallback={<p role="status">正在打开浏览器资料…</p>}><BrowserSources onNavigate={onNavigate}/></Suspense>:tab==='taste'?<Suspense fallback={<p role="status">正在打开本地偏好…</p>}><Taste onNavigate={onNavigate}/></Suspense>:tab==='lists'?<Playlists lists={data?.lists||[]} onChanged={refresh} onNavigate={onNavigate}/>:<History onNavigate={onNavigate} onChanged={refresh}/>}
  </section>;
 }
