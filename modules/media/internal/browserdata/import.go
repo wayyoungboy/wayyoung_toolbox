@@ -115,6 +115,12 @@ func Parse(ctx context.Context, name, kind string, data []byte) (Snapshot, error
 }
 
 func cleanURL(raw string) (string, bool) {
+	return cleanURLDepth(raw, 0)
+}
+func cleanURLDepth(raw string, depth int) (string, bool) {
+	if depth > 3 {
+		return "", false
+	}
 	if len(raw) > maxText || !utf8.ValidString(raw) || strings.IndexFunc(raw, unicode.IsControl) >= 0 {
 		return "", false
 	}
@@ -122,27 +128,33 @@ func cleanURL(raw string) (string, bool) {
 	if err != nil || u.Hostname() == "" || u.User != nil || u.Opaque != "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return "", false
 	}
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return "", false
+	}
+	for _, key := range []string{"v", "id", "q", "url"} {
+		if len(query[key]) > 1 {
+			return "", false
+		}
+	}
 	// Keep only identifiers/search terms used by supported media sites, never
 	// cookies, access tokens, fragments or arbitrary query parameters.
-	if (u.Hostname() == "www.google.com" || u.Hostname() == "google.com") && u.Path == "/url" {
-		target := u.Query().Get("q")
+	host := strings.ToLower(u.Hostname())
+	if (host == "www.google.com" || host == "google.com") && u.Path == "/url" {
+		target := query.Get("q")
+		if target != "" && query.Get("url") != "" && target != query.Get("url") {
+			return "", false
+		}
 		if target == "" {
-			target = u.Query().Get("url")
+			target = query.Get("url")
 		}
 		if target != "" {
-			v, e := url.Parse(target)
-			if e != nil || v.Hostname() == "google.com" || v.Hostname() == "www.google.com" {
-				return "", false
-			}
-			return cleanURL(target)
+			return cleanURLDepth(target, depth+1)
 		}
 	}
 	q := url.Values{}
 	for _, key := range []string{"v", "id", "q"} {
-		if len(u.Query()[key]) > 1 {
-			return "", false
-		}
-		if v := u.Query().Get(key); v != "" && len(v) <= 500 {
+		if v := query.Get(key); v != "" && len(v) <= 500 {
 			q.Set(key, v)
 		}
 	}
