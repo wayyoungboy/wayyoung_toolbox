@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS catalog_list_items(
 	if _, err := tx.Exec(schema); err != nil {
 		return err
 	}
+	if err := initializeTaste(tx); err != nil {
+		return err
+	}
 	// Legacy progress has no session boundary; retain one clearly legacy record,
 	// never invent multiple watches from a single last-position measurement.
 	var initialized int

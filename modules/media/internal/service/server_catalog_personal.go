@@ -11,6 +11,7 @@ import (
 )
 
 func (s *Service) registerCatalogPersonalRoutes(mux *http.ServeMux) {
+	s.registerCatalogTasteRoutes(mux)
 	mux.HandleFunc("GET /api/catalog/actors", s.handleCatalogActors)
 	mux.HandleFunc("GET /api/catalog/actors/{id}", s.handleCatalogActor)
 	mux.HandleFunc("PATCH /api/catalog/actors/{id}", s.catalogSameOrigin(s.handleCatalogActorPatch))
@@ -56,7 +57,12 @@ func (s *Service) handleCatalogActors(w http.ResponseWriter, r *http.Request) {
 		catalogError(w, err)
 		return
 	}
-	page, err := s.db.catalog.Actors(r.Context(), r.URL.Query().Get("query"), limit, offset)
+	following, err := catalogFollowing(r)
+	if err != nil {
+		catalogError(w, err)
+		return
+	}
+	page, err := s.db.catalog.FilterActors(r.Context(), r.URL.Query().Get("query"), limit, offset, following)
 	if err != nil {
 		catalogError(w, err)
 		return

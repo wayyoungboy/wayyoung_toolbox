@@ -145,7 +145,7 @@ func TestCatalogTasteFeedbackNegativeWeightsAndMissingMetadata(t *testing.T) {
 	if report := tasteReport(t, s); report.Total != 0 {
 		t.Fatalf("recommended explicit dislike: %+v", report)
 	}
-	if _, err := s.db.db.Exec("UPDATE catalog_works SET actors='[]',genres='[]',studio='',year=0"); err != nil {
+	if _, err := s.db.db.Exec("UPDATE catalog_works SET actors='[]',genres='[]',studio='',year=0; DELETE FROM catalog_work_actors"); err != nil {
 		t.Fatal(err)
 	}
 	if report := tasteReport(t, s); len(report.Facets) != 0 || report.Total != 0 {

@@ -18,6 +18,8 @@ import (
 )
 
 type Actor struct {
+	Following        bool     `json:"following"`
+	FollowVersion    int64    `json:"follow_version"`
 	ID               string   `json:"id"`
 	Name             string   `json:"name"`
 	DisplayName      string   `json:"display_name"`
@@ -49,12 +51,13 @@ func validActorName(value string) bool {
 }
 
 const actorColumns = `a.id,a.name,a.display_name,a.biography,a.aliases,a.version,
- (SELECT COUNT(*) FROM catalog_work_actors wa WHERE wa.actor_id=a.id),COALESCE(length(a.portrait),0)>0,a.portrait_revision`
+ (SELECT COUNT(*) FROM catalog_work_actors wa WHERE wa.actor_id=a.id),COALESCE(length(a.portrait),0)>0,a.portrait_revision,
+ COALESCE((SELECT following FROM catalog_actor_follows f WHERE f.actor_id=a.id),0),COALESCE((SELECT version FROM catalog_actor_follows f WHERE f.actor_id=a.id),0)`
 
 func scanActor(row rowScanner) (Actor, error) {
 	a := Actor{}
 	var aliases string
-	err := row.Scan(&a.ID, &a.Name, &a.DisplayName, &a.Biography, &aliases, &a.Version, &a.WorkCount, &a.HasPortrait, &a.PortraitRevision)
+	err := row.Scan(&a.ID, &a.Name, &a.DisplayName, &a.Biography, &aliases, &a.Version, &a.WorkCount, &a.HasPortrait, &a.PortraitRevision, &a.Following, &a.FollowVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrNotFound
 	}
@@ -70,6 +73,9 @@ func (s *Store) Actor(ctx context.Context, id string) (Actor, error) {
 	return scanActor(s.db.QueryRowContext(ctx, "SELECT "+actorColumns+" FROM catalog_actors a WHERE id=?", id))
 }
 func (s *Store) Actors(ctx context.Context, query string, limit, offset int) (ActorPage, error) {
+	return s.FilterActors(ctx, query, limit, offset, false)
+}
+func (s *Store) FilterActors(ctx context.Context, query string, limit, offset int, following bool) (ActorPage, error) {
 	page := ActorPage{Items: []Actor{}, Limit: limit, Offset: offset}
 	if len(query) > 500 || limit < 1 || limit > 100 || offset < 0 {
 		return page, ErrInvalid
@@ -77,6 +83,9 @@ func (s *Store) Actors(ctx context.Context, query string, limit, offset int) (Ac
 	literal := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(actorNameKey(query))
 	like := "%" + literal + "%"
 	where := ` WHERE (a.display_name LIKE ? ESCAPE '\' OR EXISTS(SELECT 1 FROM catalog_actor_names n WHERE n.actor_id=a.id AND n.name_key LIKE ? ESCAPE '\'))`
+	if following {
+		where += ` AND EXISTS(SELECT 1 FROM catalog_actor_follows f WHERE f.actor_id=a.id AND f.following=1)`
+	}
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM catalog_actors a"+where, like, like).Scan(&page.Total); err != nil {
 		return page, err
 	}
