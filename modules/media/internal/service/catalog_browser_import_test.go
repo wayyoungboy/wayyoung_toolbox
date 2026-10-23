@@ -194,3 +194,21 @@ func TestCatalogBrowserImportRejectsInvalidConfirmationAndAccess(t *testing.T) {
 		t.Fatal("missing CSRF accepted")
 	}
 }
+
+func TestCatalogBrowserIdentityRejectsAmbiguityAndUnknownSites(t *testing.T) {
+	s, _, _ := personalFixture(t)
+	body := browserPayload("Ambiguous", "history", `[
+ {"url":"https://www.javbus.com/DEMO-100/DEMO-101","dt":1700000000,"metadata":{"title":"DEMO-100"}},
+ {"url":"https://www.javbus.com/DEMO-100","dt":1700000001,"metadata":{"title":"DEMO-100 DEMO-101"}},
+ {"url":"https://example.test/DEMO-100","dt":1700000002,"metadata":{"title":"DEMO-100"}},
+ {"url":"https://www.javbus.com/DEMO-100","dt":1700000003,"metadata":{"title":"DEMO-101"}}]`)
+	preview := browserPreview(t, s, body)
+	if preview["matched"] != float64(0) {
+		t.Fatalf("ambiguous/unknown identities guessed: %+v", preview)
+	}
+	body = browserPayload("Explicit", "history", `[{"url":"https://javdb.com/v/opaque","dt":1700000000,"metadata":{"title":"DEMO-100 Neutral"}}]`)
+	preview = browserPreview(t, s, body)
+	if preview["matched"] != float64(1) {
+		t.Fatal("explicit unique title identity not recognized")
+	}
+}
