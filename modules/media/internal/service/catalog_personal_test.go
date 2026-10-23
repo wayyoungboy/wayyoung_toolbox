@@ -141,8 +141,10 @@ func TestCatalogHistoryUsesSessionsAndCASAndClearDoesNotEraseResume(t *testing.T
 	if current := catalogDetail(t, s, work.ID); current.Assets[0].Progress.Position != 96 {
 		t.Fatal("clearing history reset resume or video")
 	}
-	catalogJSON[map[string]any](t,s,"PUT",path,map[string]any{"position":10,"duration":100,"revision":3,"session_id":"test-session-rewatch"},200)
-	if rows:=catalogWorks(t,s,"watched=true");len(rows)!=1{t.Fatal("starting a rewatch lost completed state")}
+	catalogJSON[map[string]any](t, s, "PUT", path, map[string]any{"position": 10, "duration": 100, "revision": 3, "session_id": "test-session-rewatch"}, 200)
+	if rows := catalogWorks(t, s, "watched=true"); len(rows) != 1 {
+		t.Fatal("starting a rewatch lost completed state")
+	}
 }
 
 func TestCatalogPersonalMarksAndOrderedPlaylists(t *testing.T) {
@@ -166,6 +168,7 @@ func TestCatalogPersonalMarksAndOrderedPlaylists(t *testing.T) {
 		WorkIDs []string `json:"work_ids"`
 	}
 	list := catalogJSON[playlist](t, s, "POST", "/api/catalog/lists", map[string]string{"name": "Weekend", "description": "My list"}, 201)
+	if list.WorkIDs == nil { t.Fatal("empty playlist must include an empty work_ids array") }
 	list = catalogJSON[playlist](t, s, "PUT", "/api/catalog/lists/"+list.ID+"/items", map[string]any{"version": list.Version, "work_ids": []string{works[1].ID, works[0].ID}}, 200)
 	items := catalogWorks(t, s, "list_id="+list.ID)
 	if len(items) != 2 || items[0].ID != works[1].ID {
@@ -215,34 +218,70 @@ func TestCatalogIdentityCorrectionTransfersNotesAndLists(t *testing.T) {
 }
 
 func TestCatalogIdentityMergeRetainsNonConflictingNotes(t *testing.T) {
- s:=testService(t); root:=t.TempDir()
- catalogWrite(t,root,"_646-C.mp4","source")
- catalogWrite(t,root,"DEMO-646.mp4","target")
- lib:=catalogLibrary(t,s,root);catalogScan(t,s,lib)
- var source,target string
- for _,work:=range catalogWorks(t,s,""){if work.Code=="DEMO-646"{target=work.ID}else{source=work.ID}}
- if source==""||target==""{t.Fatal("fixture identities missing")}
- catalogJSON[map[string]any](t,s,"PATCH","/api/catalog/works/"+source+"/personal",map[string]any{"rating":8,"feedback":"like","notes_revision":0},200)
- catalogJSON[map[string]any](t,s,"PATCH","/api/catalog/works/"+target+"/personal",map[string]any{"watched":true,"notes_revision":0},200)
- catalogWrite(t,root,"_646-C.nfo",`<movie><num>DEMO-646</num><title>Resolved</title></movie>`)
- catalogScan(t,s,lib)
- result:=catalogJSON[map[string]any](t,s,"GET","/api/catalog/works/"+target,nil,200)
- if result["rating"]!=float64(8)||result["feedback"]!="like"||result["watched"]!=true||result["notes_revision"]!=float64(2){t.Fatalf("merge lost notes: %+v",result)}
+	s := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "_646-C.mp4", "source")
+	catalogWrite(t, root, "DEMO-646.mp4", "target")
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	var source, target string
+	for _, work := range catalogWorks(t, s, "") {
+		if work.Code == "DEMO-646" {
+			target = work.ID
+		} else {
+			source = work.ID
+		}
+	}
+	if source == "" || target == "" {
+		t.Fatal("fixture identities missing")
+	}
+	catalogJSON[map[string]any](t, s, "PATCH", "/api/catalog/works/"+source+"/personal", map[string]any{"rating": 8, "feedback": "like", "notes_revision": 0}, 200)
+	catalogJSON[map[string]any](t, s, "PATCH", "/api/catalog/works/"+target+"/personal", map[string]any{"watched": true, "notes_revision": 0}, 200)
+	catalogWrite(t, root, "_646-C.nfo", `<movie><num>DEMO-646</num><title>Resolved</title></movie>`)
+	catalogScan(t, s, lib)
+	result := catalogJSON[map[string]any](t, s, "GET", "/api/catalog/works/"+target, nil, 200)
+	if result["rating"] != float64(8) || result["feedback"] != "like" || result["watched"] != true || result["notes_revision"] != float64(2) {
+		t.Fatalf("merge lost notes: %+v", result)
+	}
 }
 
 func TestCatalogIdentityMergeKeepsConflictingSourceNotes(t *testing.T) {
- s:=testService(t); root:=t.TempDir()
- catalogWrite(t,root,"_646-C.mp4","source");catalogWrite(t,root,"DEMO-646.mp4","target")
- lib:=catalogLibrary(t,s,root);catalogScan(t,s,lib)
- var source,target string
- for _,work:=range catalogWorks(t,s,""){if work.Code=="DEMO-646"{target=work.ID}else{source=work.ID}}
- for id,rating:=range map[string]int{source:8,target:9}{catalogJSON[map[string]any](t,s,"PATCH","/api/catalog/works/"+id+"/personal",map[string]any{"rating":rating,"notes_revision":0},200)}
- catalogWrite(t,root,"_646-C.nfo",`<movie><num>DEMO-646</num><title>Resolved</title></movie>`);catalogScan(t,s,lib)
- var rating int
- if err:=s.db.db.QueryRow("SELECT rating FROM catalog_work_notes WHERE work_id=?",source).Scan(&rating);err!=nil||rating!=8{t.Fatalf("conflicting source discarded: rating=%d err=%v",rating,err)}
- work:=catalogJSON[catalog.Work](t,s,"GET","/api/catalog/works/"+target,nil,200)
- if work.Rating!=9{t.Fatalf("destination overwritten: %+v",work)}
- found:=false
- for _,asset:=range work.Assets{for _,issue:=range asset.Issues{if issue=="personal_notes_conflict"{found=true}}}
- if !found{t.Fatal("conflict not surfaced")}
+	s := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "_646-C.mp4", "source")
+	catalogWrite(t, root, "DEMO-646.mp4", "target")
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	var source, target string
+	for _, work := range catalogWorks(t, s, "") {
+		if work.Code == "DEMO-646" {
+			target = work.ID
+		} else {
+			source = work.ID
+		}
+	}
+	for id, rating := range map[string]int{source: 8, target: 9} {
+		catalogJSON[map[string]any](t, s, "PATCH", "/api/catalog/works/"+id+"/personal", map[string]any{"rating": rating, "notes_revision": 0}, 200)
+	}
+	catalogWrite(t, root, "_646-C.nfo", `<movie><num>DEMO-646</num><title>Resolved</title></movie>`)
+	catalogScan(t, s, lib)
+	var rating int
+	if err := s.db.db.QueryRow("SELECT rating FROM catalog_work_notes WHERE work_id=?", source).Scan(&rating); err != nil || rating != 8 {
+		t.Fatalf("conflicting source discarded: rating=%d err=%v", rating, err)
+	}
+	work := catalogJSON[catalog.Work](t, s, "GET", "/api/catalog/works/"+target, nil, 200)
+	if work.Rating != 9 {
+		t.Fatalf("destination overwritten: %+v", work)
+	}
+	found := false
+	for _, asset := range work.Assets {
+		for _, issue := range asset.Issues {
+			if issue == "personal_notes_conflict" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("conflict not surfaced")
+	}
 }
