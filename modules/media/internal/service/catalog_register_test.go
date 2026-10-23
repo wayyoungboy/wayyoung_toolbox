@@ -199,3 +199,50 @@ func TestCatalogRegistrationDoesNotFallBackFromChangedSpecificRoot(t *testing.T)
 		t.Fatalf("changed root published: %+v", works)
 	}
 }
+
+func TestCatalogRegistrationRejectsAmbiguousMoveReceipts(t *testing.T) {
+	for _, mode := range []string{"existing-target", "reused-source"} {
+		t.Run(mode, func(t *testing.T) {
+			s := testService(t)
+			root := registrationRoot(t)
+			source, target := filepath.Join(root, "TEST-001.mp4"), filepath.Join(root, "TEST-001-C.mp4")
+			catalogWrite(t, root, "TEST-001.mp4", "video")
+			lib := catalogLibrary(t, s, root)
+			if mode == "existing-target" {
+				if err := os.Link(source, target); err != nil {
+					t.Fatal(err)
+				}
+			}
+			catalogScan(t, s, lib)
+			proof := registrationTarget(t, source)
+			proof.Path, proof.PreviousPath = target, source
+			if mode == "existing-target" {
+				if err := os.Remove(source); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.Rename(source, target); err != nil {
+				t.Fatal(err)
+			}
+			targets := []catalog.RegistrationTarget{proof}
+			if mode == "reused-source" {
+				other := proof
+				other.Path = filepath.Join(root, "TEST-001-CD2.mp4")
+				if err := os.Link(target, other.Path); err != nil {
+					t.Fatal(err)
+				}
+				targets = append(targets, other)
+			}
+			before, err := s.db.catalog.Work(context.Background(), catalogWorks(t, s, "")[0].ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.catalog.RegisterFiles(context.Background(), targets, nil); !errors.Is(err, catalog.ErrConflict) {
+				t.Fatalf("ambiguous move %s published: %v", mode, err)
+			}
+			after, err := s.db.catalog.Work(context.Background(), before.ID)
+			if err != nil || !reflect.DeepEqual(before, after) {
+				t.Fatalf("conflicting proof changed catalog: %v", err)
+			}
+		})
+	}
+}
