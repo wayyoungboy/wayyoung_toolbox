@@ -176,6 +176,38 @@ func TestCatalogMergeKeepsDestinationManualTitleAndReportsConflict(t *testing.T)
 	}
 }
 
+func TestCatalogReplacingAFileCreatesANewVersionWithoutInheritingPersonalState(t *testing.T) {
+	service := testService(t)
+	root := t.TempDir()
+	catalogWrite(t, root, "movie.mp4", "original video content")
+	catalogWrite(t, root, "movie.nfo", `<movie><num>DEMO-123</num><title>Original work</title></movie>`)
+	library := catalogLibrary(t, service, root)
+	catalogScan(t, service, library)
+	old := catalogDetail(t, service, catalogWorks(t, service, "")[0].ID)
+	oldAsset := old.Assets[0]
+	if response := catalogRequest(t, service, "PUT", "/api/catalog/assets/"+oldAsset.ID+"/progress", map[string]any{"position": 50, "duration": 100, "revision": 0}); response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	if response := catalogRequest(t, service, "PATCH", "/api/catalog/works/"+old.ID+"/personal", map[string]bool{"favorite": true}); response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	catalogWrite(t, root, "movie.mp4", "different replacement video content")
+	catalogWrite(t, root, "movie.nfo", `<movie><num>OTHER-999</num><title>Replacement work</title></movie>`)
+	catalogScan(t, service, library)
+	works := catalogWorks(t, service, "query=OTHER-999")
+	if len(works) != 1 {
+		t.Fatalf("replacement missing: %+v", works)
+	}
+	replacement := catalogDetail(t, service, works[0].ID)
+	if replacement.Favorite || replacement.Assets[0].ID == oldAsset.ID || replacement.Assets[0].Progress.Position != 0 {
+		t.Fatalf("inherited old personal state: %+v", replacement)
+	}
+	historical := catalogDetail(t, service, old.ID)
+	if !historical.Favorite || len(historical.Assets) != 1 || historical.Assets[0].Available || historical.Assets[0].Progress.Position != 50 {
+		t.Fatalf("old version history was lost: %+v", historical)
+	}
+}
+
 func TestCatalogConcurrentProgressUsesOneRevisionAndCanceledScanKeepsInventory(t *testing.T) {
 	service := testService(t)
 	root := t.TempDir()
