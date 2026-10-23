@@ -7,7 +7,7 @@ describe('compatible playback lifecycle',()=>{
   const create=vi.fn(()=>new Promise(done=>{resolve=done;}));
   const stop=vi.fn().mockResolvedValue({});const ready=vi.fn();
   const player=createCompatiblePlayback({create,stop,onSession:ready});
-  const pending=player.start({start:12});await Promise.resolve();
+  const pending=player.start({start:12});await vi.waitFor(()=>expect(create).toHaveBeenCalledOnce());
   const closing=player.close();resolve({id:'late'});await pending;await closing;
   expect(stop).toHaveBeenCalledExactlyOnceWith('late');expect(ready).not.toHaveBeenCalled();
  });
@@ -16,7 +16,7 @@ describe('compatible playback lifecycle',()=>{
   const create=vi.fn().mockReturnValueOnce(first).mockResolvedValueOnce({id:'latest'});
   const stop=vi.fn().mockResolvedValue({});const ready=vi.fn();
   const player=createCompatiblePlayback({create,stop,onSession:ready});
-  const a=player.start({start:0});await Promise.resolve();
+  const a=player.start({start:0});await vi.waitFor(()=>expect(create).toHaveBeenCalledOnce());
   const b=player.start({start:20}),c=player.start({start:40});
   resolve({id:'obsolete'});await Promise.all([a,b,c]);
   expect(create.mock.calls.map(([request])=>request.start)).toEqual([0,40]);

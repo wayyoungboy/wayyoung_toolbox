@@ -23,6 +23,7 @@ button, input, select { font: inherit; }
 .brand { height: 76px; display: flex; align-items: center; gap: 12px; padding: 0 20px; font-size: 16px; font-weight: 650; white-space: nowrap; }
 .brand img { width: 38px; height: 38px; border-radius: 10px; }
 .nav-list { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
+.nav-group-heading { color:var(--subtle-text);font-size:11px;padding:14px 14px 4px; }
 .nav-item { appearance: none; border: 0; background: transparent; color: #41464f; height: 46px; display: flex; align-items: center; gap: 13px; padding: 0 14px; border-radius: 8px; cursor: pointer; text-align: left; }
 .nav-item:hover { background: #f0f3f8; }
 .nav-item.selected { color: var(--app-blue); background: #eaf3ff; font-weight: 600; }
@@ -408,6 +409,7 @@ button, input, select { font: inherit; }
   .nav-list { flex-direction: row; flex-wrap: wrap; padding: 6px 8px; gap: 4px; }
   .nav-item { justify-content: center; flex: 0 0 calc(25% - 3px); min-width: 0; height: 52px; padding: 4px 2px; gap: 4px; flex-direction: column; font-size: 11px; white-space: nowrap; }
   .nav-separator { display: none; }
+  .nav-group-heading { display:none; }
   .sidebar-footer { display: none; }
   .main-content { width: 100%; overflow: visible; }
   .page { padding: 20px 14px; }

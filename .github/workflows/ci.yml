@@ -34,6 +34,13 @@ jobs:
       - name: Verify Go modules
         run: npm run test:go
 
+      - name: Verify real FFmpeg playback on Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          cd modules/media
+          go test -tags=playback_integration ./internal/playback -count=1 -v
+
       - name: Verify frontends
         run: npm run test:frontend
 

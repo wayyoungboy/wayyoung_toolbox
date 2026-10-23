@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/playback"
 )
 
 const (
@@ -41,6 +43,10 @@ type Service struct {
 	prefix             string
 	localDev           bool
 	catalogCSRF        string
+	dataDir            string
+	playbackMu         sync.Mutex
+	playback           *playback.Manager
+	playbackClosed     bool
 	taskLocksMu        sync.Mutex
 	taskLocks          map[int64]*sync.Mutex
 	javspLock          sync.Mutex
@@ -83,7 +89,7 @@ func NewService(dataDir, publicDir, bundleDir, prefix string, localDev bool) (*S
 	} else {
 		slog.Warn("JAVSP advanced config migration skipped", "error", readErr)
 	}
-	service := &Service{db: db, collector: Collector{}, javsp: runner, anidb: newAniDBTitleCache(dataDir), publicDir: publicDir,
+	service := &Service{db: db, collector: Collector{}, javsp: runner, anidb: newAniDBTitleCache(dataDir), publicDir: publicDir, dataDir: dataDir,
 		prefix: strings.TrimRight(prefix, "/"), localDev: localDev, catalogCSRF: rand.Text(), taskLocks: map[int64]*sync.Mutex{},
 		rssSlots: make(chan struct{}, 2), queueWake: make(chan struct{}, 1), shutdownDone: make(chan struct{})}
 	if err := service.recoverCanceledMediaJobs(); err != nil {
@@ -146,6 +152,7 @@ func decodeJSON(writer http.ResponseWriter, request *http.Request, target any) e
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerCatalogRoutes(mux)
+	s.registerPlaybackRoutes(mux)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": Version, "runtime": "go", "process_model": "single"})
 	})
@@ -1363,25 +1370,25 @@ func (s *Service) Run(ctx context.Context, listener net.Listener) error {
 
 func (s *Service) Shutdown(ctx context.Context) error {
 	s.shutdownOnce.Do(func() {
-		defer close(s.shutdownDone)
-		if s.cancel != nil {
-			s.cancel()
-		}
-		s.javsp.StopCurrent()
-		if s.server != nil {
-			if err := s.server.Shutdown(ctx); err != nil {
-				s.shutdownErr = err
-				return
+		// A caller's wait deadline must not consume sync.Once and abandon the
+		// remaining cleanup. The single shutdown operation continues in order.
+		go func() {
+			defer close(s.shutdownDone)
+			if s.cancel != nil {
+				s.cancel()
 			}
-		}
-		done := make(chan struct{})
-		go func() { s.wait.Wait(); close(done) }()
-		select {
-		case <-done:
-			s.shutdownErr = s.db.Close()
-		case <-ctx.Done():
-			s.shutdownErr = ctx.Err()
-		}
+			s.javsp.StopCurrent()
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cleanupErr := s.closePlayback(cleanupCtx)
+			if s.server != nil {
+				if err := s.server.Shutdown(cleanupCtx); err != nil {
+					cleanupErr = errors.Join(cleanupErr, err, s.server.Close())
+				}
+			}
+			s.wait.Wait()
+			s.shutdownErr = errors.Join(cleanupErr, s.db.Close())
+		}()
 	})
 	select {
 	case <-s.shutdownDone:

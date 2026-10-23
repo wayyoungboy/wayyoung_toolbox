@@ -259,16 +259,22 @@ printf '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:2.0,\
 if [ "$kind" = HARDWARE ]; then exit 3;fi
 exec sleep 300
 `
-	if err := os.WriteFile(tool, []byte(script), 0700); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(tool, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
 	manager.options.FFmpeg, manager.options.DisableHardware = tool, false
 	manager.caps = &Capabilities{Available: true, Encoders: []Encoder{{ID: "h264_vaapi", Verified: true}}}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	session, err := manager.Start(ctx, Request{AssetID: "asset", Mode: "hardware"})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if session.Backend == "libx264" {
 		segment, err := manager.Read(ctx, session.ID, "seg000000.ts")
-		if err != nil || string(segment) != "SOFTWARE" { t.Fatalf("stale attempt published: %+v %q %v", session, segment, err) }
+		if err != nil || string(segment) != "SOFTWARE" {
+			t.Fatalf("stale attempt published: %+v %q %v", session, segment, err)
+		}
 	}
 }
 

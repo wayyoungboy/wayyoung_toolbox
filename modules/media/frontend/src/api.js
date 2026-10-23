@@ -1,4 +1,6 @@
 const prefix = import.meta.env.BASE_URL.replace(/\/$/, '');
+let catalogToken='';
+async function prepareCatalogSession(){const {csrf}=await request('/catalog/session');if(!csrf)throw new Error('馆藏请求校验失效，请刷新页面');catalogToken=csrf;return csrf;}
 
 async function request(path, options = {}) {
   const response = await fetch(`${prefix}/api${path}`, {
@@ -20,12 +22,31 @@ async function request(path, options = {}) {
 // Short-lived process token, fetched from an authenticated same-origin endpoint.
 // A failed mutation is never replayed automatically (progress may have committed).
 async function catalogMutation(path, method, payload, options = {}) {
-  const { csrf } = await request('/catalog/session', { signal: options.signal });
-  if (!csrf) throw new Error('馆藏请求校验失效，请刷新页面');
+  const csrf = options.keepalive&&catalogToken?catalogToken:await prepareCatalogSession();
   return request(path, { ...options, method, headers: { 'X-Catalog-CSRF': csrf }, body: JSON.stringify(payload) });
+}
+const playbackTokens=new Map();
+async function playbackSessionMutation(id,action,payload){
+ const csrf=playbackTokens.get(id)||(await request('/catalog/session')).csrf;
+ if(!csrf)throw new Error('播放请求校验失效，请重新打开播放器');
+ const result=await request(`/playback/sessions/${encodeURIComponent(id)}${action}`,{method:action?'POST':'DELETE',headers:{'X-Catalog-CSRF':csrf},body:JSON.stringify(payload),keepalive:!action});
+ if(!action)playbackTokens.delete(id);
+ return result;
 }
 
 export const api = {
+  prepareCatalogSession,
+  playbackInfo: (id,{signal}={})=>request(`/catalog/assets/${encodeURIComponent(id)}/info`,{signal}),
+  playbackResources: ()=>request('/playback/resources'),
+  playbackCapabilities: ()=>catalogMutation('/playback/capabilities','POST',{}),
+  playbackStart: async payload=>{
+    const {csrf}=await request('/catalog/session');
+    if(!csrf)throw new Error('播放请求校验失效，请重新打开播放器');
+    const result=await request('/playback/sessions',{method:'POST',headers:{'X-Catalog-CSRF':csrf},body:JSON.stringify(payload)});
+    playbackTokens.set(result.id,csrf);return result;
+  },
+  playbackStop: id=>playbackSessionMutation(id,'',{}),
+  playbackPulse: (id,paused)=>playbackSessionMutation(id,'/heartbeat',{paused}),
   catalogActors: ({ query='', offset=0, signal }={}) => request(`/catalog/actors?${new URLSearchParams({query,offset:String(offset),limit:'48'})}`,{signal}),
   catalogActor: (id,{signal}={}) => request(`/catalog/actors/${encodeURIComponent(id)}`,{signal}),
   catalogActorPatch: (id,payload) => catalogMutation(`/catalog/actors/${encodeURIComponent(id)}`,'PATCH',payload),

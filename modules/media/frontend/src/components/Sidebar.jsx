@@ -19,6 +19,7 @@ const icons = {
   maintenance: IconSearch,
   settings: IconSetting,
 };
+const groupLabel={watching:'观看',primary:'采集',tools:'管理',system:'管理'};
 
 export default function Sidebar({ page, onChange, serviceOnline, version }) {
   return (
@@ -32,7 +33,7 @@ export default function Sidebar({ page, onChange, serviceOnline, version }) {
           const Icon = icons[item.key];
           const separated = index > 0 && primaryNavigation[index - 1].group !== item.group;
           return [
-            separated ? <div className="nav-separator" key={`${item.key}-separator`} /> : null,
+            (index===0||separated)&&item.group!=='system' ? <div className="nav-group-heading" key={`${item.key}-separator`}>{groupLabel[item.group]}</div> : null,
             <button
               type="button"
               className={`nav-item ${page === item.key ? 'selected' : ''}`}

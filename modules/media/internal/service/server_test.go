@@ -31,7 +31,7 @@ func testService(t *testing.T) *Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { service.db.Close() })
+	t.Cleanup(func() { service.closePlayback(context.Background()); service.db.Close() })
 	return service
 }
 

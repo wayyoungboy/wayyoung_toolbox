@@ -14,7 +14,7 @@ const Personal = lazy(() => import('./pages/Personal'));
 const Queue = lazy(() => import('./pages/Queue'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
 const SettingsWorkspace = lazy(() => import('./pages/SettingsWorkspace'));
-const resourceKeys = ['actor', 'work', 'list', 'actor_name', 'tag', 'view'];
+const resourceKeys = ['actor', 'work', 'list', 'actor_name', 'tag', 'view', 'query', 'library', 'sort', 'offset'];
 const requestedDestination = () => {
   const parameters = new URLSearchParams(window.location.search);
   const result = resolveDestination(parameters.get('page'), parameters.get('tab'));

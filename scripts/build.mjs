@@ -82,6 +82,7 @@ function stageLicenses() {
     ['backup/LICENSE', path.join(modules.backup, 'LICENSE')],
     ['backup/THIRD_PARTY_NOTICES.md', path.join(modules.backup, 'THIRD_PARTY_NOTICES.md')],
     ['media/LICENSE', path.join(modules.media, 'LICENSE')],
+    ['hls.js/LICENSE', path.join(modules.media, 'node_modules/hls.js/LICENSE')],
     ['javsp/LICENSE', path.join(modules.media, 'third_party/javsp/LICENSE')],
     ['javsp/THIRD_PARTY_NOTICES.md', path.join(modules.media, 'third_party/javsp/THIRD_PARTY_NOTICES.md')],
     ['music/LICENSE', path.join(modules.music, 'LICENSE')],

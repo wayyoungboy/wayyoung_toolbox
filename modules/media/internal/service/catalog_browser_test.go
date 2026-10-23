@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -31,7 +32,7 @@ func TestCatalogBrowserJourney(t *testing.T) {
 	service.publicDir = public
 	root := t.TempDir()
 	sample := filepath.Join(t.TempDir(), "sample.mp4")
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	command := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100", "-t", "15", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", sample)
 	if output, err := command.CombinedOutput(); err != nil {
@@ -79,13 +80,36 @@ func TestCatalogBrowserJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := service.Handler()
+	stop := make(chan struct{})
+	var stopOnce sync.Once
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; media-src 'self' blob:; worker-src 'self' blob:")
+		if os.Getenv("CATALOG_REMOTE_FIXTURE") == "1" && r.Method == "POST" && r.URL.Path == "/__fixture/stop" {
+			stopOnce.Do(func() { close(stop) })
+			w.WriteHeader(200)
+			return
+		}
 		r.Header.Set("X-Trim-Isadmin", "true")
 		r.Header.Set("X-Trim-Userid", "1000")
 		r.Host = "localhost" // native gateway Host rewrite, browser Origin stays intact
 		handler.ServeHTTP(w, r)
 	}))
 	defer server.Close()
+	if os.Getenv("CATALOG_REMOTE_FIXTURE") == "1" {
+		fmt.Printf("FIXTURE_URL=%s%s/\nFIXTURE_ROOT=%s\n", server.URL, service.prefix, root)
+		select {
+		case <-stop:
+		case <-ctx.Done():
+			t.Fatal("fixture server deadline reached")
+		}
+		if _, err := os.Stat(filepath.Join(root, "TEST-002.mp4")); !os.IsNotExist(err) {
+			t.Fatal("selected synthetic deletion not applied")
+		}
+		if _, err := os.Stat(filepath.Join(root, "TEST-001.mp4")); err != nil {
+			t.Fatal("unselected synthetic media changed", err)
+		}
+		return
+	}
 	node := os.Getenv("CATALOG_NODE")
 	if node == "" {
 		node = "node"

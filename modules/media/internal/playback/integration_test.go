@@ -4,6 +4,7 @@ package playback
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,25 @@ import (
 	"testing"
 	"time"
 )
+
+func TestActualHardwareEncodingProbe(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	manager, err := New(Options{Dir: filepath.Join(t.TempDir(), "cache")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close(context.Background())
+	result := manager.Capabilities(ctx)
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("ACTUAL_CAPABILITIES %s", encoded)
+	if !result.Available {
+		t.Fatal("FFmpeg tools unavailable")
+	}
+}
 
 func TestActualFFmpegTranscodeSeekAndRemux(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
@@ -22,7 +42,8 @@ func TestActualFFmpegTranscodeSeekAndRemux(t *testing.T) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("sample: %v %s", err, output)
 	}
-	options := Options{Dir: filepath.Join(dir, "cache"), DisableHardware: true, NoThrottle: true, Open: func(_ context.Context, id string) (Source, error) {
+	verifyHardware := os.Getenv("PLAYBACK_VERIFY_HARDWARE") == "1"
+	options := Options{Dir: filepath.Join(dir, "cache"), DisableHardware: !verifyHardware, NoThrottle: true, Open: func(_ context.Context, id string) (Source, error) {
 		f, err := os.Open(input)
 		return Source{File: f, Name: "TEST-101.mkv"}, err
 	}}
@@ -38,11 +59,24 @@ func TestActualFFmpegTranscodeSeekAndRemux(t *testing.T) {
 	if err != nil || info.VideoCodec != "mpeg4" {
 		t.Fatalf("actual probe: %+v %v", info, err)
 	}
-	session, err := manager.Start(ctx, Request{AssetID: "sample", Mode: "software", Start: 2})
+	mode, backend := "software", "libx264"
+	if verifyHardware {
+		mode = "hardware"
+		for _, encoder := range manager.Capabilities(ctx).Encoders {
+			if encoder.Verified {
+				backend = encoder.ID
+				break
+			}
+		}
+		if backend == "libx264" {
+			t.Fatal("hardware session explicitly requested but no actual encoder probe passed")
+		}
+	}
+	session, err := manager.Start(ctx, Request{AssetID: "sample", Mode: mode, Start: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Offset != 2 || session.Backend != "libx264" {
+	if session.Offset != 2 || session.Backend != backend || session.Fallback {
 		t.Fatalf("seek: %+v", session)
 	}
 	playlist, err := manager.Read(ctx, session.ID, "index.m3u8")

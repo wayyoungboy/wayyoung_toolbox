@@ -35,6 +35,7 @@ const screenshot = async name => {
 
 try {
   await page.goto(url);
+  assert.equal(await page.title(),'个人媒体中心');
   await page.getByRole('heading', { name: '从已有影片开始', exact: true }).waitFor();
   await page.getByRole('button', { name: '媒体库管理', exact: true }).click();
   await page.getByLabel('名称', { exact: true }).fill('验收媒体库');
@@ -58,7 +59,7 @@ try {
   await page.getByLabel('人物简介',{exact:true}).fill('用于验收的人物资料，不从网络虚构。');
   await page.getByRole('button',{name:'保存人物资料',exact:true}).click();
   await page.getByRole('heading',{name:'Test Actor · 手工资料',exact:true}).waitFor();
-  await page.getByLabel('上传人物头像',{exact:true}).setInputFiles(path.join(fixtureRoot,'TEST-001-poster.png'));
+  await page.getByLabel('上传人物头像',{exact:true}).setInputFiles(path.join(process.env.CATALOG_UPLOAD_FIXTURE_ROOT||fixtureRoot,'TEST-001-poster.png'));
   await page.getByText('人物头像已更新',{exact:true}).waitFor();
   await screenshot('desktop-actor-profile');
   await page.reload();
@@ -134,7 +135,9 @@ try {
   await page.getByRole('button', { name: '继续观看', exact: true }).click();
   await check(async () => await page.locator('.catalog-card').count() === 1, 'continue watching did not use saved progress');
   await page.reload();
-  await check(async () => await page.locator('.catalog-card').count() === 9, 'reload catalog failed');
+  await check(async () => await page.locator('.catalog-card').count() === 1, 'reload must retain continue-watching and keyword filters');
+  assert.equal(await page.getByRole('searchbox',{name:'搜索馆藏'}).inputValue(),'TEST-001');
+  assert.equal(await page.getByRole('button',{name:'继续观看',exact:true}).getAttribute('aria-pressed'),'true');
   await page.getByRole('button', { name: '我的收藏', exact: true }).click();
   await check(async () => await page.locator('.catalog-card').count() === 1, 'favorite was not persisted');
   await page.locator('.catalog-card').click();
@@ -240,8 +243,7 @@ try {
   await page.getByText('已删除 6 个文件，清理 2 部作品记录。',{exact:true}).waitFor();
   await page.getByRole('button',{name:'关闭',exact:true}).click();
   await check(async()=>await page.locator('.catalog-card').count()===7,'delete did not update catalog');
-  await assert.rejects(fs.access(path.join(fixtureRoot,'TEST-002.mp4')));
-  await fs.access(path.join(fixtureRoot,'TEST-001.mp4'));
+  if(!process.env.CATALOG_REMOTE_FIXTURE){await assert.rejects(fs.access(path.join(fixtureRoot,'TEST-002.mp4')));await fs.access(path.join(fixtureRoot,'TEST-001.mp4'));}
   await page.getByRole('button',{name:'退出多选',exact:true}).click();
   await page.getByRole('button',{name:'工作台',exact:true}).click();
   await page.getByRole('button',{name:'清理过期任务',exact:true}).click();
@@ -254,6 +256,42 @@ try {
   await page.getByRole('button',{name:'处理队列',exact:true}).click();
   await page.getByLabel('队列状态',{exact:true}).selectOption('archived');
   await page.getByText('此状态共 1 项',{exact:false}).waitFor();
+  if(process.env.CATALOG_COMPATIBLE==='1'){
+    await page.getByRole('button',{name:'馆藏',exact:true}).click();
+    await page.getByRole('searchbox',{name:'搜索馆藏'}).fill('TEST-004');
+    await check(async()=>await page.locator('.catalog-card').count()===1,'compatibility sample missing');
+    await page.locator('.catalog-card').click();
+    await page.getByRole('button',{name:'播放',exact:true}).click();
+    const started=page.waitForResponse(response=>response.url().endsWith('/playback/sessions')&&response.request().method()==='POST');
+    await page.getByLabel('播放方式',{exact:true}).selectOption('software');
+    const first=await (await started).json();assert.equal(first.backend,'libx264');
+    await check(()=>page.locator('video').evaluate(video=>video.readyState>=2&&video.currentTime>0.2&&!video.paused),'real HLS software playback failed');
+    await page.locator('video').evaluate(video=>video.pause());
+    await check(async()=>await page.evaluate(async id=>(await (await fetch(`api/playback/sessions/${id}`)).json()).paused,first.id),'pause did not suspend encoder');
+    await screenshot('desktop-compatible-playback');
+    await page.getByRole('slider',{name:'完整影片进度'}).evaluate(element=>{
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(element,'8');
+      element.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    const seeking=page.waitForResponse(response=>response.url().endsWith('/playback/sessions')&&response.request().method()==='POST');
+    await page.getByRole('button',{name:'跳转到此处',exact:true}).click();
+    const second=await (await seeking).json();assert.notEqual(second.id,first.id);assert.equal(second.offset,8);
+    await check(()=>page.locator('video').evaluate(video=>video.readyState>=2&&!video.paused),'HLS seek did not resume');
+    let releaseProgress,observedProgress;
+    const progressGate=new Promise(resolve=>{releaseProgress=resolve;});const progressObserved=new Promise(resolve=>{observedProgress=resolve;});
+    const holdProgress=async route=>{if(route.request().method()==='PUT'){observedProgress();await progressGate;}await route.continue();};
+    await page.route('**/api/catalog/assets/*/progress',holdProgress);
+    await page.getByRole('dialog',{name:'午后时光',exact:true}).getByRole('button',{name:'close',exact:true}).click();
+    await progressObserved;assert.equal(await page.locator('video').count(),1,'close must await progress persistence');
+    releaseProgress();await page.locator('video').waitFor({state:'hidden'});await page.unroute('**/api/catalog/assets/*/progress',holdProgress);
+    await check(async()=>await page.evaluate(async()=>(await (await fetch('api/playback/resources')).json()).active===0),'close leaked playback process');
+    await page.getByRole('button',{name:'继续播放',exact:true}).click();
+    const reloadSession=page.waitForResponse(response=>response.url().endsWith('/playback/sessions')&&response.request().method()==='POST');
+    await page.getByLabel('播放方式',{exact:true}).selectOption('software');await reloadSession;
+    await page.reload();
+    await check(async()=>await page.evaluate(async()=>(await (await fetch('api/playback/resources')).json()).active===0),'reload did not delete established session');
+    await page.getByRole('dialog',{name:'作品详情',exact:true}).getByRole('button',{name:'close',exact:true}).click();
+  }
   assert.deepEqual(errors, [], 'browser runtime errors');
   console.log(JSON.stringify({ passed: true, fixtures: { works: 9, assets: 10 }, playback: 'real H.264 + AAC', checks: ['import', 'manual scan', 'native Host rewrite + CSRF', 'keyword/actor/tag search', 'actor profile, alias and portrait persistence', 'editions', 'favorite', 'watch later', 'watched and rating', 'ordered playlist create/edit/add/move/remove', 'session history and selected clear', 'manual title', 'play', 'seek', 'SRT track', 'progress', 'resume', 'reload', 'mobile', 'multi-select permanent delete', 'aged task cleanup and archive', 'console'], screenshots: report }));
 } catch (error) {

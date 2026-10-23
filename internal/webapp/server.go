@@ -155,7 +155,11 @@ func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
 		writer.Header().Set("Referrer-Policy", "same-origin")
-		writer.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'")
+		policy := "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+		if strings.HasPrefix(request.URL.Path, "/modules/media/") {
+			policy += "; media-src 'self' blob:; worker-src 'self' blob:"
+		}
+		writer.Header().Set("Content-Security-Policy", policy)
 		writer.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(writer, request)
 	})
