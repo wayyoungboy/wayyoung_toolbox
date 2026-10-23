@@ -164,3 +164,45 @@ func TestBrowserArchiveSafetyAndLimits(t *testing.T) {
 		t.Fatal("line limit ignored")
 	}
 }
+
+func TestBrowserEnvelopeAndHTMLResourceBounds(t *testing.T) {
+	envelope := strings.Repeat(`{"Browser History":`, 40) + `[]` + strings.Repeat(`}`, 40)
+	if _, err := Parse(context.Background(), "History.json", "history", []byte(envelope)); err == nil {
+		t.Error("nested History envelope is not a history array")
+	}
+	html := `<!DOCTYPE NETSCAPE-Bookmark-file-1>` + strings.Repeat(`<span></span>`, 110000)
+	if _, err := Parse(context.Background(), "bookmarks.html", "bookmarks", []byte(html)); err == nil {
+		t.Fatal("unbounded HTML token count")
+	}
+}
+
+func TestBrowserSQLiteExpandedRecordsBudget(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "small.sqlite")
+	db, err := sql.Open("sqlite", file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE urls(id INTEGER,url TEXT,title TEXT);CREATE TABLE visits(url INTEGER,visit_time INTEGER);INSERT INTO urls VALUES(1,?,?)`, "https://example.test/"+strings.Repeat("a", 8000), strings.Repeat("b", 8192)); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 1200; i++ {
+		if _, err := tx.Exec("INSERT INTO visits VALUES(1,?)", int64(13344473600000000)+int64(i)*1000000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(context.Background(), "history.sqlite", "history", data); err == nil {
+		t.Fatal("SQLite JOIN bypassed normalized text budget")
+	}
+}
