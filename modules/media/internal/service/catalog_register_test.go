@@ -12,6 +12,15 @@ import (
 	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
 )
 
+func registrationRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
 func registrationTarget(t *testing.T, filename string) catalog.RegistrationTarget {
 	t.Helper()
 	info, err := os.Stat(filename)
@@ -23,7 +32,7 @@ func registrationTarget(t *testing.T, filename string) catalog.RegistrationTarge
 
 func TestCatalogRegistrationTargetsOnlyOutputsAndNeverSweeps(t *testing.T) {
 	s := testService(t)
-	root := t.TempDir()
+	root := registrationRoot(t)
 	writeIntakeFixture(t, filepath.Join(root, "existing"), map[string]string{"TEST-001.mp4": "old video", "TEST-001.nfo": "<movie><title>Old title</title></movie>"})
 	lib := catalogLibrary(t, s, root)
 	catalogScan(t, s, lib)
@@ -33,7 +42,7 @@ func TestCatalogRegistrationTargetsOnlyOutputsAndNeverSweeps(t *testing.T) {
 	}
 	// An unrelated subtree has disappeared since the last full scan. Registering
 	// a new output must not inventory or mark anything in that subtree missing.
-	if err := os.Rename(filepath.Join(root, "existing"), filepath.Join(t.TempDir(), "offline")); err != nil {
+	if err := os.Rename(filepath.Join(root, "existing"), filepath.Join(registrationRoot(t), "offline")); err != nil {
 		t.Fatal(err)
 	}
 	output := filepath.Join(root, "new", "TEST-002.mp4")
@@ -72,7 +81,7 @@ func TestCatalogRegistrationRejectsUnprovenTargetsAtomically(t *testing.T) {
 	for _, kind := range []string{"changed", "symlink", "outside", "relative", "parent", "non-video", "duplicate"} {
 		t.Run(kind, func(t *testing.T) {
 			s := testService(t)
-			root := t.TempDir()
+			root := registrationRoot(t)
 			catalogLibrary(t, s, root)
 			writeIntakeFixture(t, root, map[string]string{"TEST-001.mp4": "first", "TEST-002.mp4": "second", "TEST-003.nfo": "<movie/>"})
 			good := registrationTarget(t, filepath.Join(root, "TEST-001.mp4"))
@@ -86,7 +95,7 @@ func TestCatalogRegistrationRejectsUnprovenTargetsAtomically(t *testing.T) {
 				}
 				bad.Path = filepath.Join(root, "link.mp4")
 			case "outside":
-				other := t.TempDir()
+				other := registrationRoot(t)
 				catalogWrite(t, other, "TEST-002.mp4", "outside")
 				bad = registrationTarget(t, filepath.Join(other, "TEST-002.mp4"))
 			case "relative":
@@ -110,7 +119,7 @@ func TestCatalogRegistrationRejectsUnprovenTargetsAtomically(t *testing.T) {
 
 func TestCatalogRegistrationSharesAtomicCompletionTransaction(t *testing.T) {
 	s := testService(t)
-	root := t.TempDir()
+	root := registrationRoot(t)
 	catalogLibrary(t, s, root)
 	catalogWrite(t, root, "TEST-001.mp4", "video")
 	finalErr := errors.New("stale producer attempt")
@@ -133,7 +142,7 @@ func TestCatalogRegistrationSharesAtomicCompletionTransaction(t *testing.T) {
 
 func TestCatalogRegistrationMoveProofKeepsAssetProgressAndPersonalState(t *testing.T) {
 	s := testService(t)
-	sourceRoot, targetRoot := t.TempDir(), t.TempDir()
+	sourceRoot, targetRoot := registrationRoot(t), registrationRoot(t)
 	source := filepath.Join(sourceRoot, "TEST-001.mp4")
 	catalogWrite(t, sourceRoot, "TEST-001.mp4", "original video")
 	oldLib := catalogLibrary(t, s, sourceRoot)
@@ -169,7 +178,7 @@ func TestCatalogRegistrationMoveProofKeepsAssetProgressAndPersonalState(t *testi
 
 func TestCatalogRegistrationDoesNotFallBackFromChangedSpecificRoot(t *testing.T) {
 	s := testService(t)
-	parent := t.TempDir()
+	parent := registrationRoot(t)
 	child := filepath.Join(parent, "specific")
 	writeIntakeFixture(t, child, map[string]string{"TEST-001.mp4": "video"})
 	catalogLibrary(t, s, parent)
