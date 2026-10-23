@@ -15,8 +15,9 @@ const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await context.newPage();
 const errors = [];
+const expectedConflictURLs=new Set();
 page.on('pageerror', error => errors.push(error.message));
-page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+page.on('console', message => { if (message.type() === 'error'&&!(expectedConflictURLs.has(message.location().url)&&message.text().includes('409'))) errors.push(message.text()); });
 const check = async (predicate, message) => {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
@@ -69,9 +70,25 @@ try {
   await page.getByText('已本地关注人物',{exact:true}).waitFor();
   await page.reload();
   await page.getByRole('button',{name:'取消本地关注',exact:true}).waitFor();
+  const followedActorID=new URL(page.url()).searchParams.get('actor');
+  const followURL=`${url}api/catalog/actors/${encodeURIComponent(followedActorID)}/follow`;
+  await page.evaluate(async followURL=>{
+    const actorURL=followURL.replace(/\/follow$/,'');
+    const {csrf}=await (await fetch(actorURL.replace(/actors\/[^/]+$/,'session'))).json();
+    const actor=await (await fetch(actorURL)).json();
+    const response=await fetch(followURL,{method:'PUT',headers:{'Content-Type':'application/json','X-Catalog-CSRF':csrf},body:JSON.stringify({following:actor.following,version:actor.follow_version})});
+    if(!response.ok)throw new Error('follow conflict setup failed');
+  },followURL);
+  expectedConflictURLs.add(followURL);
+  await page.getByRole('button',{name:'取消本地关注',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'没有自动重试'}).waitFor();
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await check(async()=>await page.getByRole('alert').count()===0,'successful actor reread kept stale conflict');
+  expectedConflictURLs.delete(followURL);
   await page.getByRole('button',{name:'返回人物列表',exact:true}).click();
   await page.getByRole('button',{name:'本地已关注',exact:true}).click();
   await check(async()=>await page.locator('.person-card').count()===1,'local follow filter failed');
+  assert.notEqual(await page.getByRole('button',{name:'本地已关注',exact:true}).evaluate(element=>getComputedStyle(element).backgroundColor),await page.getByRole('button',{name:'全部人物',exact:true}).evaluate(element=>getComputedStyle(element).backgroundColor),'follow filter lacks a visible selected state');
   await page.getByRole('button',{name:'查看演员：Test Actor · 手工资料',exact:true}).click();
   await page.getByRole('button',{name:'查看偏好与推荐',exact:true}).click();
   await page.getByRole('heading',{name:'尚未启用偏好分析',exact:true}).waitFor();
@@ -82,6 +99,21 @@ try {
   await page.getByRole('button',{name:'保存分析设置',exact:true}).click();
   await page.getByText('分析设置已保存。',{exact:true}).waitFor();
   await check(async()=>await page.locator('.taste-recommendations > li').count()===7,'canonical followed actor did not produce seven related works');
+  const configURL=`${url}api/catalog/taste/config`;
+  await page.evaluate(async configURL=>{
+    const base=configURL.replace(/taste\/config$/,'session');
+    const {csrf}=await (await fetch(base)).json();
+    const config=await (await fetch(configURL)).json();
+    const response=await fetch(configURL,{method:'PUT',headers:{'Content-Type':'application/json','X-Catalog-CSRF':csrf},body:JSON.stringify(config)});
+    if(!response.ok)throw new Error('fixture conflict setup failed');
+  },configURL);
+  expectedConflictURLs.add(configURL);
+  await page.getByRole('button',{name:'保存分析设置',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'没有自动重试'}).waitFor();
+  await check(async()=>!await page.getByRole('button',{name:'重新读取偏好',exact:true}).isDisabled(),'conflict reload did not settle');
+  await page.getByRole('button',{name:'重新读取偏好',exact:true}).click();
+  await check(async()=>await page.getByRole('alert').count()===0,'successful taste reread kept a stale mutation error');
+  expectedConflictURLs.delete(configURL);
   await page.getByRole('heading',{name:'你的本地偏好',exact:true}).waitFor();
   assert.ok((await page.locator('.taste-facets').innerText()).includes('Test Actor · 手工资料'),'actor identity/name missing from evidence');
   await page.locator('.taste-recommendations summary').first().click();

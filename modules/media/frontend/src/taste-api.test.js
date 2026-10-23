@@ -15,6 +15,12 @@ it('keeps local taste and follows behind explicit CSRF and revision writes',asyn
  const writes=fetch.mock.calls.filter(([,options])=>options.method);
  expect(writes).toHaveLength(3);
  expect(writes.every(([,options])=>options.headers['X-Catalog-CSRF']==='csrf')).toBe(true);
+ expect(writes[0][0]).toContain('/catalog/taste/config');
+ expect(writes[0][1].method).toBe('PUT');
+ expect(JSON.parse(writes[0][1].body)).toEqual({enabled:true,sources:{collection:true,history:false,feedback:true,follows:false},version:3});
+ expect(writes[1][0]).toContain('/catalog/taste/reset');
+ expect(writes[1][1].method).toBe('POST');
+ expect(JSON.parse(writes[1][1].body)).toEqual({version:4,confirmation:'清除偏好'});
  expect(writes[2][0]).toContain('/actors/actor%20%2F%3F/follow');
  expect(writes[2][1].body).toBe('{"following":true,"version":2}');
  expect(fetch.mock.calls.at(-1)[0]).toContain('following=true');
