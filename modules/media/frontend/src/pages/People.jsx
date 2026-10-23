@@ -16,6 +16,7 @@ function ActorProfile({id,onNavigate}){
  const {data,loading,error:loadError,refresh}=useRemoteResource(load);
  const busy=mutating||loading;
  const actor=data?.actor;
+ const reload=()=>{setError('');setNotice('');refresh();};
  const mutate=async(action,message)=>{setBusy(true);setError('');setNotice('');try{await action();setNotice(message);setEditing(false);refresh();}catch(failure){setError(`${failure.message}；没有自动重试，请重新读取核对。`);}finally{setBusy(false);}};
  const upload=async event=>{
   const file=event.target.files?.[0];event.target.value='';if(!file||!actor)return;
@@ -27,7 +28,7 @@ function ActorProfile({id,onNavigate}){
  };
  return <>
   <button className="catalog-text-button" type="button" onClick={()=>onNavigate('people')}>返回人物列表</button>
-  {(error||loadError)&&<p className="catalog-alert" role="alert">{error||loadError} <button type="button" className="catalog-text-button" onClick={refresh}>重新读取</button></p>}
+  {(error||loadError)&&<p className="catalog-alert" role="alert">{error||loadError} <button type="button" className="catalog-text-button" onClick={reload}>重新读取</button></p>}
   {notice&&<p className="catalog-notice" role="status">{notice}</p>}
   {!actor&&loading&&<p role="status">正在读取人物资料…</p>}
   {actor&&<>
@@ -64,7 +65,7 @@ export default function People({actorID,onNavigate}){
  return <section className="page catalog-page people-page">
   <header className="page-header"><div><h1>人物</h1><p>按演员浏览馆藏，保存本地人物资料与头像</p></div><input className="personal-search" type="search" aria-label="搜索人物" placeholder="搜索名字或别名" maxLength={500} value={query} onChange={event=>{setQuery(event.target.value);setOffset(0);}}/></header>
   {error&&<p className="catalog-alert" role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
-  <div className="catalog-actions"><button className="catalog-text-button" type="button" aria-pressed={!following} onClick={()=>{setFollowing(false);setOffset(0);}}>全部人物</button><button className="catalog-text-button" type="button" aria-pressed={following} onClick={()=>{setFollowing(true);setOffset(0);}}>本地已关注</button><button className="catalog-text-button" type="button" onClick={()=>onNavigate('personal','taste')}>偏好与推荐</button></div>
+  <div className="catalog-actions people-filterbar"><button className="catalog-text-button" type="button" aria-pressed={!following} onClick={()=>{setFollowing(false);setOffset(0);}}>全部人物</button><button className="catalog-text-button" type="button" aria-pressed={following} onClick={()=>{setFollowing(true);setOffset(0);}}>本地已关注</button><button className="catalog-text-button" type="button" onClick={()=>onNavigate('personal','taste')}>偏好与推荐</button></div>
   <p className="catalog-help">{loading?'正在读取人物…':`${data?.total||0} 位演员`}</p>
   <div className="people-grid">{(data?.items||[]).map(actor=><button key={actor.id} type="button" className="person-card" aria-label={`查看演员：${actor.display_name}`} onClick={()=>onNavigate('people','',null,{actor:actor.id})}><ActorPortrait key={`${actor.id}:${actor.portrait_revision}`} actor={actor}/><strong>{actor.display_name}</strong><span>{actor.work_count} 部馆藏作品</span></button>)}</div>
   {!loading&&!error&&data?.total===0&&<p className="catalog-help">没有匹配的人物。扫描含演员资料的本地 NFO 后会建立人物索引，不会猜测缺失资料。</p>}

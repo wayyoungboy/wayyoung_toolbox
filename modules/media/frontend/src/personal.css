@@ -1,4 +1,6 @@
 .personal-search { min-width: 0; width: min(320px,100%); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; color: inherit; background: var(--surface); }
+.people-filterbar > button[aria-pressed] { padding:7px 12px; border:1px solid var(--border); border-radius:5px; color:inherit; }
+.people-filterbar > button[aria-pressed="true"] { color:var(--status-running); background:#eaf3ff; border-color:#a9c8f4; font-weight:600; }
 .people-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap: 24px; margin-top: 24px; }
 .person-card { display: grid; gap: 8px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .person-card strong { overflow-wrap: anywhere; font-size: 14px; }
