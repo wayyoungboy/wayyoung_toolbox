@@ -76,7 +76,7 @@ func rankTaste(ctx context.Context, works []tasteWork, followed []Actor, sources
 		weights := map[string]float64{}
 		// Dislike is a work-level exclusion, not negative evidence about its actors
 		// or genres. It also prevents positive signals from the same work.
-		if w.Feedback == "dislike" {
+		if sources["feedback"] && w.Feedback == "dislike" {
 			exclude[w.ID] = true
 			continue
 		}
