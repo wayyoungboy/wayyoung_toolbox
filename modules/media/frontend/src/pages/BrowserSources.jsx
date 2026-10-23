@@ -10,12 +10,14 @@ export function BrowserSourceList({items,busy,onReading,onDelete}){
 }
 
 export function BrowserImportForm({items,form,busy,preview,onChange,onFile,onPreview,onCommit}){
+ const fileInput=useRef(null);
+ useEffect(()=>{if(!form.filename&&fileInput.current)fileInput.current.value='';},[form.filename]);
  return <section className="browser-import"><h2>导入浏览器资料</h2><p className="catalog-help">只处理你选择上传的导出文件，不会直接读取电脑浏览器，也不访问文件中的网址。URL 会去掉用户凭据、片段及非必要查询参数；保留网址、标题和时间，仅供本应用管理员查看。</p>
  <form onSubmit={event=>{event.preventDefault();onPreview();}}><fieldset disabled={busy}>
  <label>导入到<select aria-label="导入目标来源" value={form.source_id} onChange={event=>onChange({source_id:event.target.value})}><option value="">创建新来源</option>{items.map(source=><option key={source.id} value={source.id}>{source.name}{!source.reading?'（已停止）':''}</option>)}</select></label>
  <label>来源名称<input aria-label="浏览器来源名称" required maxLength={160} value={form.name} onChange={event=>onChange({name:event.target.value})}/></label>
  <label>资料类型<select aria-label="浏览器资料类型" value={form.kind} disabled={Boolean(form.source_id)} onChange={event=>onChange({kind:event.target.value})}><option value="history">访问历史（增量合并）</option><option value="bookmarks">书签（替换此来源快照）</option></select></label>
- <label className="browser-file">浏览器资料文件<input key={form.filename||'empty'} aria-label="浏览器资料文件" type="file" onChange={event=>onFile(event.target.files?.[0])}/><span>{form.filename||'请选择已导出的文件'}</span></label>
+ <label className="browser-file">浏览器资料文件<input ref={fileInput} aria-label="浏览器资料文件" type="file" onChange={event=>onFile(event.target.files?.[0])}/><span>{form.filename||'请选择已导出的文件'}</span></label>
  <p className="catalog-help browser-form-wide">支持 Chromium / Firefox / Safari 历史数据库、Firefox 书签数据库、Bookmarks JSON、Netscape HTML、browserexport JSON/JSONL、Google Takeout；可使用 ZIP、tar.gz、gzip、XZ、LZ4 或 Zstd。上传最多 32 MiB、展开最多 64 MiB、单次最多 50,000 条；超限需拆分。数据库请在关闭浏览器后复制完整文件，避免遗漏 WAL 中未导出的记录。</p>
  <button className="taste-primary" type="submit" disabled={busy||!form.filename||!form.name.trim()}>预览导入</button>
  </fieldset></form>
