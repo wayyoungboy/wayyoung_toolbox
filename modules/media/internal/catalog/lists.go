@@ -16,7 +16,7 @@ type Playlist struct {
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
 	WorkCount   int      `json:"work_count"`
-	WorkIDs     []string `json:"work_ids,omitempty"`
+	WorkIDs     []string `json:"work_ids"`
 }
 
 const listColumns = `l.id,l.name,l.description,l.version,l.created_at,l.updated_at,(SELECT COUNT(*) FROM catalog_list_items i WHERE i.list_id=l.id)`

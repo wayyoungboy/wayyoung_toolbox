@@ -433,7 +433,31 @@ func transferOrphanedPersonal(ctx context.Context, tx *sql.Tx, oldID string, des
 	if remaining != 0 {
 		return nil
 	}
+	if len(destinations) != 1 {
+		// A split identity has no unambiguous destination for a rating or a
+		// list position. Keep the original intent for explicit resolution.
+		for newID := range destinations {
+			if _, err := tx.ExecContext(ctx, `UPDATE catalog_assets SET issues=json_insert(issues,'$[#]','personal_identity_conflict') WHERE work_id=?`, newID); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	keepSourceNotes := false
 	for newID := range destinations {
+		var conflict bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_work_notes o,catalog_work_notes n WHERE o.work_id=? AND n.work_id=? AND
+ ((o.watched IS NOT NULL AND n.watched IS NOT NULL AND o.watched!=n.watched) OR
+ (o.rating!=0 AND n.rating!=0 AND o.rating!=n.rating) OR
+ (o.feedback!='' AND n.feedback!='' AND o.feedback!=n.feedback)))`, oldID, newID).Scan(&conflict); err != nil {
+			return err
+		}
+		if conflict {
+			keepSourceNotes = true
+			if _, err := tx.ExecContext(ctx, `UPDATE catalog_assets SET issues=json_insert(issues,'$[#]','personal_notes_conflict') WHERE work_id=?`, newID); err != nil {
+				return err
+			}
+		}
 		// Empty destination fields are not an intentional replacement of source
 		// notes. Merge fields independently, preserving explicitly set values.
 		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_work_notes(work_id,watched,rating,feedback,revision)
@@ -510,8 +534,10 @@ ON CONFLICT(work_id) DO UPDATE SET favorite=MAX(favorite,excluded.favorite),watc
 	if _, err := tx.ExecContext(ctx, "DELETE FROM catalog_personal WHERE work_id=?", oldID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM catalog_work_notes WHERE work_id=?", oldID); err != nil {
-		return err
+	if !keepSourceNotes {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM catalog_work_notes WHERE work_id=?", oldID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
