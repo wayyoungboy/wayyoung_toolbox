@@ -28,15 +28,17 @@ export function BrowserImportForm({items,form,busy,preview,onChange,onFile,onPre
 export default function BrowserSources({onNavigate}){
  const load=useCallback(signal=>api.catalogBrowserSources({signal}),[]);
  const {data,loading,error,refresh}=useRemoteResource(load);
- const [form,setForm]=useState({name:'',kind:'history',source_id:''}),[preview,setPreview]=useState(null),[prepared,setPrepared]=useState(null),[mutating,setBusy]=useState(false),[notice,setNotice]=useState(''),[mutationError,setError]=useState('');
+ const [form,setForm]=useState({name:'',kind:'history',source_id:'',version:0}),[preview,setPreview]=useState(null),[prepared,setPrepared]=useState(null),[mutating,setBusy]=useState(false),[notice,setNotice]=useState(''),[mutationError,setError]=useState('');
  const reader=useRef(null);
  useEffect(()=>()=>reader.current?.abort(),[]);
  const busy=mutating||loading;
  const items=data?.items||[];
- const reload=()=>{if(mutating)return;setPreview(null);setPrepared(null);setError('');setNotice('');refresh();};
+ const selectedSource=items.find(source=>source.id===form.source_id);
+ const staleSource=Boolean(form.source_id&&data&&!loading&&(!selectedSource||selectedSource.version!==form.version));
+ const reload=()=>{if(mutating)return;setPreview(null);setPrepared(null);setForm(value=>({...value,source_id:'',name:'',version:0}));setError('');setNotice('');refresh();};
  const change=values=>{
   if(busy)return;setPreview(null);setPrepared(null);setNotice('');setError('');
-  if(Object.hasOwn(values,'source_id')){const source=items.find(item=>item.id===values.source_id);setForm(current=>({...current,...values,name:source?.name||'',kind:source?.kind||current.kind}));}
+  if(Object.hasOwn(values,'source_id')){const source=items.find(item=>item.id===values.source_id);setForm(current=>({...current,...values,name:source?.name||'',kind:source?.kind||current.kind,version:source?.version||0}));}
   else setForm(current=>({...current,...values}));
  };
  const chooseFile=async file=>{
@@ -49,13 +51,13 @@ export default function BrowserSources({onNavigate}){
  };
  const fail=failure=>{setError(`${failure.message}；没有自动重试。请重新读取来源后核对。`);setPreview(null);setPrepared(null);refresh();};
  const previewImport=async()=>{
-  if(busy||!form.filename||!form.data)return;setBusy(true);setError('');setNotice('');setPreview(null);setPrepared(null);
-  try{const source=items.find(item=>item.id===form.source_id);const payload={...form,name:form.name.trim(),version:source?.version||0};if(source&&!source.reading)throw new Error('此来源已停止读取，请先恢复读取');const result=await api.catalogBrowserPreview(payload);setPreview(result);setPrepared({...payload,digest:result.digest,confirmation:'导入资料'});}
+  if(busy||staleSource||!form.filename||!form.data)return;setBusy(true);setError('');setNotice('');setPreview(null);setPrepared(null);
+  try{const source=items.find(item=>item.id===form.source_id);const payload={...form,name:form.name.trim()};if(form.source_id&&!source)throw new Error('来源已不存在，请重新读取并选择');if(source&&!source.reading)throw new Error('此来源已停止读取，请先恢复读取');const result=await api.catalogBrowserPreview(payload);setPreview(result);setPrepared({...payload,digest:result.digest,confirmation:'导入资料'});}
   catch(failure){fail(failure);}finally{setBusy(false);}
  };
  const commit=async()=>{
-  if(busy||!prepared)return;setBusy(true);setError('');
-  try{const result=await api.catalogBrowserImport(prepared);setNotice(result.duplicate?'这份资料已经导入，没有增加重复来源。':`已导入 ${result.added} 条新资料。偏好分析设置未改变。`);setForm({name:'',kind:form.kind,source_id:''});setPreview(null);setPrepared(null);refresh();}
+  if(busy||staleSource||!prepared)return;setBusy(true);setError('');
+  try{const result=await api.catalogBrowserImport(prepared);setNotice(result.duplicate?'这份资料已经导入，没有增加重复来源。':`已导入 ${result.added} 条新资料。偏好分析设置未改变。`);setForm({name:'',kind:form.kind,source_id:'',version:0});setPreview(null);setPrepared(null);refresh();}
   catch(failure){fail(failure);}finally{setBusy(false);}
  };
  const sourceAction=async(source,reading)=>{
@@ -67,7 +69,8 @@ export default function BrowserSources({onNavigate}){
  };
  return <div className="browser-workspace"><div className="section-heading"><p>导入不会自动启用分析；在偏好页明确选择“已导入浏览器资料”后才参与推荐。</p><div className="catalog-actions"><button type="button" disabled={busy} onClick={reload}>重新读取来源</button><button type="button" onClick={()=>onNavigate('personal','taste')}>查看偏好与推荐</button></div></div>
  {(error||mutationError)&&<p role="alert" className="catalog-alert">{error||mutationError}</p>}{notice&&<p role="status" className="catalog-notice">{notice}</p>}{loading&&!data&&<p role="status">正在读取来源…</p>}
- <BrowserImportForm items={items} form={form} busy={busy} preview={preview} onChange={change} onFile={chooseFile} onPreview={previewImport} onCommit={commit}/>
+ {staleSource&&<p role="status" className="catalog-alert">所选来源已更新或移除。请点击“重新读取来源”后重新选择，旧表单不会套用新版本。</p>}
+ <BrowserImportForm items={items} form={form} busy={busy||staleSource} preview={preview} onChange={change} onFile={chooseFile} onPreview={previewImport} onCommit={commit}/>
  <BrowserSourceList items={items} busy={busy} onReading={sourceAction} onDelete={source=>sourceAction(source)}/>
  </div>;
 }
