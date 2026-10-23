@@ -13,6 +13,8 @@ describe('native information architecture', () => {
   it('makes the personal catalog primary without removing acquisition workspaces', () => {
     expect(primaryNavigation.map((item) => item.key)).toEqual([
       'catalog',
+      'people',
+      'personal',
       'dashboard',
       'subscriptions',
       'queue',
@@ -21,6 +23,8 @@ describe('native information architecture', () => {
     ]);
     expect(primaryNavigation.map((item) => item.label)).toEqual([
       '馆藏',
+      '人物',
+      '个人记录',
       '工作台',
       '订阅来源',
       '处理队列',
@@ -39,6 +43,8 @@ describe('native information architecture', () => {
     expect(resolveDestination('missing')).toEqual({ page: 'catalog', tab: '' });
     expect(resolveDestination(null)).toEqual({ page: 'catalog', tab: '' });
     expect(resolveDestination('dashboard')).toEqual({ page: 'dashboard', tab: '' });
+    expect(resolveDestination('people')).toEqual({page:'people',tab:''});
+    expect(resolveDestination('personal','lists')).toEqual({page:'personal',tab:'lists'});
   });
 
   it('keeps the four acquisition stages inside one pipeline workspace', () => {

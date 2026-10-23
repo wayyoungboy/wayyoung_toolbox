@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createProgressSaver, formatPlaybackTime, preferredAsset } from './catalog-playback';
+import { createProgressSaver, createPlaybackSession, formatPlaybackTime, preferredAsset } from './catalog-playback';
 
 describe('playback persistence', () => {
+  it('uses a stable session for one player and distinct sessions for reopening',async()=>{
+    const first=createPlaybackSession(),second=createPlaybackSession();
+    expect(first).toMatch(/^[a-z0-9_-]{16,80}$/i);expect(first).not.toBe(second);
+    const save=vi.fn().mockResolvedValueOnce({revision:1}).mockResolvedValueOnce({revision:2});
+    const saver=createProgressSaver(0,save,()=>{},first);
+    await saver.save({position:10,duration:100});await saver.save({position:20,duration:100});
+    expect(save.mock.calls.map(([value])=>value.session_id)).toEqual([first,first]);
+  });
   it('serializes writes, coalesces pending updates and carries the returned revision', async () => {
     let release;
     const first = new Promise(resolve => { release = resolve; });
