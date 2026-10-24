@@ -53,7 +53,31 @@ func TestResourceDownloadSelectionLookupIsReadOnlyAndIncludesExistingRSSOwner(t 
 }
 
 func resourceDownloadBody(input ResourceDownloadSelection) map[string]any {
-	return map[string]any{"code": input.Code, "provider": input.Provider, "infohash": input.InfoHash, "searched_at": input.SearchedAt, "confirmation": "下载资源"}
+	return map[string]any{"code": input.Code, "provider": input.Provider, "infohash": input.InfoHash, "searched_at": input.SearchedAt, "confirmation": "下载资源", "intake_revision": 0}
+}
+
+func TestResourceDownloadHTTPRequiresConfirmedDestinationRevision(t *testing.T) {
+	for _, mode := range []string{"missing", "null", "stale"} {
+		t.Run(mode, func(t *testing.T) {
+			s, input := resourceDownloadFixture(t)
+			body := resourceDownloadBody(input)
+			want := 400
+			switch mode {
+			case "missing":
+				delete(body, "intake_revision")
+			case "null":
+				body["intake_revision"] = nil
+			case "stale":
+				body["intake_revision"] = 1
+				want = 409
+			}
+			resourceResponse(t, s, "POST", "/api/resources/downloads", body, want)
+			var count int
+			if err := s.db.db.QueryRow("SELECT COUNT(*) FROM media_jobs").Scan(&count); err != nil || count != 0 {
+				t.Fatal(count, err)
+			}
+		})
+	}
 }
 
 func TestResourceDownloadHTTPQueuesOnceAndGETIsReadOnly(t *testing.T) {
