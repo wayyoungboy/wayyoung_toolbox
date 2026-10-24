@@ -172,7 +172,7 @@ export const api = {
   cleanupOrphanFolders: () => request('/maintenance/orphan-folders/cleanup', { method: 'POST', body: '{}' }),
   previewEmptyDirectories: () => request('/maintenance/empty-directories/preview', { method: 'POST', body: '{}' }),
   cleanupEmptyDirectories: () => request('/maintenance/empty-directories/cleanup', { method: 'POST', body: '{}' }),
-  intake: () => request('/intake'),
+  intake: ({ signal } = {}) => request('/intake', { signal }),
   intakeDirectories: (path) => request(`/intake/directories${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   updateIntake: (payload) => request('/intake/config', { method: 'PUT', body: JSON.stringify(payload) }),
   previewIntake: (revision) => request('/intake/preview', { method: 'POST', body: JSON.stringify({ revision }) }),

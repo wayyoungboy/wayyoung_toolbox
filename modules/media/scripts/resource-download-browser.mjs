@@ -18,7 +18,7 @@ page.on('console', message => { if (message.type() === 'error') {
   if (message.text().includes('net::ERR_FAILED')) expectedFailures.push(message.text());
   else errors.push(message.text());
 } });
-const fixture = action => fetch(new URL(`/__fixture/downloads${action ? `?action=${action}` : ''}`, base), { method: action ? 'POST' : 'GET' }).then(async response => { assert.equal(response.status, 200); return response.json(); });
+const fixture = action => fetch(new URL(`/__fixture/downloads${action ? `?action=${action}` : ''}`, base), { method: action ? 'POST' : 'GET' }).then(async response => { const text = await response.text(); assert.equal(response.status, 200, text); return JSON.parse(text); });
 const visible = async text => page.getByText(text, { exact: false }).first().waitFor({ state: 'visible' });
 const choose = () => page.getByRole('button', { name: '选择下载', exact: true }).click();
 const entry = `${base}?page=resources&code=TEST-001`;

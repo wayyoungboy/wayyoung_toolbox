@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Button from '@douyinfe/semi-ui/lib/es/button';
 import { api } from '../api';
+import { resourceSelectionFromResult } from '../resource-download-view';
+import ResourceDownloads, { ResourceDownloadDialog } from './ResourceDownloads';
 import '../resources.css';
 
 const states = {
@@ -61,26 +63,30 @@ function ResourceCandidate({ item, onDownload, downloadEnabled }) {
   </li>;
 }
 
-export default function ResourceSearch({ initialCode = '' }) {
+export default function ResourceSearch({ initialCode = '', onNavigate }) {
   const [code, setCode] = useState(initialCode);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [accepted, setAccepted] = useState(false);
+  const [selection, setSelection] = useState(null);
+  const [downloadRevision, setDownloadRevision] = useState(0);
+  const selectionLock = useRef(false);
   const active = useRef(null);
   const epoch = useRef(0);
   useEffect(() => () => { ++epoch.current; active.current?.abort(); }, []);
   const canonical = code.trim().toUpperCase();
   const valid = canonical.length <= 128 && /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(canonical);
   const perform = async mode => {
-    if (!valid || busy) return;
+    if (!valid || busy || selectionLock.current) return;
     const current = ++epoch.current;
     const controller = new AbortController();
     active.current?.abort(); active.current = controller;
-    setBusy(mode); setError(''); setNotice('');
+    setBusy(mode); setError(''); setNotice(''); setAccepted(false);
     try {
       const value = await (mode === 'cache' ? api.resourceCache(canonical, { signal: controller.signal }) : api.resourceSearch(canonical, { signal: controller.signal }));
-      if (current === epoch.current) setResult(value);
+      if (current === epoch.current) { setResult(value); setAccepted(true); }
     } catch (failure) {
       if (current === epoch.current && failure.name !== 'AbortError') setError(`${failure.message}；没有自动重试。`);
     } finally {
@@ -89,22 +95,30 @@ export default function ResourceSearch({ initialCode = '' }) {
   };
   const cancel = () => {
     ++epoch.current; active.current?.abort(); active.current = null;
-    setBusy(''); setNotice('已停止等待。可以重新读取缓存核对；没有提交下载。');
+    setBusy(''); setAccepted(false); setNotice('已停止等待。可以重新读取缓存核对；没有提交下载。');
+  };
+  const chooseDownload = hash => {
+    if (selectionLock.current || busy || error) return;
+    const choice = resourceSelectionFromResult(result, hash, canonical, accepted);
+    if (!choice) return;
+    selectionLock.current = true; setSelection(choice);
   };
   const matching = result?.code === canonical;
   return <section className="resource-search" aria-label="按番号搜索资源">
     <p className="catalog-help">只使用 JAVSP 已配置并为该类型启用的 JavDB 与代理。不扫描影片、不运行刮削整理，也不会自动下载。</p>
     <form onSubmit={event => { event.preventDefault(); perform('search'); }}>
-      <label>完整番号<input value={code} disabled={Boolean(busy)} onChange={event => { setCode(event.target.value); setError(''); setNotice(''); }} placeholder="例如 TEST-001" maxLength={128} autoComplete="off" spellCheck="false" /></label>
+      <label>完整番号<input value={code} disabled={Boolean(busy || selection)} onChange={event => { setCode(event.target.value); setError(''); setNotice(''); setAccepted(false); }} placeholder="例如 TEST-001" maxLength={128} autoComplete="off" spellCheck="false" /></label>
       <div className="catalog-actions">
-        <Button disabled={!valid || Boolean(busy)} onClick={() => perform('cache')}>读取上次结果</Button>
-        <Button theme="solid" htmlType="submit" disabled={!valid || Boolean(busy)}>搜索 JavDB</Button>
+        <Button disabled={!valid || Boolean(busy || selection)} onClick={() => perform('cache')}>读取上次结果</Button>
+        <Button theme="solid" htmlType="submit" disabled={!valid || Boolean(busy || selection)}>搜索 JavDB</Button>
         {busy && <Button onClick={cancel}>取消查询</Button>}
       </div>
     </form>
     {busy && <p role="status">{busy === 'cache' ? '正在读取本地缓存…' : '正在查询 JavDB，最长 45 秒…'}</p>}
     {error && <p className="catalog-alert" role="alert">{error}{matching && ' 下方为之前显示的结果，本次请求没有得到确认。'}</p>}
     {notice && <p role="status" className="catalog-help">{notice}</p>}
-    {matching && <ResourceResults result={result} />}
+    {matching && <ResourceResults result={result} onDownload={chooseDownload} downloadEnabled={accepted && !busy && !error && !selection} />}
+    <ResourceDownloads revision={downloadRevision} onNavigate={onNavigate} />
+    {selection && <ResourceDownloadDialog selection={selection} onNavigate={onNavigate} onRegistered={() => setDownloadRevision(value => value + 1)} onClose={() => { selectionLock.current = false; setSelection(null); }} />}
   </section>;
 }

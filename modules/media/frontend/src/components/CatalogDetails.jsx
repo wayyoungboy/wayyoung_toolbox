@@ -18,7 +18,7 @@ const issueLabels = {
   personal_identity_conflict: '原身份拆分为多部作品：原个人记录与列表归属保留，未猜测迁移目标',
 };
 
-export default function CatalogDetails({ id, onClose, onChanged, onSearch, onActor, onManageLists }) {
+export default function CatalogDetails({ id, onClose, onChanged, onSearch, onActor, onManageLists, onNavigate }) {
   const [work, setWork] = useState(null);
   const [selectedID, setSelectedID] = useState('');
   const [playing, setPlaying] = useState(null);
@@ -71,7 +71,7 @@ export default function CatalogDetails({ id, onClose, onChanged, onSearch, onAct
           </div>
         </div>
         {work.plot && <section className="catalog-synopsis"><h3>简介</h3><p>{work.plot}</p></section>}
-        {work.code && <section className="catalog-resource-section"><Button aria-expanded={resources} onClick={() => setResources(value => !value)}>{resources ? '收起资源搜索' : '搜索此作品的资源'}</Button>{resources && <ResourceSearch key={work.code} initialCode={work.code} />}</section>}
+        {work.code && <section className="catalog-resource-section"><Button aria-expanded={resources} onClick={() => setResources(value => !value)}>{resources ? '收起资源搜索' : '搜索此作品的资源'}</Button>{resources && <ResourceSearch key={work.code} initialCode={work.code} onNavigate={onNavigate} />}</section>}
         <section className="catalog-asset-section"><h3>版本与文件 <small>{work.asset_count} 个</small></h3>
           <label className="catalog-asset-select">选择播放文件<select value={selectedID} onChange={event => setSelectedID(event.target.value)}>
             {!selectedID && <option value="">没有可播放文件</option>}

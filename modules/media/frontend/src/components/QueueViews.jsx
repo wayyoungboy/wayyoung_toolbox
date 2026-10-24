@@ -12,7 +12,7 @@ export function QueueJobsTable({ jobs, onSelect, selectedID }) {
         <thead><tr><th scope="col">影片 / 任务</th><th scope="col">当前阶段</th><th scope="col">状态与下一步</th><th scope="col">更新</th></tr></thead>
         <tbody>{jobs.map((job) => (
           <tr key={job.id} className={selectedID === job.id ? 'selected' : ''}>
-            <td><button className="queue-link" type="button" aria-label={`查看任务 #${job.id} ${job.media_id || job.title}`} onClick={() => onSelect(job.id)}>{job.media_id || job.title || `任务 #${job.id}`}</button><div className="cell-secondary">#{job.id} · {job.kind === 'movie' ? '影片' : '订阅 / 下载'}{job.media_id && job.title ? ` · ${job.title}` : ''}</div></td>
+            <td><button className="queue-link" type="button" aria-label={`查看任务 #${job.id} ${job.media_id || job.title}`} onClick={() => onSelect(job.id)}>{job.media_id || job.title || `任务 #${job.id}`}</button><div className="cell-secondary">#{job.id} · {job.resource ? '独立资源搜索' : job.kind === 'movie' ? '影片' : '订阅 / 下载'}{job.media_id && job.title ? ` · ${job.title}` : ''}</div></td>
             <td>{queuePhaseLabel(job)}</td>
             <td><QueueStatus status={job.status} /><p className="queue-summary">{queueSummary(job)}</p></td>
             <td className="queue-date">{formatDate(job.updated_at)}</td>
@@ -70,6 +70,12 @@ export function QueueJobDetails({ job, events, onSelect, onAction, onNavigate, b
       <div className="queue-detail-actions">{actions.map((action) => <button type="button" className={`queue-button ${action.key === 'cancel' ? 'danger' : 'primary'}`} disabled={busy} key={action.key} onClick={() => onAction(action.key, job)}>{action.label}</button>)}</div>
       {actions.length ? <p className="queue-footnote">重试只接续未完成阶段。取消不会停止 qB 下载，不会撤销已完成的文件操作，也不会删除视频。</p> : null}
       <dl className="queue-facts">
+        {job.resource && <>
+          <div><dt>采集来源</dt><dd>独立资源搜索 · {job.resource.provider}</dd></div>
+          <div><dt>搜索快照</dt><dd>{formatDate(job.resource.searched_at)}</dd></div>
+          <div><dt>投递保存目录</dt><dd><code>{job.resource.download_path}</code></dd></div>
+          <div><dt>投递确认</dt><dd>{({ dispatching: '已开始投递，结果待核对', acknowledged: 'qB 已应答，继续核对任务', rejected: 'qB 已明确拒绝' })[job.resource.submission_state] || '尚未投递'}</dd></div>
+        </>}
         <div><dt>任务类型</dt><dd>{job.kind === 'movie' ? '影片整理' : '订阅 / 下载 / 搬运'}</dd></div>
         <div><dt>执行次数 / 修订</dt><dd>{job.attempts || 0} / {job.version}</dd></div>
         <div><dt>创建时间</dt><dd>{formatDate(job.created_at)}</dd></div>

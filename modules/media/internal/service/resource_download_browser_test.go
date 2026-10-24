@@ -46,8 +46,9 @@ func TestResourceDownloadBrowserJourney(t *testing.T) {
 					w.WriteHeader(400)
 					return
 				}
-				if err := f.s.refreshQueuedDownloads(r.Context()); err != nil {
-					http.Error(w, err.Error(), 500)
+				pollErr := f.s.refreshQueuedDownloads(r.Context())
+				if (pollErr != nil) != (r.URL.Query().Get("action") == "stale") {
+					http.Error(w, "unexpected synthetic observation result", 500)
 					return
 				}
 			}

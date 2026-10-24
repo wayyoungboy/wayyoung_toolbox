@@ -19,4 +19,18 @@
 .resource-candidate a { color: var(--status-running); text-underline-offset: 3px; }
 .resource-candidate a:focus-visible { outline: 2px solid var(--app-blue); outline-offset: 3px; }
 .catalog-resource-section { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 18px; }
+.resource-downloads { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 18px; }
+.resource-download-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.resource-download-heading h3 { margin: 0; }
+.resource-download-list { list-style: none; display: grid; gap: 12px; padding: 0; }
+.resource-download-list li { padding: 16px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.resource-download-list p,.resource-download-list code { overflow-wrap: anywhere; }
+.resource-download-list progress { width: 100%; accent-color: var(--app-blue); height: 8px; }
+.resource-download-facts { display: grid; gap: 14px; }
+.resource-download-facts div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: 12px; }
+.resource-download-facts dt { color: var(--subtle-text); }
+.resource-download-facts dd { margin: 0; overflow-wrap: anywhere; }
+.resource-confirm-label { display: grid; gap: 10px; margin: 20px 0; }
+.resource-confirm-label input { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--surface); color: inherit; font: inherit; }
+.resource-download-modal .catalog-actions { flex-wrap: wrap; }
 @media(max-width:600px) { .resource-candidate-heading { flex-direction: column; gap: 6px; }.resource-candidate { padding: 12px; }.resource-panel { padding:16px; } }

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ResourceSearch, { ResourceResults } from './ResourceSearch';
 
 vi.mock('@douyinfe/semi-ui/lib/es/button', () => ({ default: ({ children, disabled, htmlType, onClick }) => <button type={htmlType || 'button'} disabled={disabled} onClick={onClick}>{children}</button> }));
+vi.mock('@douyinfe/semi-ui/lib/es/modal', () => ({ default: ({ children }) => <div>{children}</div> }));
 
 const item = { infohash: 'a'.repeat(40), magnet: `magnet:?xt=urn:btih:${'a'.repeat(40)}`, name: '<script>Sample</script>', source: 'javdb', source_url: 'https://javdb.com/v/test', verification: 'unverified' };
 const render = result => renderToStaticMarkup(<ResourceResults result={result} />);

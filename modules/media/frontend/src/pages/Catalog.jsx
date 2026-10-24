@@ -92,7 +92,7 @@ export default function Catalog({initial = {}, onNavigate}) {
     </section>
     {page.total > 48 && <nav className="catalog-pagination" aria-label="馆藏分页"><Button disabled={loading || offset === 0} onClick={() => setOffset(value => Math.max(0, value - 48))}>上一页</Button><span>{Math.floor(offset / 48) + 1} / {Math.ceil(page.total / 48)}</span><Button disabled={loading || offset + 48 >= page.total} onClick={() => setOffset(value => value + 48)}>下一页</Button></nav>}
     {manager && <CatalogLibraryManager libraries={libraries} completedRoot={completedRoot} onChanged={libraryChanged} onClose={() => setManager(false)} />}
-    {selected && <CatalogDetails key={selected} id={selected} onClose={() => setSelected('')} onChanged={refresh} onSearch={relatedSearch} onActor={id=>onNavigate('people','',null,{actor:id})} onManageLists={()=>onNavigate('personal','lists')} />}
+    {selected && <CatalogDetails key={selected} id={selected} onClose={() => setSelected('')} onChanged={refresh} onSearch={relatedSearch} onActor={id=>onNavigate('people','',null,{actor:id})} onManageLists={()=>onNavigate('personal','lists')} onNavigate={onNavigate} />}
     {deleting && <CatalogDeleteDialog ids={deleting} onClose={()=>setDeleting(null)} onDeleted={()=>{setSelectedIDs([]);setOffset(0);refresh();loadLibraries().catch(failure=>setError(failure.message));}} />}
   </div>;
 }
