@@ -2,11 +2,15 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
 )
 
 type catalogAutomationFixture struct {
@@ -137,5 +141,113 @@ func TestMoviePartialOrganizationDoesNotRegisterCommittedPaths(t *testing.T) {
 	job, err := f.s.db.MediaJob(f.job.ID)
 	if err != nil || job.Phase != "organize" || job.Status == "success" || len(catalogWorks(t, f.s, "")) != 0 {
 		t.Fatalf("partial outputs were registered: %+v %v", job, err)
+	}
+}
+
+func TestMovieCatalogRestartResumesWithoutAnotherJavspHistory(t *testing.T) {
+	f := newMovieQueueFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.root, "organized"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	catalogLibrary(t, f.s, filepath.Join(f.root, "organized"))
+	setCatalogAutomation(t, f.s, true)
+	if err := f.s.drainPendingMovies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.s.db.MediaJob(f.job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.db.ClaimMediaJob(job.ID, job.Version); err != nil {
+		t.Fatal(err)
+	}
+	var seq int
+	var schema, dbPath string
+	if err := f.s.db.db.QueryRow("PRAGMA database_list").Scan(&seq, &schema, &dbPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.s.db, err = OpenDatabase(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.s.db.Close() })
+	if err := f.s.drainPendingMovies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	job, err = f.s.db.MediaJob(job.ID)
+	if err != nil || job.Status != "success" || job.Phase != "done" || job.CatalogRegistration == nil || job.CatalogRegistration.Assets != 1 || f.runs != 1 {
+		t.Fatalf("restart repeated organize or lost receipt: %+v runs=%d %v", job, f.runs, err)
+	}
+	var histories int
+	if err := f.s.db.db.QueryRow("SELECT count(*) FROM javsp_runs").Scan(&histories); err != nil || histories != 1 {
+		t.Fatalf("restart invented organizer history: %d %v", histories, err)
+	}
+}
+
+func TestCanceledCatalogAttemptRollsBackPublicationAndCanRetry(t *testing.T) {
+	f := newMovieQueueFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.root, "organized"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	catalogLibrary(t, f.s, filepath.Join(f.root, "organized"))
+	setCatalogAutomation(t, f.s, true)
+	if err := f.s.drainPendingMovies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.s.db.MediaJob(f.job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := f.s.db.ClaimMediaJob(job.ID, job.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets, err := catalogTargetsForMovie(attempt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canceled, err := f.s.db.CancelMediaJob(attempt.ID, attempt.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.s.db.catalog.RegisterFiles(context.Background(), targets, func(tx *sql.Tx, result catalog.RegistrationResult) error {
+		return completeCatalogJobTx(context.Background(), tx, attempt, result)
+	})
+	if !errors.Is(err, errMediaJobConflict) || len(catalogWorks(t, f.s, "")) != 0 {
+		t.Fatalf("stale attempt published after cancel: %v", err)
+	}
+	if _, err = f.s.db.RetryMediaJob(canceled.ID, canceled.Version); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.drainPendingMovies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalogWorks(t, f.s, "")) != 1 || f.runs != 1 {
+		t.Fatal("retry did not only register")
+	}
+}
+
+func TestMovieCatalogRejectsChangedOutputWithoutRerunningOrganizer(t *testing.T) {
+	f := newMovieQueueFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.root, "organized"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	catalogLibrary(t, f.s, filepath.Join(f.root, "organized"))
+	setCatalogAutomation(t, f.s, true)
+	if err := f.s.drainPendingMovies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f.target, []byte("replacement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.drainPendingMovies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.s.db.MediaJob(f.job.ID)
+	if err != nil || job.Phase != "catalog" || job.Status != "needs_attention" || len(catalogWorks(t, f.s, "")) != 0 || f.runs != 1 {
+		t.Fatalf("changed output published: %+v %v", job, err)
 	}
 }
