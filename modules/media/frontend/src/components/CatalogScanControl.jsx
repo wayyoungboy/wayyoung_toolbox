@@ -40,7 +40,7 @@ export default function CatalogScanControl({ libraryID, onChanged }) {
   const live = useRef(false);
   const saving = useRef(false);
   const epoch = useRef(0);
-  const previous = useRef(null);
+  const acknowledged = useRef('');
   const changed = useRef(onChanged);
   useEffect(() => { changed.current = onChanged; }, [onChanged]);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
@@ -55,10 +55,14 @@ export default function CatalogScanControl({ libraryID, onChanged }) {
           const result = await api.catalogLibraryScans(libraryID, { signal: controller.signal });
           if (!controller.signal.aborted && currentEpoch === epoch.current) {
             const value = result.active || result.items[0] || null;
-            const completed = value?.status === 'success' && previous.current && (previous.current.id !== value.id || previous.current.status !== 'success');
-            previous.current = value;
             setJob(value); setReady(true); setReadError('');
-            if (completed) await changed.current?.();
+            const completedKey = value?.status === 'success' ? `${value.id}:${value.version}` : '';
+            if (completedKey && acknowledged.current !== completedKey) {
+              await changed.current?.();
+              // A first observation after reopening also refreshes the parent.
+              // Do not acknowledge a failed refresh: a later read can retry it.
+              if (!controller.signal.aborted && currentEpoch === epoch.current) acknowledged.current = completedKey;
+            }
           }
         }
       } catch (failure) {
@@ -77,7 +81,7 @@ export default function CatalogScanControl({ libraryID, onChanged }) {
     try {
       const value = action === 'start' ? await api.catalogStartScan(libraryID) : await api.catalogScanAction(job.id, job.version, action);
       if (live.current) {
-        previous.current = value; setJob(value);
+        setJob(value);
         setNotice(action === 'cancel' ? '扫描已取消，原文件与上次馆藏保留。' : action === 'pause' ? '扫描已暂停，进度已保存。' : '后台任务已提交，可关闭此窗口。');
       }
     } catch (failure) {
