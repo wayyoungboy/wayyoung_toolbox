@@ -98,6 +98,7 @@ func TestResourceSearchCurrentJavDBMagnetClassTokensAndAdjacentPanel(t *testing.
 				// magnet-name no longer includes the old responsive column classes.
 				panel := fmt.Sprintf(`<article class="message video-panel"><div class="message-body"><div class="magnet-links"><div class="item odd"><div class="%s"><a href="magnet:?xt=urn:btih:%s">Sample</a></div></div></div></div></article>`, class, resourceHash)
 				panel += `<div class="not-magnet-name"><a href="magnet:?xt=urn:btih:ffffffffffffffffffffffffffffffffffffffff">Unrelated widget</a></div>`
+				panel += `<aside><div class="magnet-name"><a href="magnet:?xt=urn:btih:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee">Other work</a></div></aside>`
 				body := strings.Replace(resourceDetail("TEST-001", ""), "</div></div></section>", "</div>"+panel+"</div></section>", 1)
 				fmt.Fprint(w, body)
 			}))
