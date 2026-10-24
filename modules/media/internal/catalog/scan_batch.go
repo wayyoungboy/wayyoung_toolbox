@@ -3,18 +3,25 @@ package catalog
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const maxScanEntries = 200000
+
+// A conservative logical staging budget, including paths, indexes and JSON.
+// This is not a physical SQLite/WAL disk quota.
 const maxScanStageBytes = 128 << 20
 
 type scanSidecars struct {
@@ -27,8 +34,8 @@ type scanDirectoryCache struct {
 	Index          directorySidecars
 }
 type scanDirectory struct {
-	Path, Identity, Sidecars string
-	ModifiedNS               int64
+	Path, Identity, Sidecars, Manifest string
+	ModifiedNS                         int64
 }
 type scanStagedFile struct {
 	Asset    *discoveredAsset
@@ -91,6 +98,96 @@ func scanLeafProof(root *os.Root, relative string) (string, error) {
 		return "", ErrConflict
 	}
 	return scanSignature(info)
+}
+
+func scanSidecarProof(root *os.Root, relative string) (string, error) {
+	proof, err := scanLeafProof(root, relative)
+	if err != nil || !strings.EqualFold(path.Ext(relative), ".nfo") {
+		return proof, err
+	}
+	info, err := root.Lstat(relative)
+	if err != nil {
+		return "", ErrUnavailable
+	}
+	if info.Size() > maxNFOBytes {
+		// Oversized NFOs are deliberately not parsed. Keep the video's filename
+		// fallback and issue rather than allocate an unbounded sidecar.
+		return proof + ":oversized", nil
+	}
+	raw, err := readBounded(root, relative, maxNFOBytes)
+	if err != nil {
+		return "", err
+	}
+	after, err := scanLeafProof(root, relative)
+	if err != nil {
+		return "", err
+	}
+	if proof != after {
+		return "", ErrConflict
+	}
+	hash := sha256.Sum256(raw)
+	return proof + ":" + hex.EncodeToString(hash[:]), nil
+}
+
+func scanManifestEntry(entry fs.DirEntry) string {
+	return entry.Name() + "\x00" + strconv.FormatUint(uint64(entry.Type()), 16)
+}
+
+func scanManifest(entries []string) string {
+	sort.Strings(entries)
+	hash := sha256.New()
+	for _, entry := range entries {
+		hash.Write([]byte(entry))
+		hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func verifyScanManifest(ctx context.Context, root *os.Root, directory scanDirectory) error {
+	if directory.Manifest == "" {
+		return ErrConflict
+	}
+	if err := verifyScanDirectory(root, directory); err != nil {
+		return err
+	}
+	before, err := scanDirectoryInfo(root, directory.Path)
+	if err != nil {
+		return err
+	}
+	file, err := root.Open(directory.Path)
+	if err != nil {
+		return ErrUnavailable
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(before, opened) {
+		return ErrConflict
+	}
+	names := []string{}
+	budget := int64(0)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		entries, readErr := file.ReadDir(256)
+		for _, entry := range entries {
+			budget += int64(64 + 2*len(entry.Name()))
+			if len(names) >= maxScanEntries || budget > maxScanStageBytes || !utf8.ValidString(entry.Name()) {
+				return ErrInvalid
+			}
+			names = append(names, scanManifestEntry(entry))
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return ErrUnavailable
+		}
+	}
+	if scanManifest(names) != directory.Manifest {
+		return ErrConflict
+	}
+	return verifyScanDirectory(root, directory)
 }
 
 func (s *Store) checkScanTx(ctx context.Context, tx *sql.Tx, job ScanJob) error {
@@ -193,6 +290,13 @@ func (s *Store) scanDirectoryBatch(ctx context.Context, root *os.Root, job ScanJ
 	}
 	index := scanSidecars{Files: map[string]string{}, Videos: []string{}}
 	children, files := []string{}, []string{}
+	manifest := []string{}
+	// Charge before growing maps/slices, including frontier rows, parent paths,
+	// index duplication and worst-case JSON escaping rather than JSON alone.
+	stagedBytes := int64(1024 + 8*len(relative))
+	if job.StagedBytes+stagedBytes > maxScanStageBytes {
+		return job, ErrInvalid
+	}
 	visited := 0
 	for {
 		if err := ctx.Err(); err != nil {
@@ -206,16 +310,21 @@ func (s *Store) scanDirectoryBatch(ctx context.Context, root *os.Root, job ScanJ
 			}
 			name := entry.Name()
 			full := path.Join(relative, name)
-			if !fs.ValidPath(full) || len(full) > 4096 {
+			if !utf8.ValidString(full) || !fs.ValidPath(full) || len(full) > 4096 {
 				return job, ErrInvalid
+			}
+			stagedBytes += int64(1024 + 12*(len(full)+len(name)) + 8*len(relative))
+			if job.StagedBytes+stagedBytes > maxScanStageBytes {
+				return job, ErrInvalid
+			}
+			manifest = append(manifest, scanManifestEntry(entry))
+			if strings.HasPrefix(strings.ToLower(name), ".catalog-delete-") {
+				return job, ErrDeletePending
 			}
 			if entry.Type()&os.ModeSymlink != 0 {
 				continue
 			}
 			if entry.IsDir() {
-				if strings.HasPrefix(strings.ToLower(name), ".catalog-delete-") {
-					return job, ErrDeletePending
-				}
 				if !skippedDirectory(name) {
 					children = append(children, full)
 				}
@@ -239,14 +348,11 @@ func (s *Store) scanDirectoryBatch(ctx context.Context, root *os.Root, job ScanJ
 			return job, ErrUnavailable
 		}
 	}
-	directory := scanDirectory{Path: relative, Identity: identity, ModifiedNS: before.ModTime().UnixNano()}
+	directory := scanDirectory{Path: relative, Identity: identity, ModifiedNS: before.ModTime().UnixNano(), Manifest: scanManifest(manifest)}
 	if err := verifyScanDirectory(root, directory); err != nil {
 		return job, err
 	}
 	raw := jsonText(index)
-	if job.StagedBytes+int64(len(raw)) > maxScanStageBytes {
-		return job, ErrInvalid
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return job, err
@@ -265,12 +371,12 @@ func (s *Store) scanDirectoryBatch(ctx context.Context, root *os.Root, job ScanJ
 			return job, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE catalog_scan_dirs SET listed=1,identity=?,modified_ns=?,sidecars=? WHERE job_id=? AND path=? AND listed=0", identity, directory.ModifiedNS, raw, job.ID, relative); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE catalog_scan_dirs SET listed=1,identity=?,modified_ns=?,sidecars=?,manifest=? WHERE job_id=? AND path=? AND listed=0", identity, directory.ModifiedNS, raw, directory.Manifest, job.ID, relative); err != nil {
 		return job, err
 	}
 	job.Entries += visited
 	job.DiscoveredFiles += len(files)
-	job.StagedBytes += int64(len(raw))
+	job.StagedBytes += stagedBytes
 	job.CurrentPath = relative
 	job.UpdatedAt = timestamp()
 	if err := saveScanJobTx(ctx, tx, job, job.Version); err != nil {
@@ -333,7 +439,7 @@ func (s *Store) scanFileBatch(ctx context.Context, root *os.Root, job ScanJob, p
 		if info.Size() > 0 {
 			nfo := s.nfoSidecar(s.scanCache.Index, path.Base(filename), s.code(strings.TrimSuffix(path.Base(filename), path.Ext(filename))))
 			if nfo != "" {
-				value, err := scanLeafProof(root, nfo)
+				value, err := scanSidecarProof(root, nfo)
 				if err != nil {
 					return job, err
 				}
@@ -352,7 +458,7 @@ func (s *Store) scanFileBatch(ctx context.Context, root *os.Root, job ScanJob, p
 				if sidecar == "" {
 					continue
 				}
-				value, err := scanLeafProof(root, sidecar)
+				value, err := scanSidecarProof(root, sidecar)
 				if err != nil {
 					return job, err
 				}
@@ -370,7 +476,7 @@ func (s *Store) scanFileBatch(ctx context.Context, root *os.Root, job ScanJob, p
 			return job, ErrConflict
 		}
 		raw := jsonText(staged)
-		job.StagedBytes += int64(len(raw))
+		job.StagedBytes += int64(512 + len(raw) + 6*len(filename))
 		if job.StagedBytes > maxScanStageBytes {
 			return job, ErrInvalid
 		}
@@ -404,80 +510,104 @@ func (s *Store) scanFileBatch(ctx context.Context, root *os.Root, job ScanJob, p
 	return job, nil
 }
 
-func (s *Store) finishScan(ctx context.Context, root *os.Root, job ScanJob) (ScanJob, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT path,identity,modified_ns FROM catalog_scan_dirs WHERE job_id=? ORDER BY path", job.ID)
-	if err != nil {
-		return job, err
-	}
-	directories := []scanDirectory{}
-	for rows.Next() {
-		var directory scanDirectory
-		if err := rows.Scan(&directory.Path, &directory.Identity, &directory.ModifiedNS); err != nil {
-			rows.Close()
-			return job, err
-		}
-		directories = append(directories, directory)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return job, err
-	}
-	for _, directory := range directories {
-		if err := ctx.Err(); err != nil {
-			return job, err
-		}
-		if err := verifyScanDirectory(root, directory); err != nil {
-			return job, err
-		}
-	}
-	rows, err = s.db.QueryContext(ctx, "SELECT path,data FROM catalog_scan_files WHERE job_id=? AND processed=1 ORDER BY path", job.ID)
-	if err != nil {
-		return job, err
-	}
-	type candidate struct{ Path, Raw string }
-	files := []candidate{}
-	for rows.Next() {
-		var file candidate
-		if err := rows.Scan(&file.Path, &file.Raw); err != nil {
-			rows.Close()
-			return job, err
-		}
-		files = append(files, file)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return job, err
-	}
-	assets := []discoveredAsset{}
-	for _, file := range files {
-		if err := ctx.Err(); err != nil {
-			return job, err
-		}
-		var staged scanStagedFile
-		if err := json.Unmarshal([]byte(file.Raw), &staged); err != nil {
-			return job, err
-		}
-		proof, err := scanLeafProof(root, file.Path)
+func (s *Store) verifyScanDirectories(ctx context.Context, root *os.Root, jobID int64) error {
+	after := ""
+	for {
+		rows, err := s.db.QueryContext(ctx, "SELECT path,identity,modified_ns,manifest FROM catalog_scan_dirs WHERE job_id=? AND path>? ORDER BY path LIMIT 64", jobID, after)
 		if err != nil {
-			return job, err
+			return err
 		}
-		if proof != staged.Proof {
-			return job, ErrConflict
+		directories := []scanDirectory{}
+		for rows.Next() {
+			var directory scanDirectory
+			if err := rows.Scan(&directory.Path, &directory.Identity, &directory.ModifiedNS, &directory.Manifest); err != nil {
+				rows.Close()
+				return err
+			}
+			directories = append(directories, directory)
 		}
-		for sidecar, expected := range staged.Sidecars {
-			proof, err := scanLeafProof(root, sidecar)
+		err = rows.Err()
+		rows.Close() // release the sole SQLite connection before filesystem I/O
+		if err != nil {
+			return err
+		}
+		for _, directory := range directories {
+			if err := verifyScanManifest(ctx, root, directory); err != nil {
+				return err
+			}
+			after = directory.Path
+		}
+		if len(directories) < 64 {
+			return nil
+		}
+	}
+}
+
+func (s *Store) verifiedScanAssets(ctx context.Context, root *os.Root, jobID int64) ([]discoveredAsset, error) {
+	assets := []discoveredAsset{}
+	after := ""
+	for {
+		rows, err := s.db.QueryContext(ctx, "SELECT path,data FROM catalog_scan_files WHERE job_id=? AND processed=1 AND path>? ORDER BY path LIMIT 64", jobID, after)
+		if err != nil {
+			return nil, err
+		}
+		type candidate struct{ Path, Raw string }
+		files := []candidate{}
+		for rows.Next() {
+			var file candidate
+			if err := rows.Scan(&file.Path, &file.Raw); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			files = append(files, file)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range files {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			var staged scanStagedFile
+			if err := json.Unmarshal([]byte(file.Raw), &staged); err != nil {
+				return nil, err
+			}
+			proof, err := scanLeafProof(root, file.Path)
 			if err != nil {
-				return job, err
+				return nil, err
 			}
-			if proof != expected {
-				return job, ErrConflict
+			if proof != staged.Proof {
+				return nil, ErrConflict
 			}
+			for sidecar, expected := range staged.Sidecars {
+				proof, err := scanSidecarProof(root, sidecar)
+				if err != nil {
+					return nil, err
+				}
+				if proof != expected {
+					return nil, ErrConflict
+				}
+			}
+			if staged.Asset != nil {
+				assets = append(assets, *staged.Asset)
+			}
+			after = file.Path
 		}
-		if staged.Asset != nil {
-			assets = append(assets, *staged.Asset)
+		if len(files) < 64 {
+			return assets, nil
 		}
+	}
+}
+
+func (s *Store) finishScan(ctx context.Context, root *os.Root, job ScanJob) (ScanJob, error) {
+	assets, err := s.verifiedScanAssets(ctx, root, job.ID)
+	if err != nil {
+		return job, err
+	}
+	if err := s.verifyScanDirectories(ctx, root, job.ID); err != nil {
+		return job, err
 	}
 	// All I/O is complete before taking the sole SQLite connection's tx.
 	tx, err := s.db.BeginTx(ctx, nil)

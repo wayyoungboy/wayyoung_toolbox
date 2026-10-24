@@ -45,7 +45,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS catalog_scan_active_library ON catalog_scan_jo
 CREATE TABLE IF NOT EXISTS catalog_scan_dirs (
  job_id INTEGER NOT NULL REFERENCES catalog_scan_jobs(id) ON DELETE CASCADE,path TEXT NOT NULL,
  identity TEXT NOT NULL DEFAULT '',modified_ns INTEGER NOT NULL DEFAULT 0,listed INTEGER NOT NULL DEFAULT 0,
- sidecars TEXT NOT NULL DEFAULT '',PRIMARY KEY(job_id,path)
+ sidecars TEXT NOT NULL DEFAULT '',manifest TEXT NOT NULL DEFAULT '',PRIMARY KEY(job_id,path)
 );
 CREATE TABLE IF NOT EXISTS catalog_scan_files (
  job_id INTEGER NOT NULL REFERENCES catalog_scan_jobs(id) ON DELETE CASCADE,path TEXT NOT NULL,parent TEXT NOT NULL,
@@ -54,7 +54,34 @@ CREATE TABLE IF NOT EXISTS catalog_scan_files (
 CREATE INDEX IF NOT EXISTS catalog_scan_pending_files ON catalog_scan_files(job_id,processed,parent,path);
 UPDATE catalog_scan_jobs SET status='pending',version=version+1,error='服务重启，从已保存的扫描进度接续',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE status='running';
 `
-	_, err := tx.Exec(schema)
+	if _, err := tx.Exec(schema); err != nil {
+		return err
+	}
+	// An early development checkpoint had only directory mtimes. Such a
+	// checkpoint is not safe to publish; an empty manifest forces explicit retry.
+	rows, err := tx.Query("PRAGMA table_info(catalog_scan_dirs)")
+	if err != nil {
+		return err
+	}
+	hasManifest := false
+	for rows.Next() {
+		var index, notNull, primary int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&index, &name, &kind, &notNull, &defaultValue, &primary); err != nil {
+			rows.Close()
+			return err
+		}
+		hasManifest = hasManifest || name == "manifest"
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if !hasManifest {
+		_, err = tx.Exec("ALTER TABLE catalog_scan_dirs ADD COLUMN manifest TEXT NOT NULL DEFAULT ''")
+	}
 	return err
 }
 

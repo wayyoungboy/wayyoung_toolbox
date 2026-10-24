@@ -187,6 +187,9 @@ func (s *Store) discover(ctx context.Context, root *os.Root, libraryID int64) ([
 		if visited > 200000 {
 			return fmt.Errorf("%w：单次扫描超过目录条目上限", ErrInvalid)
 		}
+		if strings.HasPrefix(strings.ToLower(entry.Name()), ".catalog-delete-") {
+			return ErrDeletePending
+		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
