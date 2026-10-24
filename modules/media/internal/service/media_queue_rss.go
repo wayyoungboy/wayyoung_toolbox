@@ -158,7 +158,7 @@ func (d *Database) ReserveRSSDownload(id, version int64, magnet string) (MediaJo
 		var owner int64
 		err := tx.QueryRow(`SELECT id FROM media_jobs WHERE id<>? AND status<>'skipped' AND COALESCE(json_extract(payload,'$.related_job_id'),0)=0
 AND (lower(json_extract(payload,'$.torrent_hash'))=? OR (media_id<>'' AND media_id=?))
-AND (COALESCE(json_extract(payload,'$.discovery.magnet'),'')<>'' OR phase<>'discovered') ORDER BY id LIMIT 1`, job.ID, hash, job.MediaID).Scan(&owner)
+		AND (COALESCE(json_extract(payload,'$.discovery.magnet'),'')<>'' OR json_extract(payload,'$.resource') IS NOT NULL OR phase<>'discovered') ORDER BY id LIMIT 1`, job.ID, hash, job.MediaID).Scan(&owner)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}

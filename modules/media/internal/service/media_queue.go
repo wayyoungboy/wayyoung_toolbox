@@ -27,6 +27,7 @@ type MediaJob struct {
 	SourcePaths         []string                    `json:"source_paths,omitempty"`
 	MovieSourceRoot     string                      `json:"movie_source_root,omitempty"`
 	Discovery           *RSSDiscovery               `json:"discovery,omitempty"`
+	Resource            *ResourceAcquisition        `json:"resource,omitempty"`
 	RelatedJobID        int64                       `json:"related_job_id,omitempty"`
 	LastJavspRunID      int64                       `json:"last_javsp_run_id,omitempty"`
 	MoviePlan           *queuedMoviePlan            `json:"movie_plan,omitempty"`
