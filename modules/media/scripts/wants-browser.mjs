@@ -15,7 +15,7 @@ page.setDefaultTimeout(10000);
 const errors = [], expected = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('console', message => { if (message.type() === 'error') {
-  if (/409|net::ERR_FAILED/.test(message.text())) expected.push(message.text());
+  if (/400|409|net::ERR_FAILED/.test(message.text())) expected.push(message.text());
   else errors.push(message.text());
 } });
 const fixture = action => fetch(new URL(`/__fixture/wants${action ? `?action=${action}` : ''}`, base), { method: action ? 'POST' : 'GET' }).then(async response => {
@@ -131,7 +131,7 @@ try {
   await visible('还没有登记想要的作品');
   assert.deepEqual(await fixture(), { wants: 0, jobs: 1, assets: 1, adds: 0, feeds: 0 });
   assert.equal(posts, 1);
-  assert.equal(expected.length, 2, 'only the intentional conflict and lost response are expected');
+  assert.equal(expected.length, 3, 'only the intentional invalid input, conflict and lost response are expected');
   // One-use prefill is consumed on cancel/success, not resurrected by reload.
   await page.goto(`${entry}&code=TEST-003`);
   await page.getByRole('button', { name: '取消登记', exact: true }).click();

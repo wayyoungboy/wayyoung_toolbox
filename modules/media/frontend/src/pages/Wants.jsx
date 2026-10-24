@@ -123,7 +123,15 @@ export default function Wants({ initial = {}, onNavigate }) {
       const result = await action(controller.signal);
       if (alive.current) { pendingAdd.current = ''; setNotice(typeof success === 'function' ? success(result) : success); after?.(); refresh(); }
     } catch (failure) {
-      if (alive.current) { pendingAdd.current = code; setUncertain(true); setNotice(`${failure.status === 409 ? '资料版本或状态已变化' : '结果尚未确认'}：${failure.message}；没有自动重试。请刷新清单核对后再操作。`); }
+      if (alive.current) {
+        if (code && [400, 422].includes(failure.status)) {
+          pendingAdd.current = ''; setUncertain(false);
+          setNotice(`登记未通过：${failure.message}；请修正输入后手工确认，没有自动重试。`);
+        } else {
+          pendingAdd.current = code; setUncertain(true);
+          setNotice(`${failure.status === 409 ? '资料版本或状态已变化' : '结果尚未确认'}：${failure.message}；没有自动重试。请刷新清单核对后再操作。`);
+        }
+      }
     } finally { window.clearTimeout(deadline); lock.current = false; if (alive.current) setBusy(false); }
   };
   const add = event => {
