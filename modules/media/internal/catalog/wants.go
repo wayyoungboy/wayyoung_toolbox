@@ -98,7 +98,7 @@ func wantPhase(w Want, today string) string {
 }
 
 const wantColumns = `w.id,w.code,w.title,w.release_date,w.studio,w.actors,w.origin,w.state,w.version,w.last_job_id,w.acquisition,w.created_at,w.updated_at,
-EXISTS(SELECT 1 FROM catalog_assets a WHERE a.id=json_extract(w.acquisition,'$.asset_id') AND a.available=1)`
+EXISTS(SELECT 1 FROM catalog_assets a WHERE a.id=json_extract(w.acquisition,'$.asset_id') AND a.work_id=json_extract(w.acquisition,'$.work_id') AND a.available=1)`
 
 func scanWant(row rowScanner, today string) (Want, error) {
 	var w Want
