@@ -12,6 +12,7 @@ it('registers only a confirmed snapshot and reconciles uncertain responses using
   expect(post).toHaveLength(1);
   expect(JSON.parse(post[0][1].body)).toEqual({ code: 'TEST-001', provider: 'javdb', infohash: 'a'.repeat(40), searched_at: 'snapshot', intake_revision: 7, confirmation: '下载资源' });
   expect(post[0][1]).toMatchObject({ signal, headers: { 'X-Catalog-CSRF': 'resource-token' } });
+  expect(fetch.mock.calls[0][1].signal).toBe(signal);
   await api.resourceDownloadSelection(selection, { signal });
   await api.resourceDownloads({ signal });
   expect(fetch.mock.calls.filter(([, options]) => options.method)).toHaveLength(1);

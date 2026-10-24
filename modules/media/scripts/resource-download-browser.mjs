@@ -21,6 +21,7 @@ page.on('console', message => { if (message.type() === 'error') {
 const fixture = action => fetch(new URL(`/__fixture/downloads${action ? `?action=${action}` : ''}`, base), { method: action ? 'POST' : 'GET' }).then(async response => { const text = await response.text(); assert.equal(response.status, 200, text); return JSON.parse(text); });
 const visible = async text => page.getByText(text, { exact: false }).first().waitFor({ state: 'visible' });
 const choose = () => page.getByRole('button', { name: '选择下载', exact: true }).click();
+const settle = () => page.evaluate(() => Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))));
 const entry = `${base}?page=resources&code=TEST-001`;
 let posts = 0;
 try {
@@ -41,6 +42,7 @@ try {
   await dialog.getByLabel('输入“下载资源”确认', { exact: true }).fill('not-confirmed');
   assert.equal(await dialog.getByRole('button', { name: '确认登记下载', exact: true }).isEnabled(), false);
   await dialog.getByLabel('输入“下载资源”确认', { exact: true }).fill('下载资源');
+  await settle();
   await page.screenshot({ path: path.join(report, 'download-confirm-desktop.png') });
   // Commit the real local request, deliberately lose only its HTTP response.
   await page.route('**/api/resources/downloads', async route => {
@@ -62,11 +64,13 @@ try {
   await fixture('drain');
   await page.getByRole('button', { name: '刷新下载记录', exact: true }).click();
   await visible('qB 已下载 50%');
+  await page.getByRole('region', { name: '资源下载记录', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(report, 'download-progress-desktop.png') });
   await fixture('stale');
   await page.getByRole('button', { name: '刷新下载记录', exact: true }).click();
   await visible('上次读数，非实时状态');
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('region', { name: '资源下载记录', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(report, 'download-stale-mobile.png') });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'horizontal overflow');
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));

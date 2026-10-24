@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { resourceSelectionFromResult, resourceDestinationReady } from './resource-download-view';
+import { resourceSelectionFromResult, resourceDestinationReady, resourceDownloadFailurePhase, resourceJobDestination } from './resource-download-view';
 import { queueActions, queuePhaseLabel } from './queue-view';
 
 const hash = 'a'.repeat(40);
@@ -22,4 +22,17 @@ it('distinguishes independent resources and uncertain verification from local ca
   expect(queuePhaseLabel(job)).toBe('资源确认与投递');
   expect(queueActions(job)).toContainEqual({ key: 'retry', label: '核对投递结果' });
   expect(queueActions(job)).toContainEqual({ key: 'cancel', label: '停止本地处理' });
+});
+
+it('treats explicit validation rejection as replaceable, not an endlessly retryable unknown snapshot', () => {
+  for (const status of [400, 401, 403, 404, 409, 415, 422]) expect(resourceDownloadFailurePhase({ status })).toBe('rejected');
+  for (const failure of [new TypeError('response lost'), { status: 500 }, { name: 'AbortError' }]) expect(resourceDownloadFailurePhase(failure)).toBe('unknown');
+});
+it('shows the frozen original RSS destination instead of the current independent resource setting', () => {
+  const config = { source_directory: '/new-downloads' };
+  expect(resourceJobDestination(null, config)).toBe('/new-downloads');
+  expect(resourceJobDestination({ resource: { download_path: '/resource-original' } }, config)).toBe('/resource-original');
+  expect(resourceJobDestination({ discovery: { download_path: '/rss-original' } }, config)).toBe('/rss-original');
+  expect(resourceJobDestination({ discovery: { download_path: '' } }, config)).toContain('qB 默认目录');
+  expect(resourceJobDestination({ id: 1 }, config)).not.toContain('/new-downloads');
 });

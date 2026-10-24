@@ -48,6 +48,7 @@ try {
   await fixture(1);
   await page.getByRole('button', { name: '搜索 JavDB', exact: true }).click();
   await visible('站点拦截'); await visible('上次成功结果');
+  assert.equal(await page.getByRole('button', { name: '选择下载', exact: true }).isEnabled(), false, 'stale candidates remained actionable');
   await page.reload();
   assert.equal((await fixture()).calls, 3, 'reload contacted provider');
   await page.getByRole('button', { name: '读取上次结果', exact: true }).click();
@@ -65,6 +66,7 @@ try {
   await page.getByLabel('完整番号', { exact: true }).fill('-646');
   assert.equal(await page.getByRole('button', { name: '搜索 JavDB', exact: true }).isEnabled(), false);
   await page.getByLabel('完整番号', { exact: true }).fill('TEST-001');
+  assert.equal(await page.getByRole('button', { name: '选择下载', exact: true }).isEnabled(), false, 'changing back silently reaccepted old results');
   await fixture(3);
   const beforeCancel = (await fixture()).calls;
   await page.getByRole('button', { name: '搜索 JavDB', exact: true }).click();
