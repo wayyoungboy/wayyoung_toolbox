@@ -44,6 +44,7 @@ type Service struct {
 	localDev           bool
 	catalogCSRF        string
 	browserImportMu    sync.Mutex
+	resourceSearchMu   sync.Mutex
 	dataDir            string
 	playbackMu         sync.Mutex
 	playback           *playback.Manager

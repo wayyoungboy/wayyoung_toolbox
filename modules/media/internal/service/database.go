@@ -50,6 +50,10 @@ func OpenDatabase(path string) (*Database, error) {
 		database.Close()
 		return nil, err
 	}
+	if err := database.initializeResourceSearch(); err != nil {
+		database.Close()
+		return nil, err
+	}
 	database.catalog, err = catalog.New(db, unambiguousMediaID)
 	if err != nil {
 		database.Close()
