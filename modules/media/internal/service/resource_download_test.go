@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
@@ -22,6 +24,77 @@ func resourceDownloadFixture(t *testing.T) (*Service, ResourceDownloadSelection)
 		t.Fatal(err)
 	}
 	return s, ResourceDownloadSelection{Code: "TEST-001", Provider: "javdb", InfoHash: resourceTestHash, SearchedAt: result.SearchedAt}
+}
+
+func TestResourceDownloadConcurrentRequestsAndAtomicFailure(t *testing.T) {
+	s, input := resourceDownloadFixture(t)
+	if _, err := s.db.db.Exec(`CREATE TRIGGER resource_event_failure BEFORE INSERT ON media_job_events BEGIN SELECT RAISE(ABORT,'test event failure'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.db.EnqueueResourceDownload(context.Background(), input); err == nil {
+		t.Fatal("injected event failure accepted")
+	}
+	for _, table := range []string{"media_jobs", "media_job_events"} {
+		var count int
+		if err := s.db.db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("partial reservation in %s: %d %v", table, count, err)
+		}
+	}
+	if _, err := s.db.db.Exec("DROP TRIGGER resource_event_failure"); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	var created atomic.Int32
+	ids := make(chan int64, 16)
+	errors := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			job, isNew, err := s.db.EnqueueResourceDownload(context.Background(), input)
+			if err != nil {
+				errors <- err
+				return
+			}
+			if isNew {
+				created.Add(1)
+			}
+			ids <- job.ID
+		}()
+	}
+	wg.Wait()
+	close(ids)
+	close(errors)
+	for err := range errors {
+		t.Error(err)
+	}
+	var expected int64
+	for id := range ids {
+		if expected == 0 {
+			expected = id
+		}
+		if id != expected {
+			t.Fatal("concurrent requests created distinct jobs")
+		}
+	}
+	if created.Load() != 1 {
+		t.Fatalf("created %d jobs", created.Load())
+	}
+	job, err := s.db.MediaJob(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err = s.db.CancelMediaJob(job.ID, job.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.db.Exec("DELETE FROM resource_search_cache"); err != nil {
+		t.Fatal(err)
+	}
+	again, isNew, err := s.db.EnqueueResourceDownload(context.Background(), input)
+	if err != nil || isNew || again.Status != "canceled" || again.ID != job.ID {
+		t.Fatalf("repeat resurrected a stopped request: %+v %v", again, err)
+	}
 }
 
 func resourceDownloadSetting(t *testing.T, db *Database, key, value string) {
