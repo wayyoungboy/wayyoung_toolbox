@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
 )
@@ -319,5 +320,34 @@ func TestCatalogRegistrationRetiresOnlyReplacedTargetGeneration(t *testing.T) {
 	other := catalogDetail(t, s, catalogWorks(t, s, "query=TEST-002")[0].ID)
 	if len(other.Assets) != 1 || !other.Assets[0].Available {
 		t.Fatalf("unrelated path retired: %+v", other)
+	}
+}
+
+func TestCatalogRegistrationSerializesNewLibraryRootSelection(t *testing.T) {
+	s := testService(t)
+	root := registrationRoot(t)
+	child := filepath.Join(root, "nested")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	catalogWrite(t, child, "TEST-001.mp4", "video")
+	catalogLibrary(t, s, root)
+	entered, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	target := registrationTarget(t, filepath.Join(child, "TEST-001.mp4"))
+	go func() {
+		_, err := s.db.catalog.RegisterFiles(context.Background(), []catalog.RegistrationTarget{target}, func(*sql.Tx, catalog.RegistrationResult) error { close(entered); <-release; return nil })
+		done <- err
+	}()
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	_, err := s.db.catalog.AddLibrary(ctx, "Nested", child)
+	cancel()
+	close(release)
+	if runErr := <-done; runErr != nil {
+		t.Fatal(runErr)
+	}
+	if !errors.Is(err, catalog.ErrBusy) {
+		t.Fatalf("nested library raced active registration instead of refusing: %v", err)
 	}
 }
