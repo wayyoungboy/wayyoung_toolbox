@@ -1,6 +1,6 @@
 # 媒体中心功能交付对照
 
-固定基线与完整验收口径见 [MEDIA_CENTER_GOAL.md](MEDIA_CENTER_GOAL.md)。本表记录 0.7.6 开发及测试阶段，NAS 已安装版本与验收证据见 [阶段说明](MEDIA_CENTER_STATUS.md)。实现、本地测试和实机验收分开，不把部分实现标成整项完成。
+固定基线与完整验收口径见 [MEDIA_CENTER_GOAL.md](MEDIA_CENTER_GOAL.md)。本表记录 0.7.6 测试阶段，NAS 已安装 0.7.6 / 媒体组件 0.1.6，验收证据见 [阶段说明](MEDIA_CENTER_STATUS.md)。实现、本地测试和实机验收分开，不把部分实现标成整项完成。
 
 | 项 | 当前实现与证据入口 | 尚缺的范围 |
 | --- | --- | --- |
