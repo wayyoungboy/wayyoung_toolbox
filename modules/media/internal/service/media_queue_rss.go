@@ -98,6 +98,15 @@ func (d *Database) enqueueRSSAcquisition(task Task, entry FeedEntry, knownReason
 // In-phase checkpoints keep the claim's cancellation revision stable. The
 // reservation decision and all competing jobs are observed in one transaction.
 func (d *Database) checkpointRSS(id, version int64, reason string, change func(*sql.Tx, *MediaJob) error) (MediaJob, error) {
+	return d.checkpointAcquisition(id, version, reason, func(tx *sql.Tx, job *MediaJob) error {
+		if job.Discovery == nil || job.Resource != nil {
+			return errMediaJobConflict
+		}
+		return change(tx, job)
+	})
+}
+
+func (d *Database) checkpointAcquisition(id, version int64, reason string, change func(*sql.Tx, *MediaJob) error) (MediaJob, error) {
 	tx, err := d.db.Begin()
 	if err != nil {
 		return MediaJob{}, err
@@ -107,7 +116,7 @@ func (d *Database) checkpointRSS(id, version int64, reason string, change func(*
 	if err != nil {
 		return MediaJob{}, err
 	}
-	if job.Version != version || job.Status != "running" || job.Kind != "torrent" || job.Phase != "discovered" || job.Discovery == nil {
+	if job.Version != version || job.Status != "running" || job.Kind != "torrent" || job.Phase != "discovered" || (job.Discovery == nil) == (job.Resource == nil) {
 		return MediaJob{}, errMediaJobConflict
 	}
 	if err := change(tx, &job); err != nil {
@@ -174,24 +183,46 @@ AND (lower(json_extract(payload,'$.torrent_hash'))=? OR (media_id<>'' AND media_
 }
 
 func (d *Database) SaveRSSSubmission(id, version int64, state string) error {
-	_, err := d.checkpointRSS(id, version, "submission_"+state, func(_ *sql.Tx, job *MediaJob) error {
-		if job.Discovery.Magnet == "" {
+	return d.saveAcquisitionSubmission(id, version, state)
+}
+
+func acquisitionSubmissionState(job MediaJob) string {
+	if job.Resource != nil {
+		return job.Resource.SubmissionState
+	}
+	if job.Discovery != nil {
+		return job.Discovery.SubmissionState
+	}
+	return ""
+}
+
+func (d *Database) saveAcquisitionSubmission(id, version int64, state string) error {
+	_, err := d.checkpointAcquisition(id, version, "submission_"+state, func(_ *sql.Tx, job *MediaJob) error {
+		if job.TorrentHash == "" || job.Discovery != nil && job.Discovery.Magnet == "" || job.Resource != nil && job.Resource.Magnet == "" {
 			return fmt.Errorf("尚未预留下载")
 		}
-		previous := job.Discovery.SubmissionState
+		previous := acquisitionSubmissionState(*job)
 		valid := state == "dispatching" && (previous == "" || previous == "rejected") || (state == "acknowledged" || state == "rejected") && previous == "dispatching"
 		if !valid {
 			return fmt.Errorf("无效的投递状态转换")
 		}
-		job.Discovery.SubmissionState = state
+		if job.Resource != nil {
+			job.Resource.SubmissionState = state
+		} else {
+			job.Discovery.SubmissionState = state
+		}
 		return nil
 	})
 	return err
 }
 
 func (d *Database) ObserveRSSDownload(id, version int64, torrent QBTorrent) (MediaJob, error) {
+	return d.observeAcquisitionDownload(id, version, torrent)
+}
+
+func (d *Database) observeAcquisitionDownload(id, version int64, torrent QBTorrent) (MediaJob, error) {
 	return d.changeMediaJob(id, version, "download_observed", func(job *MediaJob) error {
-		if job.Status != "running" || job.Phase != "discovered" || job.Discovery == nil {
+		if job.Status != "running" || job.Phase != "discovered" || (job.Discovery == nil) == (job.Resource == nil) {
 			return errMediaJobConflict
 		}
 		if torrent.AddedOn <= 0 || !strings.EqualFold(torrent.Hash, job.TorrentHash) {
@@ -203,7 +234,9 @@ func (d *Database) ObserveRSSDownload(id, version int64, torrent QBTorrent) (Med
 		if err := validateMediaJob(*job); err != nil {
 			return fmt.Errorf("%w：qB 返回的内容路径无效：%v", errIntakeConflict, err)
 		}
-		job.Discovery.Entry.Summary = ""
+		if job.Discovery != nil {
+			job.Discovery.Entry.Summary = ""
+		}
 		return nil
 	})
 }

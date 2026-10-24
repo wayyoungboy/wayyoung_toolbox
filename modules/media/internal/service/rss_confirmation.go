@@ -10,16 +10,17 @@ import (
 )
 
 func uncertainRSSJob(job MediaJob) bool {
-	return !job.Archived && job.Kind == "torrent" && job.Phase == "discovered" && job.Discovery != nil &&
-		(job.Discovery.SubmissionState == "dispatching" || job.Discovery.SubmissionState == "acknowledged") &&
+	state := acquisitionSubmissionState(job)
+	return !job.Archived && job.Kind == "torrent" && job.Phase == "discovered" && (job.Discovery == nil) != (job.Resource == nil) &&
+		(state == "dispatching" || state == "acknowledged") &&
 		(job.Status == "needs_attention" || job.Status == "failed" || job.Status == "timed_out")
 }
 
 func (d *Database) rssSubmissionsToConfirm(ctx context.Context) ([]MediaJob, error) {
 	rows, err := d.db.QueryContext(ctx, `SELECT `+mediaJobColumns+` FROM media_jobs
 WHERE COALESCE(json_extract(payload,'$.archived'),0)=0 AND kind='torrent' AND phase='discovered' AND status IN ('needs_attention','failed','timed_out')
-AND json_extract(payload,'$.discovery.submission_state') IN ('dispatching','acknowledged')
-ORDER BY COALESCE(json_extract(payload,'$.discovery.confirmation_checked_at'),''),id LIMIT 100`)
+AND (json_extract(payload,'$.discovery.submission_state') IN ('dispatching','acknowledged') OR json_extract(payload,'$.resource.submission_state') IN ('dispatching','acknowledged'))
+ORDER BY COALESCE(json_extract(payload,'$.discovery.confirmation_checked_at'),json_extract(payload,'$.resource.confirmation_checked_at'),''),id LIMIT 100`)
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +60,12 @@ func (s *Service) reconcileRSSSubmissions(ctx context.Context) error {
 		}
 		var torrent *QBTorrent
 		pollErr := loginErr
+		if job.Resource != nil {
+			identity, identityErr := resourceDownloaderIdentity(settings)
+			if identityErr != nil || identity != job.Resource.DownloaderIdentity {
+				pollErr = errIntakeConflict
+			}
+		}
 		if pollErr == nil {
 			value, present, err := session.Torrent(requestCtx, job.TorrentHash)
 			pollErr = err
@@ -109,7 +116,9 @@ func (d *Database) recordRSSConfirmation(ctx context.Context, expected MediaJob,
 				message = "qB 返回的内容路径无效，请人工核对；不会搬运或重复投递"
 			} else {
 				job, confirmed = candidate, true
-				job.Discovery.Entry.Summary = ""
+				if job.Discovery != nil {
+					job.Discovery.Entry.Summary = ""
+				}
 				job.Version++
 			}
 		}
@@ -117,7 +126,12 @@ func (d *Database) recordRSSConfirmation(ctx context.Context, expected MediaJob,
 	if !confirmed {
 		job.Error = message
 	}
-	job.Discovery.ConfirmationCheckedAt, job.UpdatedAt = nowUTC(), nowUTC()
+	if job.Resource != nil {
+		job.Resource.ConfirmationCheckedAt = nowUTC()
+	} else {
+		job.Discovery.ConfirmationCheckedAt = nowUTC()
+	}
+	job.UpdatedAt = nowUTC()
 	payload, err := json.Marshal(job)
 	if err != nil {
 		return err

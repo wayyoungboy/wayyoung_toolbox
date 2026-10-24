@@ -34,15 +34,21 @@ func (session *QBSession) Torrent(ctx context.Context, hash string) (QBTorrent, 
 	return QBTorrent{}, false, nil
 }
 
-func (d *Database) skipRSSAcquisition(id, version int64, reason string) (MediaJob, error) {
-	return d.checkpointRSS(id, version, "acquisition_skipped", func(_ *sql.Tx, job *MediaJob) error {
+func (d *Database) skipAcquisition(id, version int64, reason string) (MediaJob, error) {
+	return d.checkpointAcquisition(id, version, "acquisition_skipped", func(_ *sql.Tx, job *MediaJob) error {
 		job.Status, job.Phase, job.Error = "skipped", "done", reason
-		job.Discovery.Entry.Summary = ""
+		if job.Discovery != nil {
+			job.Discovery.Entry.Summary = ""
+		}
 		return nil
 	})
 }
 
 func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, settings Settings, session **QBSession) (RunDetail, error) {
+	return s.executeAcquisition(parent, job, settings, session)
+}
+
+func (s *Service) executeAcquisition(parent context.Context, job MediaJob, settings Settings, session **QBSession) (RunDetail, error) {
 	detail := RunDetail{JobID: job.ID, Title: job.Title, Status: "skipped", Message: "已登记到处理队列"}
 	if job.Archived {
 		detail.Message = "此条目已清理归档，保留去重，不再执行"
@@ -94,39 +100,54 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
-	if job.Discovery == nil {
-		return fail(fmt.Errorf("%w：RSS 来源信息缺失", errIntakeConflict))
+	if (job.Discovery == nil) == (job.Resource == nil) {
+		return fail(fmt.Errorf("%w：获取来源信息缺失或不明确", errIntakeConflict))
 	}
-	task, err := s.db.Task(job.RSSID)
-	if err != nil {
-		return fail(fmt.Errorf("%w：原订阅不可读取：%v", errIntakeConflict, err))
-	}
-	magnet := job.Discovery.Magnet
-	if magnet == "" {
-		magnet, err = s.collector.ResolveMagnet(ctx, job.Discovery.Entry, task, settings)
+	var task Task
+	var magnet, legacyStatus string
+	var legacySeen bool
+	if job.Resource != nil {
+		identity, identityErr := resourceDownloaderIdentity(settings)
+		if identityErr != nil || identity != job.Resource.DownloaderIdentity {
+			return fail(fmt.Errorf("%w：下载器配置已变化，请恢复原下载器后核对任务", errIntakeConflict))
+		}
+		magnet = job.Resource.Magnet
+		if magnet != "magnet:?xt=urn:btih:"+job.TorrentHash || job.Resource.DownloadPath != job.IntakeSourceRoot {
+			return fail(fmt.Errorf("%w：资源下载意图不完整，请人工核对", errIntakeConflict))
+		}
+		task.SavePath = job.Resource.DownloadPath
+	} else {
+		task, err = s.db.Task(job.RSSID)
+		if err != nil {
+			return fail(fmt.Errorf("%w：原订阅不可读取：%v", errIntakeConflict, err))
+		}
+		magnet = job.Discovery.Magnet
+		if magnet == "" {
+			magnet, err = s.collector.ResolveMagnet(ctx, job.Discovery.Entry, task, settings)
+			if err != nil {
+				return fail(err)
+			}
+		}
+		reserved, reserveErr := s.db.ReserveRSSDownload(job.ID, job.Version, magnet)
+		if reserveErr != nil {
+			return fail(reserveErr)
+		}
+		job = reserved
+		if job.Status == "skipped" {
+			detail.Message = job.Error
+			return detail, nil
+		}
+		legacyStatus, legacySeen, err = s.db.seenStatus(job.RSSID, fingerprint(magnet))
 		if err != nil {
 			return fail(err)
 		}
 	}
-	reserved, err := s.db.ReserveRSSDownload(job.ID, job.Version, magnet)
-	if err != nil {
-		return fail(err)
-	}
-	job = reserved
-	if job.Status == "skipped" {
-		detail.Message = job.Error
-		return detail, nil
-	}
 	// Older releases only persisted the hash of the complete magnet URI.
 	// Preserve final markers, but do not label an interrupted submission as
 	// success or permit a blind repost when its outcome is still unknown.
-	legacyStatus, legacySeen, err := s.db.seenStatus(job.RSSID, fingerprint(magnet))
-	if err != nil {
-		return fail(err)
-	}
 	if legacySeen && (legacyStatus == "submitted" || legacyStatus == "already_present") {
 		reason := "旧版本已记录投递，保留历史去重结果"
-		_, err := s.db.skipRSSAcquisition(job.ID, job.Version, reason)
+		_, err := s.db.skipAcquisition(job.ID, job.Version, reason)
 		detail.Message = reason
 		return detail, err
 	}
@@ -141,7 +162,7 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 		return fail(err)
 	}
 	observe := func(torrent QBTorrent, submitted bool) (RunDetail, error) {
-		if _, err := s.db.ObserveRSSDownload(job.ID, job.Version, torrent); err != nil {
+		if _, err := s.db.observeAcquisitionDownload(job.ID, job.Version, torrent); err != nil {
 			return fail(err)
 		}
 		detail.Status, detail.Message = "skipped", "qBittorrent 中已存在，已关联下载任务"
@@ -151,8 +172,10 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 		}
 		// Queue identity is authoritative; this marker preserves older RSS
 		// history semantics without being the only record of dispatched work.
-		if err := s.db.MarkSeen(job.RSSID, job.Discovery.Entry, magnet, marker); err != nil {
-			return detail, err
+		if job.Discovery != nil {
+			if err := s.db.MarkSeen(job.RSSID, job.Discovery.Entry, magnet, marker); err != nil {
+				return detail, err
+			}
 		}
 		return detail, nil
 	}
@@ -162,7 +185,7 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 	if legacySeen {
 		return fail(fmt.Errorf("%w：旧版本记录的投递结果未确认；不会重新投递，请核对 qB 后重试确认", errIntakeConflict))
 	}
-	state := job.Discovery.SubmissionState
+	state := acquisitionSubmissionState(job)
 	if state == "dispatching" || state == "acknowledged" {
 		return fail(fmt.Errorf("%w：将自动查询原种子，不会重复下发", errRSSSubmissionUnconfirmed))
 	}
@@ -180,22 +203,22 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 		}
 		if mediaID, completed := index.MatchTitle(job.Title); completed {
 			reason := "整理完成目录中已存在：" + mediaID
-			_, err := s.db.skipRSSAcquisition(job.ID, job.Version, reason)
+			_, err := s.db.skipAcquisition(job.ID, job.Version, reason)
 			detail.Message = reason
 			return detail, err
 		}
 	}
-	if err := s.db.SaveRSSSubmission(job.ID, job.Version, "dispatching"); err != nil {
+	if err := s.db.saveAcquisitionSubmission(job.ID, job.Version, "dispatching"); err != nil {
 		return fail(err)
 	}
 	// Only new discoveries have a frozen path. Legacy jobs keep their former
 	// subscription/qB-default behavior; no existing qB task is relocated.
-	if job.Discovery.DownloadPath != nil {
+	if job.Discovery != nil && job.Discovery.DownloadPath != nil {
 		task.SavePath = *job.Discovery.DownloadPath
 	}
 	submitErr := (*session).Submit(ctx, magnet, task)
 	if submitErr == nil {
-		if err := s.db.SaveRSSSubmission(job.ID, job.Version, "acknowledged"); err != nil {
+		if err := s.db.saveAcquisitionSubmission(job.ID, job.Version, "acknowledged"); err != nil {
 			return fail(err)
 		}
 	}
@@ -204,7 +227,7 @@ func (s *Service) executeRSSAcquisition(parent context.Context, job MediaJob, se
 		return observe(torrent, submitErr == nil)
 	}
 	if errors.Is(submitErr, errQBSubmissionRejected) && verifyErr == nil {
-		if err := s.db.SaveRSSSubmission(job.ID, job.Version, "rejected"); err != nil {
+		if err := s.db.saveAcquisitionSubmission(job.ID, job.Version, "rejected"); err != nil {
 			return fail(err)
 		}
 		return fail(submitErr)

@@ -57,6 +57,12 @@ func (s *Service) drainPendingRSS(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if job.Resource != nil {
+			if _, err := s.executeAcquisition(ctx, job, settings, &session); err != nil {
+				return err
+			}
+			continue
+		}
 		// Discovery may still be evaluating this subscription's deduplication
 		// results. Do not steal its newly enqueued entries mid-run.
 		lock := s.taskLock(job.RSSID)
