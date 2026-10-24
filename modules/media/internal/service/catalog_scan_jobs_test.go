@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
@@ -221,5 +222,108 @@ func TestCatalogScanJobRejectsChangedFilesSidecarsAndRootWithoutSweeping(t *test
 				t.Fatalf("changed snapshot published or failed silently: %+v", job)
 			}
 		})
+	}
+}
+
+func TestCatalogScansNeverHideUnfinishedDeletionReceipts(t *testing.T) {
+	for _, mode := range []string{"synchronous", "durable"} {
+		t.Run(mode, func(t *testing.T) {
+			s := testService(t)
+			root := registrationRoot(t)
+			writeIntakeFixture(t, root, map[string]string{"TEST-001.mp4": "original"})
+			lib := catalogLibrary(t, s, root)
+			catalogScan(t, s, lib)
+			writeIntakeFixture(t, filepath.Join(root, ".catalog-delete-interrupted"), map[string]string{"receipt.json": "{}", "captured.mp4": "captured"})
+			if mode == "synchronous" {
+				if _, err := s.db.catalog.Scan(context.Background(), lib.ID); !errors.Is(err, catalog.ErrDeletePending) {
+					t.Fatalf("legacy scanner hides unfinished deletion: %v", err)
+				}
+			} else {
+				job := claimCatalogScan(t, s, startCatalogScan(t, s, lib.ID))
+				job, err := s.db.catalog.ScanBatch(context.Background(), job.ID, job.Version, 1)
+				if !errors.Is(err, catalog.ErrDeletePending) || job.Status != "failed" {
+					t.Fatalf("durable scan hides unfinished deletion: %+v %v", job, err)
+				}
+			}
+			if works := catalogWorks(t, s, ""); len(works) != 1 {
+				t.Fatal("failed scan changed inventory")
+			}
+		})
+	}
+}
+
+func TestCatalogScanDirectoryFrontierConsumesStagingBudget(t *testing.T) {
+	s := testService(t)
+	root := registrationRoot(t)
+	if err := os.Mkdir(filepath.Join(root, strings.Repeat("deep-directory-", 14)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lib := catalogLibrary(t, s, root)
+	job := claimCatalogScan(t, s, startCatalogScan(t, s, lib.ID))
+	if _, err := s.db.db.Exec("UPDATE catalog_scan_jobs SET staged_bytes=? WHERE id=?", (128<<20)-64, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := s.db.catalog.ScanBatch(context.Background(), job.ID, job.Version, 1)
+	if !errors.Is(err, catalog.ErrInvalid) || job.Status != "failed" {
+		t.Fatalf("directory paths bypass budget: %+v %v", job, err)
+	}
+}
+
+func TestCatalogScanManifestDetectsRestoredDirectoryTimestamp(t *testing.T) {
+	s := testService(t)
+	root := registrationRoot(t)
+	writeIntakeFixture(t, root, map[string]string{"KEEP-001.mp4": "keep original"})
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	old := catalogWorks(t, s, "")[0]
+	away := filepath.Join(registrationRoot(t), "KEEP-001.mp4")
+	if err := os.Rename(filepath.Join(root, "KEEP-001.mp4"), away); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := claimCatalogScan(t, s, startCatalogScan(t, s, lib.ID))
+	job, err = s.db.catalog.ScanBatch(context.Background(), job.ID, job.Version, 1)
+	if err != nil || job.Status != "running" {
+		t.Fatal(job, err)
+	}
+	if err := os.Rename(away, filepath.Join(root, "KEEP-001.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(root, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	job, err = s.db.catalog.ScanBatch(context.Background(), job.ID, job.Version, 1)
+	if !errors.Is(err, catalog.ErrConflict) || job.Status != "failed" {
+		t.Fatalf("restored mtime accepted incomplete manifest: %+v %v", job, err)
+	}
+	if work, err := s.db.catalog.Work(context.Background(), old.ID); err != nil || work.AvailableCount != 1 {
+		t.Fatal("existing file marked missing", work, err)
+	}
+}
+
+func TestCatalogScanNFOContentChangeCannotHideBehindRestoredFingerprint(t *testing.T) {
+	s, job, root := scanJobFixture(t)
+	job = checkpointCatalogScan(t, s, claimCatalogScan(t, s, job), 2)
+	nfo := filepath.Join(root, "folder-0", "TEST-001.nfo")
+	info, err := os.Stat(nfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same inode, size, and restored mtime; only a content-bound proof notices.
+	catalogWrite(t, filepath.Dir(nfo), filepath.Base(nfo), "<movie><title>Tample TEST-001</title></movie>")
+	if err := os.Chtimes(nfo, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	for range 100 {
+		job, err = s.db.catalog.ScanBatch(context.Background(), job.ID, job.Version, 1)
+		if err != nil || job.Status != "running" {
+			break
+		}
+	}
+	if !errors.Is(err, catalog.ErrConflict) || job.Status != "failed" || len(catalogWorks(t, s, "")) != 0 {
+		t.Fatalf("stale NFO published: %+v %v", job, err)
 	}
 }
