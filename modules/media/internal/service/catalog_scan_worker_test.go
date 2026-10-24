@@ -34,7 +34,7 @@ func TestCatalogScanWorkerPublishesOnlyExplicitJobsAndRespectsWriterGuards(t *te
 	if err != nil || current.Status != "pending" {
 		t.Fatalf("captured transfer guard ignored: %+v %v", current, err)
 	}
-	if _, err := s.db.TransitionMediaJob(transfer.ID, transfer.Version, MediaJobTransition{Phase: "done", Status: "success"}); err != nil {
+	if _, err := s.db.TransitionMediaJob(transfer.ID, transfer.Version, MediaJobTransition{Phase: "qb_cleanup", Status: "pending"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.drainCatalogScans(t.Context()); err != nil {

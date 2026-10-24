@@ -44,6 +44,7 @@ func (s *Service) handleCatalogStartScan(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.Header().Set("Location", fmt.Sprintf("%s/api/catalog/scans/%d", s.prefix, job.ID))
+	s.wakeCatalogScans()
 	writeJSON(w, http.StatusAccepted, job)
 }
 
@@ -110,10 +111,19 @@ func (s *Service) handleCatalogScanAction(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	// Cancel the exact attempt before waiting for the sole SQLite connection.
+	// A publishing transaction can then observe cancellation and roll back;
+	// a stale browser revision cannot interrupt a newer attempt.
+	if action == "pause" || action == "cancel" {
+		s.cancelCatalogScanAttempt(id, payload.Version)
+	}
 	job, err := s.db.catalog.ChangeScanJob(r.Context(), id, payload.Version, action)
 	if err != nil {
 		catalogError(w, err)
 		return
+	}
+	if action == "resume" || action == "retry" {
+		s.wakeCatalogScans()
 	}
 	writeJSON(w, http.StatusOK, job)
 }

@@ -210,6 +210,30 @@ func (s *Store) ClaimScan(ctx context.Context, id, version int64) (ScanJob, erro
 	return s.ScanJob(ctx, id)
 }
 
+func (s *Store) NextPendingScan(ctx context.Context) (ScanJob, error) {
+	return readScanJob(s.db.QueryRowContext(ctx, "SELECT "+scanJobColumns+" FROM catalog_scan_jobs WHERE status='pending' ORDER BY id LIMIT 1"))
+}
+
+// ReleaseScanAttempt preserves checkpoints on shutdown/interrupted I/O. A stale
+// attempt must never overwrite an administrator's newer pause/cancel revision.
+func (s *Store) ReleaseScanAttempt(ctx context.Context, id, version int64) error {
+	if id < 1 || version < 1 {
+		return ErrInvalid
+	}
+	result, err := s.db.ExecContext(ctx, "UPDATE catalog_scan_jobs SET status='pending',version=version+1,updated_at=? WHERE id=? AND version=? AND status='running'", timestamp(), id, version)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrConflict
+	}
+	return nil
+}
+
 func (s *Store) ChangeScanJob(ctx context.Context, id, version int64, action string) (ScanJob, error) {
 	if id < 1 || version < 1 {
 		return ScanJob{}, ErrInvalid

@@ -64,6 +64,8 @@ type Service struct {
 	rssSlots           chan struct{}
 	queueWake          chan struct{}
 	mediaJobCancels    sync.Map
+	catalogScanWake    chan struct{}
+	catalogScanCancels sync.Map
 	wait               sync.WaitGroup
 	runCtx             context.Context
 	cancel             context.CancelFunc
@@ -92,7 +94,7 @@ func NewService(dataDir, publicDir, bundleDir, prefix string, localDev bool) (*S
 	}
 	service := &Service{db: db, collector: Collector{}, javsp: runner, anidb: newAniDBTitleCache(dataDir), publicDir: publicDir, dataDir: dataDir,
 		prefix: strings.TrimRight(prefix, "/"), localDev: localDev, catalogCSRF: rand.Text(), taskLocks: map[int64]*sync.Mutex{},
-		rssSlots: make(chan struct{}, 2), queueWake: make(chan struct{}, 1), shutdownDone: make(chan struct{})}
+		rssSlots: make(chan struct{}, 2), queueWake: make(chan struct{}, 1), catalogScanWake: make(chan struct{}, 1), shutdownDone: make(chan struct{})}
 	if err := service.recoverCanceledMediaJobs(); err != nil {
 		db.Close()
 		return nil, err
@@ -1337,6 +1339,8 @@ func (s *Service) Start(ctx context.Context) error {
 	go func() { defer s.wait.Done(); s.rssQueueWorker(runCtx, 2*time.Second) }()
 	s.wait.Add(1)
 	go func() { defer s.wait.Done(); s.downloadQueueWorker(runCtx) }()
+	s.wait.Add(1)
+	go func() { defer s.wait.Done(); s.catalogScanWorker(runCtx) }()
 	return nil
 }
 

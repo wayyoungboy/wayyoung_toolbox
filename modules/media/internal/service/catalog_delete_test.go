@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -202,7 +203,13 @@ func TestCatalogDeletionDoesNotForgetInterruptedCapture(t *testing.T) {
 	if w.Code != 409 {
 		t.Fatalf("interrupted capture forgotten: %d %s", w.Code, w.Body.String())
 	}
-	catalogScan(t, s, lib)
+	w = catalogRequest(t, s, "POST", fmt.Sprintf("/api/catalog/libraries/%d/scan", lib.ID), struct{}{})
+	if w.Code != 409 {
+		t.Fatalf("interrupted capture hidden by scan: %d %s", w.Code, w.Body.String())
+	}
+	if works := catalogWorks(t, s, ""); len(works) != 1 || works[0].ID != ids[0] {
+		t.Fatal("rejected scan changed published inventory")
+	}
 	w = catalogRequest(t, s, "POST", "/api/catalog/deletion/preview", map[string]any{"work_ids": ids})
 	if w.Code != 409 {
 		t.Fatalf("scan bypassed interrupted capture guard: %d %s", w.Code, w.Body.String())
