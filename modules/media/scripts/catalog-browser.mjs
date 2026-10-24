@@ -46,6 +46,32 @@ try {
   assert.equal(await page.locator('.catalog-card').count(), 0, 'adding a library must not scan automatically');
   await page.getByRole('button', { name: '扫描馆藏', exact: true }).click();
   await page.getByText('扫描完成：9 部作品、10 个文件', { exact: false }).waitFor();
+  const automationURL=`${url}api/catalog/automation`;
+  await check(async()=>!await page.getByLabel('整理后自动登记馆藏',{exact:true}).isDisabled(),'automation config did not load');
+  assert.equal(await page.getByLabel('整理后自动登记馆藏',{exact:true}).isChecked(),false,'upgrade must not silently enable catalog registration');
+  await page.getByLabel('整理后自动登记馆藏',{exact:true}).check();
+  await page.getByRole('button',{name:'保存登记设置',exact:true}).click();
+  await page.getByText('登记设置已保存。仅影响之后成功整理的影片。',{exact:true}).waitFor();
+  await screenshot('desktop-catalog-automation');
+  await page.evaluate(async automationURL=>{
+    const {csrf}=await(await fetch(automationURL.replace(/automation$/,'session'))).json();
+    const config=await(await fetch(automationURL)).json();
+    const response=await fetch(automationURL,{method:'PUT',headers:{'Content-Type':'application/json','X-Catalog-CSRF':csrf},body:JSON.stringify(config)});
+    if(!response.ok)throw new Error('automation conflict fixture failed');
+  },automationURL);
+  expectedConflictURLs.add(automationURL);
+  await page.getByLabel('整理后自动登记馆藏',{exact:true}).uncheck();
+  await page.getByRole('button',{name:'保存登记设置',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'没有自动重试'}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'保存登记设置',exact:true}).isDisabled(),true,'conflicted writes must stay locked');
+  await page.getByRole('button',{name:'重新读取登记设置',exact:true}).click();
+  await check(async()=>!await page.getByLabel('整理后自动登记馆藏',{exact:true}).isDisabled(),'explicit config reread failed');
+  assert.equal(await page.getByLabel('整理后自动登记馆藏',{exact:true}).isChecked(),true,'conflict must not overwrite current config');
+  expectedConflictURLs.delete(automationURL);
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'automation mobile overflow');
+  await screenshot('mobile-catalog-automation');
+  await page.setViewportSize({width:1440,height:1000});
   await page.getByRole('button', { name: 'close', exact: true }).click();
   await check(async () => await page.locator('.catalog-card').count() === 9, 'cover wall did not refresh');
   await screenshot('desktop-catalog');
@@ -481,6 +507,45 @@ try {
     await page.getByRole('dialog',{name:'午后时光',exact:true}).getByRole('button',{name:'close',exact:true}).click();
     await page.getByRole('dialog',{name:'作品详情',exact:true}).getByRole('button',{name:'close',exact:true}).click();
   }
+  // Synthetic organization → durable catalog successor → attention → retry.
+  // These test-only routes exist solely in the isolated test binary.
+  let organized=await(await context.request.post(new URL('/__fixture/organizer',url).href)).json();
+  assert.equal(organized.job.phase,'catalog');assert.equal(organized.job.status,'pending');assert.equal(organized.runs,1);
+  organized=await(await context.request.post(new URL('/__fixture/organizer',url).href)).json();
+  assert.equal(organized.job.status,'needs_attention');assert.equal(organized.runs,1);
+  await page.getByRole('button',{name:'工作台',exact:true}).click();
+  await check(async()=>await page.locator('.pipeline-stage').count()===5,'five-stage workflow missing');
+  await page.locator('.pipeline-stage').filter({hasText:'馆藏登记'}).click();
+  await page.getByRole('heading',{name:'处理队列',exact:true}).waitFor();
+  await page.getByRole('button',{name:`查看任务 #${organized.job.id} TEST-009`,exact:true}).click();
+  await page.getByRole('button',{name:'重试馆藏登记',exact:true}).waitFor();
+  await screenshot('desktop-registration-attention');
+  await page.getByRole('button',{name:'馆藏',exact:true}).click();
+  await page.getByRole('button',{name:'媒体库管理',exact:true}).click();
+  await page.getByLabel('名称',{exact:true}).fill('整理完成样本库');
+  await page.getByLabel('媒体目录',{exact:true}).fill(organized.root);
+  await page.getByRole('button',{name:'添加媒体库',exact:true}).click();
+  await page.getByText('媒体库已添加。',{exact:false}).waitFor();
+  await page.getByRole('button',{name:'close',exact:true}).click();
+  await page.getByRole('button',{name:'处理队列',exact:true}).click();
+  await page.getByRole('button',{name:`查看任务 #${organized.job.id} TEST-009`,exact:true}).click();
+  page.once('dialog',dialog=>dialog.accept());
+  await page.getByRole('button',{name:'重试馆藏登记',exact:true}).click();
+  await check(async()=>await page.getByRole('region',{name:'任务详情',exact:true}).getByText('排队中',{exact:true}).count()===1,'retry did not queue catalog stage');
+  const registered=await(await context.request.post(new URL('/__fixture/organizer',url).href)).json();
+  assert.equal(registered.job.status,'success');assert.equal(registered.runs,1,'catalog retry reran organizer');
+  assert.equal(registered.job.catalog_registration.asset_count,1);
+  await page.getByRole('button',{name:'刷新详情',exact:true}).click();
+  await page.getByRole('region',{name:'馆藏登记结果',exact:true}).waitFor();
+  await screenshot('desktop-registration-success');
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'queue mobile overflow');
+  await screenshot('mobile-registration-success');
+  await page.getByRole('button',{name:'前往馆藏',exact:true}).click();
+  await page.getByRole('searchbox',{name:'搜索馆藏'}).fill('TEST-009');
+  await check(async()=>await page.locator('.catalog-card').count()===1,'confirmed output did not appear in catalog');
+  assert.ok((await page.locator('.catalog-card').innerText()).includes('新整理的样本'),'catalog lost output NFO title');
+  await screenshot('mobile-registered-catalog');
   assert.deepEqual(errors, [], 'browser runtime errors');
   console.log(JSON.stringify({ passed: true, fixtures: { works: 9, assets: 10 }, playback: 'real H.264 + AAC', checks: ['import', 'manual scan', 'native Host rewrite + CSRF', 'keyword/actor/tag search', 'actor profile, alias and portrait persistence', 'local actor follow and filter', 'opt-in taste, source controls, provenance and reset', 'actor and taste conflict recovery', 'stale search actions locked until matching results', 'browser file preview/commit, duplicate, stop and delete', 'source conflict requires explicit reselection', 'light/dark readable browser workspace', 'editions', 'favorite', 'watch later', 'watched and rating', 'ordered playlist create/edit/add/move/remove', 'session history and selected clear', 'manual title', 'play', 'seek', 'SRT track', 'progress', 'resume', 'reload', 'mobile', 'multi-select permanent delete', 'aged task cleanup and archive', ...(process.env.CATALOG_COMPATIBLE==='1'?['HLS software playback, pause, seek, resume and lifecycle cleanup']:[]), 'no unexplained console errors'], screenshots: report }));
 } catch (error) {

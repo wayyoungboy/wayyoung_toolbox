@@ -23,16 +23,21 @@ type movieQueueFixture struct {
 
 func newMovieQueueFixture(t *testing.T) *movieQueueFixture {
 	t.Helper()
-	f := &movieQueueFixture{s: testService(t), root: t.TempDir()}
+	return newMovieQueueFixtureWithService(t, testService(t), "TEST-001")
+}
+
+func newMovieQueueFixtureWithService(t *testing.T, s *Service, mediaID string) *movieQueueFixture {
+	t.Helper()
+	f := &movieQueueFixture{s: s, root: t.TempDir()}
 	f.nfo = "<movie><title>Example title</title></movie>"
 	var rootErr error
 	f.root, rootErr = filepath.EvalSymlinks(f.root)
 	if rootErr != nil {
 		t.Fatal(rootErr)
 	}
-	f.source = filepath.Join(f.root, "pending", "TEST-001.mp4")
-	f.target = filepath.Join(f.root, "organized", "TEST-001", "TEST-001.mp4")
-	writeIntakeFixture(t, filepath.Dir(f.source), map[string]string{"TEST-001.mp4": "video"})
+	f.source = filepath.Join(f.root, "pending", mediaID+".mp4")
+	f.target = filepath.Join(f.root, "organized", mediaID, mediaID+".mp4")
+	writeIntakeFixture(t, filepath.Dir(f.source), map[string]string{mediaID + ".mp4": "video"})
 	cfg := defaultJavspConfig()
 	cfg.InputDirectory = f.root
 	cfg.OutputFolderPattern = "organized/{num}"
@@ -46,7 +51,7 @@ func newMovieQueueFixture(t *testing.T) *movieQueueFixture {
 		if len(options.InputFiles) != 1 || options.InputFiles[0] != f.source {
 			t.Errorf("wrong queued files: %+v", options.InputFiles)
 		}
-		plan := JavspMoviePlan{MediaID: "TEST-001", Files: []JavspFileMove{{Source: f.source, Destination: f.target}}, NFOPath: filepath.Join(filepath.Dir(f.target), "movie.nfo"), MoveFiles: true, HardLink: f.hardLink}
+		plan := JavspMoviePlan{MediaID: mediaID, Files: []JavspFileMove{{Source: f.source, Destination: f.target}}, NFOPath: filepath.Join(filepath.Dir(f.target), "movie.nfo"), MoveFiles: true, HardLink: f.hardLink}
 		if err := options.Hooks.BeforeOrganize(ctx, plan); err != nil {
 			return embeddedJavspResult{}, err
 		}
@@ -67,7 +72,7 @@ func newMovieQueueFixture(t *testing.T) *movieQueueFixture {
 		return embeddedJavspResult{Total: 1, Processed: 1, Movies: []JavspMovieOutcome{{MediaID: plan.MediaID, SourcePaths: []string{f.source}, OutputPaths: moved.OutputPaths, NFOPath: plan.NFOPath, Status: "success"}}}, nil
 	}))
 	var err error
-	f.job, err = f.s.db.EnqueueMediaJob(MediaJob{Key: "movie:test", Kind: "movie", Phase: "organize", SourcePath: f.source, Title: "TEST-001", MediaID: "TEST-001"})
+	f.job, err = f.s.db.EnqueueMediaJob(MediaJob{Key: "movie:test:" + mediaID, Kind: "movie", Phase: "organize", SourcePath: f.source, Title: mediaID, MediaID: mediaID})
 	if err != nil {
 		t.Fatal(err)
 	}

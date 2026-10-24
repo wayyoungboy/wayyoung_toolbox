@@ -79,14 +79,43 @@ func TestCatalogBrowserJourney(t *testing.T) {
 	if _, err := service.db.db.Exec(`UPDATE media_jobs SET status='failed',updated_at='2020-01-01T00:00:00Z' WHERE id=?`, job.ID); err != nil {
 		t.Fatal(err)
 	}
+	movie := newMovieQueueFixtureWithService(t, service, "TEST-009")
+	movie.nfo = "<movie><num>TEST-009</num><title>新整理的样本</title></movie>"
+	if err := os.WriteFile(movie.source, video, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	handler := service.Handler()
 	stop := make(chan struct{})
 	var stopOnce sync.Once
+	var fixtureMu sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; media-src 'self' blob:; worker-src 'self' blob:")
 		if os.Getenv("CATALOG_REMOTE_FIXTURE") == "1" && r.Method == "POST" && r.URL.Path == "/__fixture/stop" {
 			stopOnce.Do(func() { close(stop) })
 			w.WriteHeader(200)
+			return
+		}
+		// Only compiled into this isolated test binary. No production test routes
+		// or external crawlers: a synthetic organizer exercises the real queue,
+		// receipt validation, move, SQLite registration and HTTP UI together.
+		if r.URL.Path == "/__fixture/organizer" {
+			fixtureMu.Lock()
+			defer fixtureMu.Unlock()
+			if r.Method == "POST" {
+				if err := service.drainPendingMovies(r.Context()); err != nil {
+					http.Error(w, "fixture step failed", 500)
+					return
+				}
+			} else if r.Method != "GET" {
+				w.WriteHeader(405)
+				return
+			}
+			current, err := service.db.MediaJob(movie.job.ID)
+			if err != nil {
+				http.Error(w, "fixture job failed", 500)
+				return
+			}
+			writeJSON(w, 200, map[string]any{"job": current, "runs": movie.runs, "root": filepath.Join(movie.root, "organized")})
 			return
 		}
 		r.Header.Set("X-Trim-Isadmin", "true")
