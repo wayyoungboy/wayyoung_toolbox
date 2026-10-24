@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,7 +34,14 @@ func TestWantsBrowserJourney(t *testing.T) {
 	}
 	f.s.publicDir = public
 	handler := f.s.Handler()
+	stop := make(chan struct{})
+	var stopOnce sync.Once
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if os.Getenv("CATALOG_REMOTE_FIXTURE") == "1" && r.Method == "POST" && r.URL.Path == "/__fixture/stop" {
+			stopOnce.Do(func() { close(stop) })
+			w.WriteHeader(200)
+			return
+		}
 		if r.URL.Path == "/__fixture/wants" {
 			if r.Method == "POST" {
 				switch r.URL.Query().Get("action") {
@@ -83,17 +91,26 @@ func TestWantsBrowserJourney(t *testing.T) {
 		handler.ServeHTTP(w, r)
 	}))
 	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	node := os.Getenv("CATALOG_NODE")
-	if node == "" {
-		node = "node"
-	}
-	command := exec.CommandContext(ctx, node, "../../scripts/wants-browser.mjs", server.URL+f.s.prefix+"/")
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("wants browser: %v\n%s", err, output)
+	if os.Getenv("CATALOG_REMOTE_FIXTURE") == "1" {
+		fmt.Printf("WANTS_FIXTURE_URL=%s%s/\n", server.URL, f.s.prefix)
+		select {
+		case <-stop:
+		case <-ctx.Done():
+			t.Fatal("wants fixture deadline reached")
+		}
 	} else {
-		t.Log(string(output))
+		node := os.Getenv("CATALOG_NODE")
+		if node == "" {
+			node = "node"
+		}
+		command := exec.CommandContext(ctx, node, "../../scripts/wants-browser.mjs", server.URL+f.s.prefix+"/")
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("wants browser: %v\n%s", err, output)
+		} else {
+			t.Log(string(output))
+		}
 	}
 	if f.adds.Load() != 0 || f.feeds.Load() != 0 {
 		t.Fatal("opening wants unexpectedly dispatched network work")
