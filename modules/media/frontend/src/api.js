@@ -1,6 +1,6 @@
 const prefix = import.meta.env.BASE_URL.replace(/\/$/, '');
 let catalogToken='';
-async function prepareCatalogSession(){const {csrf}=await request('/catalog/session');if(!csrf)throw new Error('馆藏请求校验失效，请刷新页面');catalogToken=csrf;return csrf;}
+async function prepareCatalogSession({ signal } = {}){const {csrf}=await request('/catalog/session', { signal });if(!csrf)throw new Error('馆藏请求校验失效，请刷新页面');catalogToken=csrf;return csrf;}
 
 async function request(path, options = {}) {
   const response = await fetch(`${prefix}/api${path}`, {
@@ -22,7 +22,7 @@ async function request(path, options = {}) {
 // Short-lived process token, fetched from an authenticated same-origin endpoint.
 // A failed mutation is never replayed automatically (progress may have committed).
 async function catalogMutation(path, method, payload, options = {}) {
-  const csrf = options.keepalive&&catalogToken?catalogToken:await prepareCatalogSession();
+  const csrf = options.keepalive&&catalogToken?catalogToken:await prepareCatalogSession({ signal: options.signal });
   return request(path, { ...options, method, headers: { 'X-Catalog-CSRF': csrf }, body: JSON.stringify(payload) });
 }
 const playbackTokens=new Map();

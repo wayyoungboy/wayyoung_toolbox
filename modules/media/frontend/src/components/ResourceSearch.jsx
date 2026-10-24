@@ -119,6 +119,6 @@ export default function ResourceSearch({ initialCode = '', onNavigate }) {
     {notice && <p role="status" className="catalog-help">{notice}</p>}
     {matching && <ResourceResults result={result} onDownload={chooseDownload} downloadEnabled={accepted && !busy && !error && !selection} />}
     <ResourceDownloads revision={downloadRevision} onNavigate={onNavigate} />
-    {selection && <ResourceDownloadDialog selection={selection} onNavigate={onNavigate} onRegistered={() => setDownloadRevision(value => value + 1)} onClose={() => { selectionLock.current = false; setSelection(null); }} />}
+    {selection && <ResourceDownloadDialog selection={selection} onNavigate={onNavigate} onRegistered={() => setDownloadRevision(value => value + 1)} onClose={invalidate => { selectionLock.current = false; setSelection(null); if (invalidate) setAccepted(false); }} />}
   </section>;
 }

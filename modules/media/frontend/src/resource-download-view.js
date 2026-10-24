@@ -7,3 +7,14 @@ export function resourceSelectionFromResult(result, hash, code, accepted) {
 export function resourceDestinationReady(config) {
   return Number.isSafeInteger(config?.revision) && config.revision >= 0 && typeof config.source_directory === 'string' && config.source_directory.startsWith('/') && config.source_directory !== '/' && !config.source_directory.split('/').includes('..');
 }
+
+export function resourceDownloadFailurePhase(failure) {
+  return [400, 401, 403, 404, 409, 415, 422].includes(failure?.status) ? 'rejected' : 'unknown';
+}
+
+export function resourceJobDestination(job, config) {
+  if (!job) return config?.source_directory || '尚未确认';
+  if (job.resource?.download_path) return job.resource.download_path;
+  if (typeof job.discovery?.download_path === 'string') return job.discovery.download_path || 'qB 默认目录（原任务未指定目录）';
+  return job.intake_source_root || '已有任务，请前往任务详情核对';
+}
