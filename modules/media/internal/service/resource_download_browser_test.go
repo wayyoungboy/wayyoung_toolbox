@@ -4,11 +4,13 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -31,7 +33,14 @@ func TestResourceDownloadBrowserJourney(t *testing.T) {
 	}
 	f.s.publicDir = public
 	handler := f.s.Handler()
+	stop := make(chan struct{})
+	var stopOnce sync.Once
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if os.Getenv("CATALOG_REMOTE_FIXTURE") == "1" && r.Method == "POST" && r.URL.Path == "/__fixture/stop" {
+			stopOnce.Do(func() { close(stop) })
+			w.WriteHeader(200)
+			return
+		}
 		if r.URL.Path == "/__fixture/downloads" {
 			if r.Method == "POST" {
 				switch r.URL.Query().Get("action") {
@@ -67,15 +76,24 @@ func TestResourceDownloadBrowserJourney(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	node := os.Getenv("CATALOG_NODE")
-	if node == "" {
-		node = "node"
-	}
-	command := exec.CommandContext(ctx, node, "../../scripts/resource-download-browser.mjs", server.URL+f.s.prefix+"/")
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("resource download browser: %v\n%s", err, output)
+	if os.Getenv("CATALOG_REMOTE_FIXTURE") == "1" {
+		fmt.Printf("RESOURCE_DOWNLOAD_FIXTURE_URL=%s%s/\n", server.URL, f.s.prefix)
+		select {
+		case <-stop:
+		case <-ctx.Done():
+			t.Fatal("resource download fixture deadline reached")
+		}
 	} else {
-		t.Log(string(output))
+		node := os.Getenv("CATALOG_NODE")
+		if node == "" {
+			node = "node"
+		}
+		command := exec.CommandContext(ctx, node, "../../scripts/resource-download-browser.mjs", server.URL+f.s.prefix+"/")
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("resource download browser: %v\n%s", err, output)
+		} else {
+			t.Log(string(output))
+		}
 	}
 	if f.adds.Load() != 1 || f.feeds.Load() != 0 {
 		t.Fatalf("unexpected synthetic network mutations: adds=%d feeds=%d", f.adds.Load(), f.feeds.Load())
