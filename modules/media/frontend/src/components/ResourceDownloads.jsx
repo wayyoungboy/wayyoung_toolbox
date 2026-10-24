@@ -32,7 +32,7 @@ export function ResourceDownloadDialog({ selection, onClose, onRegistered, onNav
   const deadline = useRef(null);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; ++epoch.current; request.current?.abort(); window.clearTimeout(deadline.current); };
+    return () => { mounted.current = false; request.current?.abort(); window.clearTimeout(deadline.current); };
   }, []);
   const config = data?.config;
   const ready = resourceDestinationReady(config) && !loading && !configError;
@@ -80,7 +80,7 @@ export function ResourceDownloadDialog({ selection, onClose, onRegistered, onNav
     finally { if (current === epoch.current) { window.clearTimeout(deadline.current); lock.current = false; if (mounted.current) setBusy(false); } }
   };
   const closeAllowed = !busy && phase !== 'unknown';
-  return <Modal title="确认资源下载" visible width="min(680px, calc(100vw - 24px))" className="resource-download-modal" onCancel={() => { if (closeAllowed) onClose(); }} closable={closeAllowed} maskClosable={closeAllowed} closeOnEsc={closeAllowed} footer={null}>
+  return <Modal title="确认资源下载" visible width="min(680px, calc(100vw - 24px))" className="resource-download-modal" onCancel={() => { if (closeAllowed) onClose(phase === 'rejected'); }} closable={closeAllowed} maskClosable={closeAllowed} closeOnEsc={closeAllowed} footer={null}>
     <dl className="resource-download-facts">
       <div><dt>作品 / 来源</dt><dd>{selection.code} · JavDB</dd></div>
       <div><dt>选中 BTIH</dt><dd><code>{selection.infohash}</code></dd></div>
@@ -93,7 +93,7 @@ export function ResourceDownloadDialog({ selection, onClose, onRegistered, onNav
       {loading && <p role="status">正在只读核对下载目录…</p>}
       {(configError || (!loading && !ready)) && <p role="alert" className="catalog-alert">{configError || '下载目录配置无效，请先到下载入库设置核对。'} <Button onClick={refresh}>重新读取配置</Button></p>}
       <label className="resource-confirm-label">输入“下载资源”确认<input value={confirmation} disabled={busy} onChange={event => setConfirmation(event.target.value)} autoComplete="off" /></label>
-      <div className="catalog-actions"><Button disabled={busy} onClick={onClose}>返回</Button><Button theme="solid" disabled={!ready || busy || confirmation !== '下载资源'} onClick={submit}>{busy ? '正在登记…' : '确认登记下载'}</Button></div>
+      <div className="catalog-actions"><Button disabled={busy} onClick={() => onClose(false)}>返回</Button><Button theme="solid" disabled={!ready || busy || confirmation !== '下载资源'} onClick={submit}>{busy ? '正在登记…' : '确认登记下载'}</Button></div>
     </>}
     {phase === 'unknown' && <>
       <h3 role="alert">登记结果未确认</h3>
@@ -102,7 +102,7 @@ export function ResourceDownloadDialog({ selection, onClose, onRegistered, onNav
     </>}
     {phase === 'rejected' && <><h3 role="alert">登记未通过</h3><p>服务器已明确拒绝本次选择。请重新读取候选和配置，不会循环重发失效快照。</p><Button onClick={() => onClose(true)}>返回重新选择</Button></>}
     {busy && <Button onClick={stopWaiting}>停止等待</Button>}
-    {phase === 'registered' && job && <><h3 role="status">{message}</h3><p className="catalog-help">任务 #{job.id} · {queuePhaseLabel(job)} · {queueStatusLabel(job.status)}。停止本地处理不会停止 qB 下载，也不会删除文件。</p><div className="catalog-actions"><ResourceJobLink job={job} onNavigate={onNavigate} /><Button onClick={onClose}>关闭</Button></div></>}
+    {phase === 'registered' && job && <><h3 role="status">{message}</h3><p className="catalog-help">任务 #{job.id} · {queuePhaseLabel(job)} · {queueStatusLabel(job.status)}。停止本地处理不会停止 qB 下载，也不会删除文件。</p>{job.torrent_hash && job.torrent_hash !== selection.infohash && <p className="catalog-help">该作品已由其他种子处理，本次选择未投递。原任务 BTIH：<code>{job.torrent_hash}</code></p>}<div className="catalog-actions"><ResourceJobLink job={job} onNavigate={onNavigate} /><Button onClick={() => onClose(false)}>关闭</Button></div></>}
     {phase === 'unknown' && message && <p role="status">{message}</p>}
     {error && <p role="alert" className="catalog-alert">{error}</p>}
   </Modal>;
