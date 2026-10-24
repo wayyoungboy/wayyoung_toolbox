@@ -1,5 +1,5 @@
 appname               = wayyoung_toolbox
-version               = 0.7.7
+version               = 0.7.8
 display_name          = wayyoung的飞牛工具箱
 desc                  = 一个进程管理备份、硬件、影片、音乐转换和文件完整性检查。五个模块拥有独立开关和配置目录。
 arch                  = x86_64
@@ -15,4 +15,4 @@ install_type          = root
 desktop_uidir         = ui
 desktop_applaunchname = wayyoung_toolbox.main
 os_min_version        = 1.2.0401
-changelog             = 馆藏扫描改为持久后台任务：支持进度、暂停、继续、取消、重启接续；完整成功后才更新馆藏，目录或 NFO 变更时保留旧馆藏；修复关闭窗口期间完成后馆藏不刷新的问题。测试阶段，尚未实现 Peach 全功能替代。
+changelog             = 发现与采集统一 RSS 订阅和资源搜索入口；馆藏详情可按番号查询 JavDB，明确区分失败、受限、空结果和旧缓存。不自动下载、不扫描或改写影片。测试阶段，尚未实现 Peach 全功能替代。

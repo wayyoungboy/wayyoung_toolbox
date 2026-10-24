@@ -30,6 +30,18 @@ func TestResourceBrowserJourney(t *testing.T) {
 	root := t.TempDir()
 	catalogWrite(t, root, "TEST-001.mp4", "neutral non-playback sample")
 	catalogWrite(t, root, "TEST-001.nfo", "<movie><num>TEST-001</num><title>中性测试作品</title></movie>")
+	// The preserved RSS screen also reads its completed-library display cache.
+	// Give that existing tool valid neutral paths rather than ignoring a known
+	// missing-configuration 409 in browser console checks. Do not scan the path.
+	cfg, err := s.db.JavspConfigPrivate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.InputDirectory = root
+	cfg.OutputDirectory = t.TempDir()
+	if _, err := s.db.UpdateJavspConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
 	library := catalogLibrary(t, s, root)
 	catalogScan(t, s, library)
 	handler := s.Handler()
@@ -43,7 +55,11 @@ func TestResourceBrowserJourney(t *testing.T) {
 				}
 				mode.Store(int32(value))
 			}
-			writeJSON(w, 200, map[string]int32{"calls": calls.Load()})
+			busy := !s.resourceSearchMu.TryLock()
+			if !busy {
+				s.resourceSearchMu.Unlock()
+			}
+			writeJSON(w, 200, map[string]any{"calls": calls.Load(), "busy": busy})
 			return
 		}
 		r.Header.Set("X-Trim-Isadmin", "true")

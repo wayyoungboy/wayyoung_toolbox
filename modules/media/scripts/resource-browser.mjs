@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.CATALOG_PLAYWRIGHT || 'playwright');
@@ -12,10 +13,19 @@ const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await context.newPage();
 const errors = [];
+const httpFailures = [];
+page.on('response', response => { if (response.status() >= 400) httpFailures.push(`${response.request().method()} ${response.status()} ${response.url()}`); });
 page.on('pageerror', error => errors.push(error.message));
 page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
 const fixture = mode => fetch(new URL(`/__fixture/resources${mode === undefined ? '' : `?mode=${mode}`}`, base), { method: mode === undefined ? 'GET' : 'POST' }).then(response => response.json());
 const visible = async (text, scope = page) => { await scope.getByText(text, { exact: false }).first().waitFor({ state: 'visible' }); };
+const untilFixture = async predicate => {
+  for (const deadline = Date.now() + 3000; Date.now() < deadline;) {
+    if (predicate(await fixture())) return;
+    await delay(20);
+  }
+  throw new Error('fixture did not reach expected query lifecycle');
+};
 const entry = `${base}?page=resources&code=TEST-001`;
 try {
   await page.goto(entry);
@@ -56,10 +66,15 @@ try {
   assert.equal(await page.getByRole('button', { name: '搜索 JavDB', exact: true }).isEnabled(), false);
   await page.getByLabel('完整番号', { exact: true }).fill('TEST-001');
   await fixture(3);
+  const beforeCancel = (await fixture()).calls;
   await page.getByRole('button', { name: '搜索 JavDB', exact: true }).click();
   await visible('正在查询 JavDB');
+  await untilFixture(state => state.busy && state.calls > beforeCancel);
   await page.getByRole('button', { name: '取消查询', exact: true }).click();
   await visible('已停止等待');
+  // Wait for the actual server-side cancellation before starting the separate
+  // empty-result case; do not silently retry a concurrent 409 as a success.
+  await untilFixture(state => !state.busy);
   await fixture(2);
   await page.getByRole('button', { name: '搜索 JavDB', exact: true }).click();
   await visible('详情页未提供可用磁力');
@@ -81,7 +96,7 @@ try {
   await page.getByRole('tab', { name: '资源搜索', exact: true }).click();
   await page.getByRole('heading', { name: '资源搜索', exact: true }).waitFor();
   assert.equal((await fixture()).calls, count, 'tab navigation contacted provider');
-  assert.deepEqual(errors, []);
+  assert.deepEqual(errors, [], JSON.stringify(httpFailures));
   console.log('PASS: resource entry → explicit search → cache/stale/reload → mobile/dark → cancel/empty → catalog detail; Browser plugin not available; local Playwright, actual HTTP/SQLite and synthetic provider only.');
 } finally {
   await context.close(); await browser.close();
