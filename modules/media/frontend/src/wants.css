@@ -6,7 +6,7 @@
 .want-code { font: 12px ui-monospace, monospace; color: var(--subtle-text); }
 .want-phase { flex-shrink: 0; font-size: 12px; padding: 5px 9px; border-radius: 20px; color: var(--subtle-text); background: var(--surface-soft); }
 .want-phase-searching { color: var(--status-running); }
-.want-phase-acquired { color: var(--status-success); }
+.want-phase-acquired { color: var(--status-ok); }
 .want-facts { display: grid; gap: 10px; margin: 18px 0; font-size: 12px; line-height: 1.6; }
 .want-facts > div { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; }
 .want-facts dt { color: var(--subtle-text); }
@@ -18,7 +18,7 @@
 .wants-add h2 { margin: 0; font-size: 17px; }
 .wants-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .wants-form label,.wants-search { display: grid; gap: 8px; font-size: 13px; color: var(--subtle-text); }
-.wants-form input,.wants-search input { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; background: var(--surface); color: var(--text); font: inherit; }
+.wants-form input,.wants-search input { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; background: var(--surface); color: inherit; font: inherit; }
 .wants-form input:focus-visible,.wants-search input:focus-visible,.want-filters button:focus-visible { outline: 2px solid var(--app-blue); outline-offset: 2px; }
 .wants-toolbar { display: grid; gap: 18px; margin: 24px 0; }
 .wants-toolbar form { display: flex; align-items: flex-end; gap: 12px; }

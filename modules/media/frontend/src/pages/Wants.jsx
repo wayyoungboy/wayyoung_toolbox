@@ -24,6 +24,14 @@ function metadata(form) {
   return { title: form.title.trim(), release_date: form.release_date, studio: form.studio.trim(), actors: form.actors.split(/[,，、\n]/).map(value => value.trim()).filter(Boolean) };
 }
 
+function consumePrefill() {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('page') === 'subscriptions' && url.searchParams.get('tab') === 'wants' && url.searchParams.has('code')) {
+    url.searchParams.delete('code');
+    window.history.replaceState(null, '', url);
+  }
+}
+
 export function WantCard({ want, disabled, onNavigate, onEdit, onState, onRemove }) {
   const acquired = want.state === 'acquired';
   const searchable = !acquired && want.phase !== 'unreleased' && want.state !== 'given_up';
@@ -95,40 +103,68 @@ export default function Wants({ initial = {}, onNavigate }) {
   const [search, setSearch] = useState(query), [adding, setAdding] = useState(Boolean(initial.code));
   const [form, setForm] = useState({ ...emptyForm, code: (initial.code || '').slice(0, 128) });
   const [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(false), [notice, setNotice] = useState(''), [editing, setEditing] = useState(null);
-  const lock = useRef(false), request = useRef(null), alive = useRef(false);
+  const lock = useRef(false), request = useRef(null), alive = useRef(false), pendingAdd = useRef('');
   const load = useCallback(signal => api.wants({ query, phase, offset, signal }), [query, phase, offset]);
   const { data, loading, error, refresh } = useRemoteResource(load);
   useEffect(() => { alive.current = true; return () => { alive.current = false; request.current?.abort(); }; }, []);
+  useEffect(() => {
+    if (!data || loading || error) return;
+    const lastOffset = Math.max(0, Math.ceil(data.total / 48) - 1) * 48;
+    if (offset > lastOffset) onNavigate('subscriptions', 'wants', null, { query, view: phase, offset: lastOffset ? String(lastOffset) : '' });
+  }, [data, loading, error, offset, onNavigate, query, phase]);
   const disabled = busy || loading || uncertain || Boolean(error) || Boolean(editing);
   const filter = (view, nextOffset = 0, nextQuery = query) => { if (!busy) onNavigate('subscriptions', 'wants', null, { view, query: nextQuery, offset: nextOffset ? String(nextOffset) : '' }); };
-  const act = async (action, success, after) => {
+  const act = async (action, success, after, code = '') => {
     if (lock.current || disabled) return;
     lock.current = true; setBusy(true); setNotice('');
     const controller = new AbortController(); request.current = controller;
     const deadline = window.setTimeout(() => controller.abort(), 30000);
     try {
       const result = await action(controller.signal);
-      if (alive.current) { setNotice(typeof success === 'function' ? success(result) : success); after?.(); refresh(); }
+      if (alive.current) { pendingAdd.current = ''; setNotice(typeof success === 'function' ? success(result) : success); after?.(); refresh(); }
     } catch (failure) {
-      if (alive.current) { setUncertain(true); setNotice(`${failure.status === 409 ? '资料版本或状态已变化' : '结果尚未确认'}：${failure.message}；没有自动重试。请刷新清单核对后再操作。`); }
+      if (alive.current) { pendingAdd.current = code; setUncertain(true); setNotice(`${failure.status === 409 ? '资料版本或状态已变化' : '结果尚未确认'}：${failure.message}；没有自动重试。请刷新清单核对后再操作。`); }
     } finally { window.clearTimeout(deadline); lock.current = false; if (alive.current) setBusy(false); }
   };
   const add = event => {
     event.preventDefault();
     const code = form.code.trim().toUpperCase();
-    act(signal => api.wantAdd({ code, ...metadata(form) }, { signal }), value => value.created ? '已登记想要，没有提交下载。' : '清单已存在，保留原有资料，没有覆盖。', () => { setAdding(false); setForm(emptyForm); });
+    act(signal => api.wantAdd({ code, ...metadata(form) }, { signal }), value => value.created ? '已登记想要，没有提交下载。' : '清单已存在，保留原有资料，没有覆盖。', () => { consumePrefill(); setAdding(false); setForm(emptyForm); }, code);
   };
   const changeState = want => act(signal => api.wantPatch(want.id, { version: want.version, state: want.state === 'given_up' ? 'wanted' : 'given_up' }, { signal }), '想要状态已更新，没有改变已有下载。');
   const remove = want => {
     if (disabled || !window.confirm(`移除想要“${want.code}”？只移除清单记录，不删除影片、不取消下载，也不删除观看记录。`)) return;
     act(signal => api.wantRemove(want.id, want.version, { signal }), '已移出想要清单，影片和下载任务保持不变。', () => { if (data?.items.length === 1 && offset > 0) filter(phase, Math.max(0, offset - 48)); });
   };
-  const reread = () => { if (busy) return; setUncertain(false); setAdding(false); setForm(emptyForm); setNotice('正在只读核对清单，没有重新提交操作。'); refresh(); };
+  const reread = async () => {
+    if (lock.current || busy) return;
+    if (!pendingAdd.current) { setUncertain(false); setNotice('已发起只读刷新，没有重新提交操作。'); refresh(); return; }
+    const code = pendingAdd.current;
+    lock.current = true; setBusy(true);
+    const controller = new AbortController(); request.current = controller;
+    const deadline = window.setTimeout(() => controller.abort(), 30000);
+    try {
+      // Reconcile the submitted identity, not the currently filtered page. A
+      // missing result never automatically causes another POST.
+      const result = await api.wants({ query: code, signal: controller.signal });
+      if (!alive.current) return;
+      const found = result.items.some(want => want.code === code);
+      pendingAdd.current = ''; setUncertain(false);
+      if (found) {
+        consumePrefill();
+        onNavigate('subscriptions', 'wants', null, { query: code });
+      } else {
+        setNotice(`尚未找到 ${code}，不能断言原请求没有生效；保留原番号供你再次确认，没有自动重试。`);
+        setAdding(true); refresh();
+      }
+    } catch (failure) { if (alive.current) setNotice(`核对 ${code} 失败：${failure.message}；仍未解锁原操作，没有自动重试。`); }
+    finally { window.clearTimeout(deadline); lock.current = false; if (alive.current) setBusy(false); }
+  };
   return <section className="page catalog-page wants-page">
     <header className="page-header"><div><h1>想要清单</h1><p>先登记想找的作品，再搜索资源；与馆藏的“稍后观看”分开。</p></div><div className="catalog-actions"><Button disabled={disabled} theme="solid" onClick={() => setAdding(value => !value)}>添加想要</Button><Button disabled={busy || loading || Boolean(editing)} onClick={reread}>刷新清单</Button></div></header>
-    <p className="catalog-help">登记、筛选或刷新只读本地资料，不自动访问外站、投递下载或扫描媒体。已入库状态由实际文件登记确认；元数据自动补齐和演员新作发现尚未接入此清单。</p>
+    <p className="catalog-help">登记只写入本地清单，筛选与刷新只读本地资料；不自动访问外站、投递下载或扫描媒体。已入库状态由实际文件登记确认；元数据自动补齐和演员新作发现尚未接入此清单。</p>
     {notice && <p className={uncertain ? 'catalog-alert' : 'catalog-notice'} role="status">{notice}</p>}
-    {adding && <form className="wants-form wants-add" onSubmit={add} aria-label="添加想要作品"><h2>登记作品</h2><label>想要的完整番号<input aria-label="想要的完整番号" required maxLength={128} value={form.code} disabled={busy || uncertain} autoComplete="off" spellCheck="false" placeholder="例如 TEST-001 / FC2-1234567" onChange={event => setForm(value => ({ ...value, code: event.target.value }))} /></label><MetadataFields form={form} setForm={setForm} disabled={busy || uncertain} /><p className="catalog-help">请保留完整前缀，不会猜测或修复缺失的番号。资料可留空，稍后手动补充。</p><div className="catalog-actions"><Button htmlType="submit" theme="solid" disabled={disabled || !form.code.trim()}>登记想要</Button><Button disabled={busy} onClick={() => setAdding(false)}>取消登记</Button></div></form>}
+    {adding && <form className="wants-form wants-add" onSubmit={add} aria-label="添加想要作品"><h2>登记作品</h2><label>想要的完整番号<input aria-label="想要的完整番号" required maxLength={128} value={form.code} disabled={busy || uncertain} autoComplete="off" spellCheck="false" placeholder="例如 TEST-001 / FC2-1234567" onChange={event => setForm(value => ({ ...value, code: event.target.value }))} /></label><MetadataFields form={form} setForm={setForm} disabled={busy || uncertain} /><p className="catalog-help">请保留完整前缀，不会猜测或修复缺失的番号。资料可留空，稍后手动补充。</p><div className="catalog-actions"><Button htmlType="submit" theme="solid" disabled={disabled || !form.code.trim()}>登记想要</Button><Button disabled={busy || uncertain} onClick={() => { consumePrefill(); setAdding(false); }}>取消登记</Button></div></form>}
     <div className="wants-toolbar"><form onSubmit={event => { event.preventDefault(); filter(phase, 0, search); }}><label className="wants-search">搜索想要清单<input aria-label="搜索想要清单" type="search" maxLength={500} value={search} disabled={busy} placeholder="番号、标题、演员或厂牌" onChange={event => setSearch(event.target.value)} /></label><Button htmlType="submit" disabled={busy || loading}>筛选清单</Button></form><div className="want-filters" aria-label="想要阶段筛选">{[['', '全部'], ...Object.entries(phases)].map(([key, label]) => <button type="button" key={key} aria-pressed={phase === key} disabled={busy || loading} onClick={() => filter(key)}>{label}<span>{data ? key ? data.counts[key] : Object.values(data.counts).reduce((sum, n) => sum + n, 0) : '—'}</span></button>)}</div></div>
     {error && <p role="alert" className="catalog-alert">清单暂不可读：{error}。没有提交下载或自动重试。</p>}
     {loading && !data && <p role="status" className="catalog-loading">正在读取想要清单…</p>}
