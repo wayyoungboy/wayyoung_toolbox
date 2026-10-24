@@ -136,3 +136,24 @@ func TestCatalogScanAPIRequiresAdministratorCSRFAndSameOrigin(t *testing.T) {
 		})
 	}
 }
+
+func TestCatalogScanAPILibraryHistoryCannotBeHiddenByOtherLibraries(t *testing.T) {
+	s := testService(t)
+	first := catalogLibrary(t, s, registrationRoot(t))
+	second := catalogLibrary(t, s, registrationRoot(t))
+	job := startCatalogScan(t, s, first.ID)
+	startCatalogScan(t, s, second.ID)
+	response := catalogRequest(t, s, "GET", fmt.Sprintf("/api/catalog/libraries/%d/scans?limit=1", first.ID), nil)
+	if response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var page struct {
+		Items []catalog.ScanJob `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.Items[0].ID != job.ID {
+		t.Fatalf("wrong library scan history: %+v %v", page, err)
+	}
+	if response := catalogRequest(t, s, "GET", "/api/catalog/libraries/99999/scans", nil); response.Code != 404 {
+		t.Fatalf("unknown library history=%d", response.Code)
+	}
+}
