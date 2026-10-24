@@ -86,6 +86,10 @@ func validateLibraryRoot(rootPath string) (Library, error) {
 }
 
 func (s *Store) AddLibrary(ctx context.Context, name, rootPath string) (Library, error) {
+	if !s.scanMu.TryLock() {
+		return Library{}, ErrBusy
+	}
+	defer s.scanMu.Unlock()
 	name = strings.TrimSpace(name)
 	if name == "" || utf8.RuneCountInString(name) > 160 || !utf8.ValidString(name) {
 		return Library{}, ErrInvalid
