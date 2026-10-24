@@ -146,11 +146,11 @@ func TestCatalogScanJobOnlySuccessfulInventoryMarksMissing(t *testing.T) {
 	}
 	writeIntakeFixture(t, root, map[string]string{"NEW-001.mp4": "new", "NEW-002.mp4": "other"})
 	job := checkpointCatalogScan(t, s, claimCatalogScan(t, s, startCatalogScan(t, s, lib.ID)), 1)
-	if got := catalogDetail(t, s, old.ID); got.AvailableCount != 1 {
+	if got, err := s.db.catalog.Work(context.Background(), old.ID); err != nil || got.AvailableCount != 1 {
 		t.Fatal("partial scan marked old asset missing")
 	}
 	job = finishCatalogScan(t, s, job)
-	if got := catalogDetail(t, s, old.ID); got.AvailableCount != 0 || job.Result.Assets != 2 {
+	if got, err := s.db.catalog.Work(context.Background(), old.ID); err != nil || got.AvailableCount != 0 || job.Result.Assets != 2 {
 		t.Fatal("successful scan did not reconcile missing assets")
 	}
 }
@@ -200,6 +200,7 @@ func TestCatalogScanJobRejectsChangedFilesSidecarsAndRootWithoutSweeping(t *test
 				if err := os.Mkdir(root, 0o700); err != nil {
 					t.Fatal(err)
 				}
+				t.Cleanup(func() { if err := os.Remove(root); err != nil { t.Error(err); return }; if err := os.Rename(root+"-original", root); err != nil { t.Error(err) } })
 			}
 			for range 100 {
 				var err error
