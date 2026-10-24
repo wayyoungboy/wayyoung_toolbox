@@ -21,11 +21,13 @@ type rssExecutionFixture struct {
 	job                                              MediaJob
 	present, reject, lookupFails, failLookupAfterAdd atomic.Bool
 	adds, queries                                    atomic.Int32
+	addedOn                                          atomic.Int64
 }
 
 func newRSSExecutionFixture(t *testing.T) *rssExecutionFixture {
 	t.Helper()
 	f := &rssExecutionFixture{s: testService(t), posted: make(chan struct{}, 1), unblockAdd: make(chan struct{}), savePaths: make(chan string, 16)}
+	f.addedOn.Store(1700000000)
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/feed":
@@ -40,7 +42,7 @@ func newRSSExecutionFixture(t *testing.T) *rssExecutionFixture {
 				return
 			}
 			if f.present.Load() {
-				fmt.Fprint(w, `[{"hash":"0123456789abcdef0123456789abcdef01234567","added_on":1700000000,"name":"TEST-001","content_path":"/downloads/TEST-001.mp4","progress":0.5,"amount_left":100,"state":"downloading"}]`)
+				fmt.Fprintf(w, `[{"hash":"0123456789abcdef0123456789abcdef01234567","added_on":%d,"name":"TEST-001","content_path":"/downloads/TEST-001.mp4","progress":0.5,"amount_left":100,"state":"downloading"}]`, f.addedOn.Load())
 			} else {
 				fmt.Fprint(w, "[]")
 			}

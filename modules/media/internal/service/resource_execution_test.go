@@ -12,6 +12,7 @@ import (
 func newResourceExecutionFixture(t *testing.T) *rssExecutionFixture {
 	t.Helper()
 	f := newRSSExecutionFixture(t)
+	f.addedOn.Store(time.Now().Unix())
 	if _, err := f.s.db.CancelMediaJob(f.job.ID, f.job.Version); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +53,7 @@ func TestResourceExecutionUsesIndependentProducerAndDirectQB(t *testing.T) {
 			if present {
 				wantAdds = 0
 			}
-			if job.Status != "pending" || job.Phase != "download" || job.TorrentAddedOn != 1700000000 || job.RSSID != 0 || job.Discovery != nil || job.Resource == nil || f.adds.Load() != wantAdds || f.feeds.Load() != 0 {
+			if job.Status != "pending" || job.Phase != "download" || job.TorrentAddedOn != f.addedOn.Load() || job.RSSID != 0 || job.Discovery != nil || job.Resource == nil || f.adds.Load() != wantAdds || f.feeds.Load() != 0 {
 				t.Fatalf("independent execution: %+v posts=%d", job, f.adds.Load())
 			}
 			if !present {
@@ -89,11 +90,6 @@ func TestResourceExecutionUnknownOutcomeSurvivesRestartWithoutRepost(t *testing.
 	if f.adds.Load() != 1 || job.Status != "needs_attention" {
 		t.Fatalf("unknown POST repeated: %+v", job)
 	}
-	// The synthetic downloader reports a historical AddedOn; align its durable
-	// dispatch receipt, not the test machine's clock, before late visibility.
-	if _, err := f.s.db.db.Exec("UPDATE media_job_events SET created_at=? WHERE job_id=? AND reason='submission_dispatching'", time.Unix(1700000000, 0).UTC().Format(time.RFC3339), job.ID); err != nil {
-		t.Fatal(err)
-	}
 	f.present.Store(true)
 	if err := f.s.refreshQueuedDownloads(context.Background()); err != nil {
 		t.Fatal(err)
@@ -101,6 +97,24 @@ func TestResourceExecutionUnknownOutcomeSurvivesRestartWithoutRepost(t *testing.
 	job, err := f.s.db.MediaJob(job.ID)
 	if err != nil || job.Phase != "download" || job.Status != "pending" || f.adds.Load() != 1 {
 		t.Fatalf("late observation failed: %+v %v", job, err)
+	}
+}
+
+func TestResourceExecutionRetryRejectsLaterReaddedGeneration(t *testing.T) {
+	f := newResourceExecutionFixture(t)
+	f.failLookupAfterAdd.Store(true)
+	job := resourceDrain(t, f)
+	if job.Status != "needs_attention" {
+		t.Fatal(job.Status)
+	}
+	f.lookupFails.Store(false)
+	f.addedOn.Add(int64(rssJobTimeout/time.Second) + 60)
+	if _, err := f.s.db.RetryMediaJob(job.ID, job.Version); err != nil {
+		t.Fatal(err)
+	}
+	job = resourceDrain(t, f)
+	if job.Status != "needs_attention" || job.Phase != "discovered" || job.TorrentAddedOn != 0 || f.adds.Load() != 1 {
+		t.Fatalf("adopted readded task: %+v", job)
 	}
 }
 
