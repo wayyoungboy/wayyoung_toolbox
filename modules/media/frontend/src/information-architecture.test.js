@@ -46,6 +46,7 @@ describe('native information architecture', () => {
     expect(resolveDestination('people')).toEqual({page:'people',tab:''});
     expect(resolveDestination('resources')).toEqual({page:'subscriptions',tab:'resources'});
     expect(resolveDestination('subscriptions','resources')).toEqual({page:'subscriptions',tab:'resources'});
+    expect(resolveDestination('subscriptions','wants')).toEqual({page:'subscriptions',tab:'wants'});
     expect(resolveDestination('personal','lists')).toEqual({page:'personal',tab:'lists'});
     expect(resolveDestination('personal','taste')).toEqual({page:'personal',tab:'taste'});
   });
