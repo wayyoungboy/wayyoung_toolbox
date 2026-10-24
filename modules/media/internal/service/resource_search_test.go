@@ -42,6 +42,12 @@ func resourceServiceFixture(t *testing.T) (*Service, *atomic.Int32, *atomic.Int3
 		if mode.Load() != 2 {
 			links = `<div class="magnet-name column is-four-fifths"><a href="magnet:?xt=urn:btih:` + resourceTestHash + `&amp;dn=Example&amp;tr=https://tracker.invalid/passkey/secret">download</a></div>`
 		}
+		if mode.Load() == 4 {
+			links = ""
+			for i := 1; i <= 50; i++ {
+				links += fmt.Sprintf(`<div class="magnet-name column is-four-fifths"><a href="magnet:?xt=urn:btih:%040x&amp;dn=%s">download</a></div>`, i, strings.Repeat("%26", 500))
+			}
+		}
 		fmt.Fprint(w, `<html><body><section><div><div class="video-detail"><h2><strong class="current-title">TEST-001 Sample</strong></h2><nav class="panel movie-panel-info"><div><strong>番號:</strong><span>TEST-001</span></div></nav>`+links+`</div></div></section></body></html>`)
 	}))
 	t.Cleanup(server.Close)
@@ -228,6 +234,19 @@ func TestResourceSearchRejectsInvalidCacheWritesAndOversizedRead(t *testing.T) {
 	cancel()
 	if _, err := s.db.cachedResources(ctx, "TEST-001", "javdb"); err == nil {
 		t.Fatal("cache ignored cancellation")
+	}
+}
+
+func TestResourceSearchSerializationBudgetAcceptsBoundedHTMLCharacters(t *testing.T) {
+	s, mode, _ := resourceServiceFixture(t)
+	mode.Store(4)
+	got := resourceResponse(t, s, "POST", "/api/resources/search", map[string]string{"code": "TEST-001", "provider": "javdb"}, 200)
+	if got["state"] != "ready" || len(got["items"].([]any)) != 50 {
+		t.Fatal("bounded source results lost", got["state"])
+	}
+	got = resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-001&provider=javdb", nil, 200)
+	if got["cached"] != true || len(got["items"].([]any)) != 50 {
+		t.Fatal("cache roundtrip lost candidates")
 	}
 }
 
