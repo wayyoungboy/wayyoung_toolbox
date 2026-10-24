@@ -201,22 +201,27 @@ func TestCatalogRegistrationDoesNotFallBackFromChangedSpecificRoot(t *testing.T)
 }
 
 func TestCatalogRegistrationRejectsAmbiguousMoveReceipts(t *testing.T) {
-	for _, mode := range []string{"existing-target", "reused-source"} {
+	for _, mode := range []string{"existing-target", "legacy-target", "reused-source"} {
 		t.Run(mode, func(t *testing.T) {
 			s := testService(t)
 			root := registrationRoot(t)
 			source, target := filepath.Join(root, "TEST-001.mp4"), filepath.Join(root, "TEST-001-C.mp4")
 			catalogWrite(t, root, "TEST-001.mp4", "video")
 			lib := catalogLibrary(t, s, root)
-			if mode == "existing-target" {
+			if mode != "reused-source" {
 				if err := os.Link(source, target); err != nil {
 					t.Fatal(err)
 				}
 			}
 			catalogScan(t, s, lib)
+			if mode == "legacy-target" {
+				if _, err := s.db.db.Exec("UPDATE catalog_assets SET file_identity='' WHERE library_id=? AND path='TEST-001-C.mp4'", lib.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
 			proof := registrationTarget(t, source)
 			proof.Path, proof.PreviousPath = target, source
-			if mode == "existing-target" {
+			if mode != "reused-source" {
 				if err := os.Remove(source); err != nil {
 					t.Fatal(err)
 				}
@@ -244,6 +249,40 @@ func TestCatalogRegistrationRejectsAmbiguousMoveReceipts(t *testing.T) {
 				t.Fatalf("conflicting proof changed catalog: %v", err)
 			}
 		})
+	}
+}
+
+func TestCatalogRegistrationCrossLibraryMetadataConflictIsDeterministic(t *testing.T) {
+	s := testService(t)
+	first, second := registrationRoot(t), registrationRoot(t)
+	for index, root := range []string{first, second} {
+		catalogLibrary(t, s, root)
+		catalogWrite(t, root, "TEST-001.mp4", "video")
+		title := []string{"Alpha title", "Beta title"}[index]
+		catalogWrite(t, root, "TEST-001.nfo", "<movie><title>"+title+"</title></movie>")
+	}
+	targets := []catalog.RegistrationTarget{registrationTarget(t, filepath.Join(first, "TEST-001.mp4")), registrationTarget(t, filepath.Join(second, "TEST-001.mp4"))}
+	for i := 0; i < 3; i++ {
+		if _, err := s.db.catalog.RegisterFiles(context.Background(), targets, nil); err != nil {
+			t.Fatal(err)
+		}
+		works := catalogWorks(t, s, "")
+		if len(works) != 1 || works[0].Title != "Alpha title" {
+			t.Fatalf("non-deterministic metadata selection: %+v", works)
+		}
+		detail := catalogDetail(t, s, works[0].ID)
+		conflicts := 0
+		for _, asset := range detail.Assets {
+			for _, issue := range asset.Issues {
+				if issue == "metadata_conflict" {
+					conflicts++
+				}
+			}
+		}
+		if conflicts == 0 {
+			t.Fatal("cross-library metadata conflict was hidden")
+		}
+		targets[0], targets[1] = targets[1], targets[0]
 	}
 }
 
