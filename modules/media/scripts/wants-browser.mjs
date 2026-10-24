@@ -31,6 +31,11 @@ try {
   await visible('还没有登记想要的作品');
   assert.deepEqual(await fixture(), { wants: 0, jobs: 0, assets: 0, adds: 0, feeds: 0 });
   await page.getByRole('button', { name: '添加想要', exact: true }).click();
+  await page.getByLabel('想要的完整番号', { exact: true }).fill('646-C');
+  await page.getByRole('button', { name: '登记想要', exact: true }).click();
+  await visible('登记未通过');
+  assert.equal(await page.getByLabel('想要的完整番号', { exact: true }).isEnabled(), true, 'known invalid input must remain correctable');
+  assert.equal((await fixture()).wants, 0);
   await page.getByLabel('想要的完整番号', { exact: true }).fill('test-002');
   await page.getByLabel('作品标题（可选）', { exact: true }).fill('Neutral future title');
   await page.getByLabel('发行日期（可选）', { exact: true }).fill('2099-01-01');
