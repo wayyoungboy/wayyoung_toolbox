@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	javspengine "github.com/yuukiy/javsp-go/engine"
 )
 
 const resourceTestHash = "0123456789abcdef0123456789abcdef01234567"
@@ -92,8 +94,8 @@ func TestResourceSearchAPICacheFailureAndNoAutomation(t *testing.T) {
 		t.Fatal("failure destroyed or mislabeled cache", got)
 	}
 	got = resourceResponse(t, s, "GET", query, nil, 200)
-	if got["state"] != "ready" || got["searched_at"] != successTime {
-		t.Fatal("failure overwrote last success", got)
+	if got["state"] != "blocked" || got["searched_at"] != successTime || got["stale"] != true {
+		t.Fatal("last failed attempt lost on cache read", got)
 	}
 	mode.Store(2)
 	got = resourceResponse(t, s, "POST", "/api/resources/search", body, 200)
@@ -149,11 +151,41 @@ func TestResourceSearchAPIValidationAndAuthorizationBeforeHTTP(t *testing.T) {
 	for _, body := range []map[string]any{{"code": "-646", "provider": "javdb"}, {"code": "TEST-001 extra", "provider": "javdb"}, {"code": "TEST-001", "provider": "other"}, {"code": "TEST-001", "provider": "javdb", "url": "https://internal.invalid"}} {
 		resourceResponse(t, s, "POST", "/api/resources/search", body, 400)
 	}
-	for _, query := range []string{"?code=-646&provider=javdb", "?code=TEST-001&provider=other", "?code=TEST-001&provider=javdb&url=x", "?code=TEST-001&code=OTHER-001&provider=javdb"} {
+	for _, query := range []string{"?code=-646&provider=javdb", "?code=TEST-001&provider=other", "?code=TEST-001&provider=javdb&url=x", "?code=TEST-001&code=OTHER-001&provider=javdb", "?code=TEST-001&provider=javdb&bad=%zz"} {
 		resourceResponse(t, s, "GET", "/api/resources/search"+query, nil, 400)
 	}
 	if calls.Load() != 0 {
 		t.Fatal("unauthorized/invalid request reached remote site")
+	}
+}
+
+func TestResourceSearchCacheBudgetAndAtomicFailure(t *testing.T) {
+	s, mode, _ := resourceServiceFixture(t)
+	for i := 0; i < 200; i++ {
+		code := fmt.Sprintf("TEST-%03d", i+100)
+		result := javspengine.ResourceSearchResult{Code: code, Provider: "javdb", State: "empty", Items: []javspengine.ResourceCandidate{}}
+		if _, err := s.db.saveResources(context.Background(), result); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := map[string]string{"code": "TEST-001", "provider": "javdb"}
+	resourceResponse(t, s, "POST", "/api/resources/search", body, 200)
+	var n int
+	if err := s.db.db.QueryRow("SELECT COUNT(*) FROM resource_search_cache").Scan(&n); err != nil || n != 200 {
+		t.Fatal("unbounded cache", n, err)
+	}
+	got := resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-100&provider=javdb", nil, 200)
+	if got["state"] != "not_searched" {
+		t.Fatal("oldest cache entry not evicted", got)
+	}
+	if _, err := s.db.db.Exec(`CREATE TRIGGER fail_resource BEFORE UPDATE ON resource_search_cache BEGIN SELECT RAISE(ABORT,'injected'); END`); err != nil {
+		t.Fatal(err)
+	}
+	mode.Store(2)
+	resourceResponse(t, s, "POST", "/api/resources/search", body, 500)
+	got = resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-001&provider=javdb", nil, 200)
+	if got["state"] != "ready" || len(got["items"].([]any)) != 1 {
+		t.Fatal("cache partially replaced", got)
 	}
 }
 
