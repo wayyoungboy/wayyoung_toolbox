@@ -184,3 +184,21 @@ func TestWantHistoricalReceiptCannotClaimRehomedAssetStillMatches(t *testing.T) 
 		t.Fatal("historical receipt incorrectly matches another work", got)
 	}
 }
+
+func TestWantReconciliationDoesNotCapFullLibraryPublicationAtRegistrationBatchSize(t *testing.T) {
+	s := testService(t)
+	want := addWant(t, s, "TEST-11000")
+	root := registrationRoot(t)
+	for i := 10000; i <= 11000; i++ {
+		catalogWrite(t, root, fmt.Sprintf("TEST-%d.mp4", i), "neutral video")
+	}
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	if got := readWant(t, s, want["id"]); got["state"] != "acquired" {
+		t.Fatal(got)
+	}
+	var count int
+	if err := s.db.db.QueryRow("SELECT COUNT(*) FROM catalog_assets WHERE available=1").Scan(&count); err != nil || count != 1001 {
+		t.Fatalf("large library publication: %d %v", count, err)
+	}
+}
