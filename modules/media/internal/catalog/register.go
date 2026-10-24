@@ -224,7 +224,7 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 				return result, err
 			}
 			if oldID != "" {
-				err = tx.QueryRowContext(ctx, "SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND file_identity=? ORDER BY id LIMIT 1", item.library.ID, asset.Path, asset.FileIdentity).Scan(&destinationID)
+				err = tx.QueryRowContext(ctx, "SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND (file_identity=? OR (file_identity='' AND size=? AND modified_ns=?)) ORDER BY id LIMIT 1", item.library.ID, asset.Path, asset.FileIdentity, asset.Size, asset.ModifiedNS).Scan(&destinationID)
 				if err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return result, err
 				}
@@ -238,10 +238,10 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 	}
 	transfers := map[string]map[string]bool{}
 	stamp, token := timestamp(), rand.Text()
+	if _, err := s.publishAssets(ctx, tx, batches, stamp, token, transfers); err != nil {
+		return result, err
+	}
 	for libraryID, assets := range batches {
-		if _, err := s.publishAssets(ctx, tx, libraryID, assets, stamp, token, transfers); err != nil {
-			return result, err
-		}
 		result.LibraryIDs = append(result.LibraryIDs, libraryID)
 		for _, asset := range assets {
 			// Reconcile generations only for this exact output path; this is not

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -256,7 +257,7 @@ func (s *Store) Scan(ctx context.Context, id int64) (result ScanResult, resultEr
 	defer tx.Rollback()
 	stamp, token := timestamp(), rand.Text()
 	transfers := map[string]map[string]bool{}
-	workCount, err := s.publishAssets(ctx, tx, library.ID, assets, stamp, token, transfers)
+	workCount, err := s.publishAssets(ctx, tx, map[int64][]discoveredAsset{library.ID: assets}, stamp, token, transfers)
 	if err != nil {
 		return result, err
 	}
@@ -453,64 +454,73 @@ func (s *Store) inspectAsset(root *os.Root, libraryID int64, relative string, in
 
 // publishAssets only upserts its explicit batch; missing-file reconciliation is
 // deliberately owned by the successful full-inventory caller.
-func (s *Store) publishAssets(ctx context.Context, tx *sql.Tx, libraryID int64, assets []discoveredAsset, stamp, token string, transfers map[string]map[string]bool) (int, error) {
+func (s *Store) publishAssets(ctx context.Context, tx *sql.Tx, batches map[int64][]discoveredAsset, stamp, token string, transfers map[string]map[string]bool) (int, error) {
 	works := map[string]metadata{}
-	for index := range assets {
-		asset := &assets[index]
-		// Preserve IDs from the pre-fingerprint schema only when its recorded
-		// size/mtime match. Subsequent replacements always get a new generation.
-		var legacyID string
-		legacyErr := tx.QueryRowContext(ctx, `SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND file_identity='' AND size=? AND modified_ns=? ORDER BY id LIMIT 1`, libraryID, asset.Path, asset.Size, asset.ModifiedNS).Scan(&legacyID)
-		if legacyErr != nil && !errors.Is(legacyErr, sql.ErrNoRows) {
-			return 0, legacyErr
-		}
-		if legacyID != "" {
-			asset.ID = legacyID
-			if asset.Metadata.Code == "" {
-				asset.WorkID = stableID("unknown", asset.ID)
+	libraryIDs := make([]int64, 0, len(batches))
+	for libraryID := range batches {
+		libraryIDs = append(libraryIDs, libraryID)
+	}
+	sort.Slice(libraryIDs, func(i, j int) bool { return libraryIDs[i] < libraryIDs[j] })
+	for _, libraryID := range libraryIDs {
+		assets := batches[libraryID]
+		sort.Slice(assets, func(i, j int) bool { return assets[i].Path < assets[j].Path })
+		for index := range assets {
+			asset := &assets[index]
+			// Preserve IDs from the pre-fingerprint schema only when its recorded
+			// size/mtime match. Subsequent replacements always get a new generation.
+			var legacyID string
+			legacyErr := tx.QueryRowContext(ctx, `SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND file_identity='' AND size=? AND modified_ns=? ORDER BY id LIMIT 1`, libraryID, asset.Path, asset.Size, asset.ModifiedNS).Scan(&legacyID)
+			if legacyErr != nil && !errors.Is(legacyErr, sql.ErrNoRows) {
+				return 0, legacyErr
 			}
-		} else {
-			// Migrated IDs remain stable after their first fingerprinted scan.
-			var existingID string
-			existingErr := tx.QueryRowContext(ctx, `SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND file_identity=? ORDER BY id LIMIT 1`, libraryID, asset.Path, asset.FileIdentity).Scan(&existingID)
-			if existingErr != nil && !errors.Is(existingErr, sql.ErrNoRows) {
-				return 0, existingErr
-			}
-			if existingID != "" {
-				asset.ID = existingID
+			if legacyID != "" {
+				asset.ID = legacyID
 				if asset.Metadata.Code == "" {
 					asset.WorkID = stableID("unknown", asset.ID)
 				}
-			}
-		}
-		if asset.Metadata.Code == "" {
-			var oldID, oldCode string
-			var oldSize, oldModified int64
-			oldErr := tx.QueryRowContext(ctx, `SELECT a.work_id,w.code,a.size,a.modified_ns FROM catalog_assets a JOIN catalog_works w ON w.id=a.work_id WHERE a.id=?`, asset.ID).Scan(&oldID, &oldCode, &oldSize, &oldModified)
-			if oldErr != nil && !errors.Is(oldErr, sql.ErrNoRows) {
-				return 0, oldErr
-			}
-			// Losing a sidecar is not evidence that the unchanged file became a
-			// different work. Keep the known identity and all richer stored fields.
-			if oldCode != "" && oldSize == asset.Size && oldModified == asset.ModifiedNS {
-				asset.WorkID, asset.Metadata.Code = oldID, oldCode
-				retained := []string{"identity_retained"}
-				for _, issue := range asset.Issues {
-					if issue != "identity_unknown" {
-						retained = append(retained, issue)
+			} else {
+				// Migrated IDs remain stable after their first fingerprinted scan.
+				var existingID string
+				existingErr := tx.QueryRowContext(ctx, `SELECT id FROM catalog_assets WHERE library_id=? AND path=? AND file_identity=? ORDER BY id LIMIT 1`, libraryID, asset.Path, asset.FileIdentity).Scan(&existingID)
+				if existingErr != nil && !errors.Is(existingErr, sql.ErrNoRows) {
+					return 0, existingErr
+				}
+				if existingID != "" {
+					asset.ID = existingID
+					if asset.Metadata.Code == "" {
+						asset.WorkID = stableID("unknown", asset.ID)
 					}
 				}
-				asset.Issues = retained
 			}
-		}
-		previous, exists := works[asset.WorkID]
-		if exists && previous.TitleProvided && asset.Metadata.TitleProvided && previous.Title != asset.Metadata.Title {
-			asset.Issues = append(asset.Issues, "metadata_conflict")
-		}
-		if !exists {
-			works[asset.WorkID] = asset.Metadata
-		} else {
-			works[asset.WorkID] = mergeMetadata(previous, asset.Metadata)
+			if asset.Metadata.Code == "" {
+				var oldID, oldCode string
+				var oldSize, oldModified int64
+				oldErr := tx.QueryRowContext(ctx, `SELECT a.work_id,w.code,a.size,a.modified_ns FROM catalog_assets a JOIN catalog_works w ON w.id=a.work_id WHERE a.id=?`, asset.ID).Scan(&oldID, &oldCode, &oldSize, &oldModified)
+				if oldErr != nil && !errors.Is(oldErr, sql.ErrNoRows) {
+					return 0, oldErr
+				}
+				// Losing a sidecar is not evidence that the unchanged file became a
+				// different work. Keep the known identity and all richer stored fields.
+				if oldCode != "" && oldSize == asset.Size && oldModified == asset.ModifiedNS {
+					asset.WorkID, asset.Metadata.Code = oldID, oldCode
+					retained := []string{"identity_retained"}
+					for _, issue := range asset.Issues {
+						if issue != "identity_unknown" {
+							retained = append(retained, issue)
+						}
+					}
+					asset.Issues = retained
+				}
+			}
+			previous, exists := works[asset.WorkID]
+			if exists && previous.TitleProvided && asset.Metadata.TitleProvided && previous.Title != asset.Metadata.Title {
+				asset.Issues = append(asset.Issues, "metadata_conflict")
+			}
+			if !exists {
+				works[asset.WorkID] = asset.Metadata
+			} else {
+				works[asset.WorkID] = mergeMetadata(previous, asset.Metadata)
+			}
 		}
 	}
 	for id, data := range works {
@@ -536,26 +546,29 @@ source_rank=MAX(catalog_works.source_rank,excluded.source_rank),updated_at=exclu
 			return 0, err
 		}
 	}
-	for _, asset := range assets {
-		var oldID string
-		lookupErr := tx.QueryRowContext(ctx, "SELECT work_id FROM catalog_assets WHERE id=?", asset.ID).Scan(&oldID)
-		if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
-			return 0, lookupErr
-		}
-		if oldID != "" && oldID != asset.WorkID {
-			if transfers[oldID] == nil {
-				transfers[oldID] = map[string]bool{}
+	for _, libraryID := range libraryIDs {
+		assets := batches[libraryID]
+		for _, asset := range assets {
+			var oldID string
+			lookupErr := tx.QueryRowContext(ctx, "SELECT work_id FROM catalog_assets WHERE id=?", asset.ID).Scan(&oldID)
+			if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+				return 0, lookupErr
 			}
-			transfers[oldID][asset.WorkID] = true
-		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_assets(id,library_id,work_id,path,size,modified_ns,file_identity,available,nfo_path,poster_path,issues,subtitles,metadata,scan_token)
-VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET library_id=excluded.library_id,path=excluded.path,work_id=excluded.work_id,size=excluded.size,
-modified_ns=excluded.modified_ns,file_identity=excluded.file_identity,available=1,nfo_path=excluded.nfo_path,poster_path=excluded.poster_path,
-issues=excluded.issues,subtitles=excluded.subtitles,metadata=excluded.metadata,scan_token=excluded.scan_token`,
-			asset.ID, libraryID, asset.WorkID, asset.Path, asset.Size, asset.ModifiedNS, asset.FileIdentity, asset.NFOPath, asset.PosterPath,
-			jsonText(asset.Issues), jsonText(asset.Subtitles), jsonText(asset.Metadata), token)
-		if err != nil {
-			return 0, err
+			if oldID != "" && oldID != asset.WorkID {
+				if transfers[oldID] == nil {
+					transfers[oldID] = map[string]bool{}
+				}
+				transfers[oldID][asset.WorkID] = true
+			}
+			_, err := tx.ExecContext(ctx, `INSERT INTO catalog_assets(id,library_id,work_id,path,size,modified_ns,file_identity,available,nfo_path,poster_path,issues,subtitles,metadata,scan_token)
+	VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET library_id=excluded.library_id,path=excluded.path,work_id=excluded.work_id,size=excluded.size,
+	modified_ns=excluded.modified_ns,file_identity=excluded.file_identity,available=1,nfo_path=excluded.nfo_path,poster_path=excluded.poster_path,
+	issues=excluded.issues,subtitles=excluded.subtitles,metadata=excluded.metadata,scan_token=excluded.scan_token`,
+				asset.ID, libraryID, asset.WorkID, asset.Path, asset.Size, asset.ModifiedNS, asset.FileIdentity, asset.NFOPath, asset.PosterPath,
+				jsonText(asset.Issues), jsonText(asset.Subtitles), jsonText(asset.Metadata), token)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
 	return len(works), nil
