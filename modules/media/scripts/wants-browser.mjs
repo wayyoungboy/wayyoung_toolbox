@@ -161,6 +161,7 @@ try {
   await lastCard.getByRole('button', { name: '暂时放弃', exact: true }).click();
   await page.waitForURL(url => !url.searchParams.has('offset'));
   await page.getByRole('navigation', { name: '想要清单分页', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('article').nth(47).waitFor({ state: 'visible' });
   assert.equal(await page.getByRole('article').count(), 48);
   assert.equal((await fixture()).wants, 49);
   await page.goBack();
