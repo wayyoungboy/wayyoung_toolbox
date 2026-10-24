@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
@@ -218,5 +219,131 @@ func TestWantExplicitGiveUpTakesPrecedenceOverFutureRelease(t *testing.T) {
 	got = wantRequest(t, s, "PATCH", path, map[string]any{"version": 2, "state": "wanted"}, 200)
 	if got["phase"] != "unreleased" {
 		t.Fatal("resumed future title lost release phase", got)
+	}
+}
+
+func TestWantRestartPreservesIntentAndOnlyExplicitReaddReopensAbsentAcquisition(t *testing.T) {
+	s := testService(t)
+	want := wantRequest(t, s, "POST", "/api/wants", map[string]any{"code": "TEST-001", "title": "Manual snapshot", "studio": "Manual studio", "actors": []string{"Manual actor"}}, 201)["want"].(map[string]any)
+	root := registrationRoot(t)
+	catalogLibrary(t, s, root)
+	catalogWrite(t, root, "TEST-001.mp4", "neutral")
+	if _, err := s.db.catalog.RegisterFiles(context.Background(), []catalog.RegistrationTarget{registrationTarget(t, filepath.Join(root, "TEST-001.mp4"))}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.db.Exec("UPDATE catalog_assets SET available=0"); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := catalog.New(s.db.db, unambiguousMediaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.db.catalog = reopened
+	got := readWant(t, s, want["id"])
+	if got["state"] != "acquired" || got["available"] != false || got["title"] != "Manual snapshot" {
+		t.Fatal("restart or missing mount changed intent", got)
+	}
+	readded := wantRequest(t, s, "POST", "/api/wants", map[string]any{"code": "TEST-001", "title": "Do not overwrite"}, 200)["want"].(map[string]any)
+	if readded["state"] != "wanted" || readded["acquisition"] != nil || readded["title"] != "Manual snapshot" || readded["version"] != got["version"].(float64)+1 {
+		t.Fatal(readded)
+	}
+}
+
+func TestWantConcurrentAddsProduceOneIndependentIntent(t *testing.T) {
+	s := testService(t)
+	var wg sync.WaitGroup
+	results := make(chan bool, 16)
+	failures := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, created, err := s.db.catalog.AddWant(context.Background(), catalog.WantInput{Code: "TEST-001"})
+			results <- created
+			failures <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(failures)
+	created := 0
+	for result := range results {
+		if result {
+			created++
+		}
+	}
+	for err := range failures {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if created != 1 {
+		t.Fatal("duplicate intents", created)
+	}
+}
+
+func TestWantReceiptAndCatalogRollbackOnPublicationFaults(t *testing.T) {
+	for _, mode := range []string{"after_receipt", "receipt_update"} {
+		t.Run(mode, func(t *testing.T) {
+			s := testService(t)
+			want := addWant(t, s, "TEST-001")
+			root := registrationRoot(t)
+			catalogLibrary(t, s, root)
+			catalogWrite(t, root, "TEST-001.mp4", "neutral")
+			var finish func(*sql.Tx, catalog.RegistrationResult) error
+			if mode == "after_receipt" {
+				finish = func(tx *sql.Tx, result catalog.RegistrationResult) error {
+					if err := catalog.ReconcileWantsTx(context.Background(), tx, result.AssetIDs, "organizer", 7, "2026-10-24T00:00:00Z"); err != nil {
+						return err
+					}
+					return errors.New("injected after receipt")
+				}
+			} else if _, err := s.db.db.Exec(`CREATE TRIGGER fail_want_receipt BEFORE UPDATE ON catalog_wants BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.catalog.RegisterFiles(context.Background(), []catalog.RegistrationTarget{registrationTarget(t, filepath.Join(root, "TEST-001.mp4"))}, finish); err == nil {
+				t.Fatal("publication fault ignored")
+			}
+			got := readWant(t, s, want["id"])
+			if got["state"] != "wanted" || got["version"] != float64(1) || got["acquisition"] != nil || len(catalogWorks(t, s, "")) != 0 {
+				t.Fatal("partial receipt/catalog survived", got)
+			}
+		})
+	}
+}
+
+func TestWantsRejectNullUnknownOrStaleEditsAndKeepMetadataOnIdempotentAdds(t *testing.T) {
+	s := testService(t)
+	want := addWant(t, s, "TEST-001")
+	path := fmt.Sprintf("/api/wants/%.0f", want["id"])
+	for _, body := range []map[string]any{{}, {"version": 0, "title": "no"}, {"version": 1}, {"version": 1, "title": nil}, {"version": 1, "last_job_id": 99}, {"version": 1, "studio": strings.Repeat("x", 301)}, {"version": 1, "actors": []string{""}}, {"version": 1, "release_date": "yesterday"}} {
+		wantRequest(t, s, "PATCH", path, body, 400)
+	}
+	for _, method := range []string{"PATCH", "DELETE"} {
+		wantRequest(t, s, method, "/api/wants/invalid", map[string]any{"version": 1}, 400)
+	}
+	wantRequest(t, s, "PATCH", "/api/wants/99999", map[string]any{"version": 1, "title": "no"}, 404)
+	wantRequest(t, s, "DELETE", path, map[string]any{"version": 0}, 400)
+	got := wantRequest(t, s, "PATCH", path, map[string]any{"version": 1, "studio": "Neutral studio", "actors": []string{"Neutral actor"}}, 200)
+	if got["studio"] != "Neutral studio" || len(got["actors"].([]any)) != 1 {
+		t.Fatal(got)
+	}
+	wantRequest(t, s, "POST", "/api/wants", map[string]any{"code": "TEST-001", "studio": "replacement"}, 200)
+	if readWant(t, s, want["id"])["studio"] != "Neutral studio" {
+		t.Fatal("idempotent add overwrote snapshot")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := s.db.catalog.AddWant(ctx, catalog.WantInput{Code: "TEST-002"}); err == nil {
+		t.Fatal("cancelled add accepted")
+	}
+	if _, err := s.db.catalog.PatchWant(ctx, 1, catalog.WantPatch{Version: 1, Title: new(string)}); err == nil {
+		t.Fatal("cancelled patch accepted")
+	}
+	if _, err := s.db.catalog.Wants(ctx, catalog.WantFilter{Limit: 48}); err == nil {
+		t.Fatal("cancelled read accepted")
+	}
+	if err := s.db.catalog.RemoveWant(ctx, 1, 1); err == nil {
+		t.Fatal("cancelled removal accepted")
 	}
 }
