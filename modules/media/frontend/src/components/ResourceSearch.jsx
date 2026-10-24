@@ -23,7 +23,7 @@ function sourceLink(raw) {
   } catch { return ''; }
 }
 
-export function ResourceResults({ result }) {
+export function ResourceResults({ result, onDownload, downloadEnabled = false }) {
   if (!result) return null;
   const items = result.items || [];
   return <section className="resource-results" aria-label="资源查询结果">
@@ -34,12 +34,12 @@ export function ResourceResults({ result }) {
     {result.attempted_at && result.stale && <p className="catalog-help">本次尝试：<time dateTime={result.attempted_at}>{result.attempted_at}</time></p>}
     {items.length > 0 && <>
       <p className="catalog-help">候选的大小、做种、画质与实际内容均未校验。磁力仅保留 BTIH；私有 tracker 参数已移除，不适用于需要 passkey 的私有站。</p>
-      <ul className="resource-candidates">{items.map(item => <ResourceCandidate key={item.infohash} item={item} />)}</ul>
+      <ul className="resource-candidates">{items.map(item => <ResourceCandidate key={item.infohash} item={item} onDownload={onDownload} downloadEnabled={downloadEnabled && result.state === 'ready' && !result.stale} />)}</ul>
     </>}
   </section>;
 }
 
-function ResourceCandidate({ item }) {
+function ResourceCandidate({ item, onDownload, downloadEnabled }) {
   const [notice, setNotice] = useState('');
   const field = useRef(null);
   const href = sourceLink(item.source_url);
@@ -56,7 +56,7 @@ function ResourceCandidate({ item }) {
     <div className="resource-candidate-heading"><strong>{item.name || '未提供资源名称'}</strong><span>JavDB · 未校验</span></div>
     <p className="resource-hash">BTIH {item.infohash}</p>
     <label>磁力链接<textarea ref={field} readOnly value={item.magnet} rows={2} aria-label={`磁力链接 ${item.infohash}`} /></label>
-    <div className="catalog-actions"><Button onClick={copy}>复制磁力</Button>{href && <a href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">查看来源页</a>}</div>
+    <div className="catalog-actions">{onDownload && <Button theme="solid" disabled={!downloadEnabled} onClick={() => onDownload(item.infohash)}>选择下载</Button>}<Button onClick={copy}>复制磁力</Button>{href && <a href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">查看来源页</a>}</div>
     {notice && <p role="status" className="catalog-help">{notice}</p>}
   </li>;
 }

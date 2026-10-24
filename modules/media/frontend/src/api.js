@@ -37,6 +37,9 @@ async function playbackSessionMutation(id,action,payload){
 export const api = {
   resourceCache: (code, { signal } = {}) => request(`/resources/search?${new URLSearchParams({ code, provider: 'javdb' })}`, { signal }),
   resourceSearch: (code, { signal } = {}) => catalogMutation('/resources/search', 'POST', { code, provider: 'javdb' }, { signal }),
+  resourceDownloads: ({ signal } = {}) => request('/resources/downloads?limit=20', { signal }),
+  resourceDownloadSelection: ({ code, provider, infohash }, { signal } = {}) => request(`/resources/downloads/selection?${new URLSearchParams({ code, provider, infohash })}`, { signal }),
+  resourceDownload: ({ code, provider, infohash, searched_at }, revision, { signal } = {}) => catalogMutation('/resources/downloads', 'POST', { code, provider, infohash, searched_at, intake_revision: revision, confirmation: '下载资源' }, { signal }),
   catalogAutomation: ({ signal } = {}) => request('/catalog/automation', { signal }),
   catalogAutomationSave: payload => catalogMutation('/catalog/automation', 'PUT', payload),
   catalogBrowserSources: ({signal}={})=>request('/catalog/browser/sources',{signal}),

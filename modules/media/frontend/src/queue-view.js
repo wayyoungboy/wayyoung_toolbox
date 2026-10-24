@@ -6,22 +6,23 @@ export const queueStatuses = [
 const statusLabels = Object.fromEntries(queueStatuses);
 const phaseLabels = { discovered: '来源解析与投递', download: 'qB 下载', transfer: '完成搬运', qb_cleanup: 'qB 记录清理', organize: '影片整理', catalog: '馆藏登记', done: '已完成' };
 export const queueStatusLabel = (status) => statusLabels[status] || status || '未知状态';
-export const queuePhaseLabel = (job) => phaseLabels[job?.phase] || job?.phase || '未知阶段';
+export const queuePhaseLabel = (job) => job?.resource && job.phase === 'discovered' ? '资源确认与投递' : phaseLabels[job?.phase] || job?.phase || '未知阶段';
 export const queueStatusTone = (status) => ({ success: 'success', failed: 'danger', partial: 'warning', timed_out: 'danger', needs_attention: 'warning', running: 'active' }[status] || 'neutral');
 
 export function queueActions(job) {
   if (job?.archived || !Number.isSafeInteger(job?.version) || job.version < 1 || job.phase === 'done') return [];
   const actions = [];
   if (['partial', 'failed', 'canceled', 'timed_out', 'needs_attention'].includes(job.status)) {
-    actions.push({ key: 'retry', label: job.phase === 'catalog' ? '重试馆藏登记' : job.phase === 'qb_cleanup' ? '重试 qB 清理' : job.phase === 'download' ? '恢复下载检查与后续处理' : '重试未完成步骤' });
+    actions.push({ key: 'retry', label: job.resource && job.phase === 'discovered' && ['dispatching', 'acknowledged'].includes(job.resource.submission_state) ? '核对投递结果' : job.phase === 'catalog' ? '重试馆藏登记' : job.phase === 'qb_cleanup' ? '重试 qB 清理' : job.phase === 'download' ? '恢复下载检查与后续处理' : '重试未完成步骤' });
   }
   if (['pending', 'running', 'partial', 'failed', 'timed_out', 'needs_attention'].includes(job.status)) {
-    actions.push({ key: 'cancel', label: '取消任务' });
+    actions.push({ key: 'cancel', label: job.resource ? '停止本地处理' : '取消任务' });
   }
   return actions;
 }
 
 export function queueActionPrompt(action, job) {
+  if (action === 'retry' && job.resource && job.phase === 'discovered' && ['dispatching', 'acknowledged'].includes(job.resource.submission_state)) return `只读核对任务 #${job.id} 的投递结果？不会重新向 qB 提交种子；若仍无法确认，将保留待处理状态。`;
   if (action === 'retry' && job.phase === 'catalog') return `重试任务 #${job.id} 的馆藏登记？只核对已确认的输出，不会重新刮削或搬运。`;
   if (action === 'retry') return job.phase === 'download'
     ? `恢复任务 #${job.id} 的下载检查与后续处理？不会重新投递种子；完成后可由手动或定时入库继续搬运。`
