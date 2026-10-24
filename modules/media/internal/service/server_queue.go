@@ -74,7 +74,7 @@ func (d *Database) annotateQueueWaits(ctx context.Context, jobs []MediaQueueJob)
 	args := make([]any, 0, len(jobs))
 	for i := range jobs {
 		jobs[i].WaitingForIntake = nil
-		if jobs[i].Kind == "movie" && jobs[i].Status == "pending" {
+		if jobs[i].Kind == "movie" && jobs[i].Phase == "organize" && jobs[i].Status == "pending" {
 			positions[jobs[i].ID] = i
 			args = append(args, jobs[i].ID)
 		}
@@ -85,7 +85,7 @@ func (d *Database) annotateQueueWaits(ctx context.Context, jobs []MediaQueueJob)
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(args)), ",")
 	rows, err := d.db.QueryContext(ctx, `SELECT media_jobs.id,intake.id
  FROM media_jobs JOIN media_jobs AS intake ON (`+unpublishedIntakeMatchSQL+`)
- WHERE media_jobs.id IN (`+placeholders+`) AND media_jobs.kind='movie' AND media_jobs.status='pending'
+ WHERE media_jobs.id IN (`+placeholders+`) AND media_jobs.kind='movie' AND media_jobs.phase='organize' AND media_jobs.status='pending'
  ORDER BY media_jobs.id,intake.id`, args...)
 	if err != nil {
 		return err

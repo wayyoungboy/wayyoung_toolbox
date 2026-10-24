@@ -126,10 +126,10 @@ func TestPipelineSummaryAndUnifiedRunsCoverTheWholeWorkspace(t *testing.T) {
 		RecentRuns []map[string]any `json:"recent_runs"`
 	}
 	decodeResponseJSON(t, pipelineResponse, &pipeline)
-	if len(pipeline.Stages) != 4 {
+	if len(pipeline.Stages) != 5 {
 		t.Fatalf("stages=%+v", pipeline.Stages)
 	}
-	for index, want := range []string{"rss", "qb", "intake", "javsp"} {
+	for index, want := range []string{"rss", "qb", "intake", "javsp", "catalog"} {
 		if pipeline.Stages[index].Key != want {
 			t.Fatalf("stage[%d]=%q want %q", index, pipeline.Stages[index].Key, want)
 		}

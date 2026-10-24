@@ -25,6 +25,8 @@ GROUP BY kind,phase,status`)
 		}
 		key := ""
 		switch {
+		case kind == "movie" && phase == "catalog":
+			key = "catalog"
 		case kind == "movie":
 			key = "javsp"
 		case phase == "discovered":
@@ -60,7 +62,7 @@ GROUP BY kind,phase,status`)
 			continue
 		}
 		stage.AttentionCount = c.attention
-		if stage.Key == "javsp" {
+		if stage.Key == "javsp" || stage.Key == "catalog" {
 			stage.Count = c.pending + c.running
 			stage.Summary = fmt.Sprintf("%d 条排队 · %d 条运行", c.pending, c.running)
 		}

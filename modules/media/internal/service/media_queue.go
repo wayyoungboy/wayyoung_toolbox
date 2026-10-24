@@ -255,7 +255,7 @@ func (d *Database) pendingMediaStages(kind string, phases []string, limit int) (
 	query := `SELECT ` + mediaJobColumns + ` FROM media_jobs WHERE status='pending' AND kind=?`
 	args := []any{kind}
 	if kind == "movie" {
-		query += ` AND NOT ` + movieHasUnpublishedIntakeSQL
+		query += ` AND (phase!='organize' OR NOT ` + movieHasUnpublishedIntakeSQL + `)`
 	}
 	if len(phases) > 0 {
 		query += ` AND phase IN (` + strings.TrimSuffix(strings.Repeat("?,", len(phases)), ",") + `)`

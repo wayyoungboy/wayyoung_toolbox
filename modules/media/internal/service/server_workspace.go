@@ -374,6 +374,16 @@ func (s *Service) handlePipeline(w http.ResponseWriter, r *http.Request) {
 		javspSummary = "正在整理"
 	}
 	stages = append(stages, pipelineStage{Key: "javsp", Label: "刮削整理入库", Status: javspStatus, Summary: javspSummary, Detail: fmt.Sprintf("入库后整理%s · 定时扫描%s", map[bool]string{true: "已启用", false: "已关闭"}[intake.RunJavsp], map[bool]string{true: "已启用", false: "已关闭"}[javsp.Enabled]), NextRunAt: javsp.NextRunAt})
+	automation, err := s.db.catalog.Automation(r.Context())
+	if err != nil {
+		catalogError(w, err)
+		return
+	}
+	catalogDetail := "自动登记已关闭；可在馆藏的媒体库管理中启用，不会自动扫描已有目录"
+	if automation.AfterOrganize {
+		catalogDetail = "整理后仅登记已确认输出；登记失败只重试登记，不重新刮削或搬运"
+	}
+	stages = append(stages, pipelineStage{Key: "catalog", Label: "馆藏登记", Status: "idle", Summary: "0 条排队 · 0 条运行", Detail: catalogDetail})
 	if err := s.db.annotatePipelineQueue(r.Context(), stages); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
