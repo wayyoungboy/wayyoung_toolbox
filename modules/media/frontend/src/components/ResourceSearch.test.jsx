@@ -40,3 +40,14 @@ it('does not turn unsafe source addresses into links', () => {
     expect(html).not.toContain('href=');
   }
 });
+
+it('offers explicit selection only when a caller owns a fresh actionable snapshot', () => {
+  const result = { code: 'TEST-001', provider: 'javdb', state: 'ready', items: [item], searched_at: 'snapshot' };
+  const html = renderToStaticMarkup(<ResourceResults result={result} onDownload={() => {}} downloadEnabled />);
+  expect(html).toContain('选择下载');
+  expect(html).not.toContain('disabled=""');
+  for (const value of [{ ...result, stale: true }, { ...result, state: 'blocked' }]) {
+    expect(renderToStaticMarkup(<ResourceResults result={value} onDownload={() => {}} downloadEnabled />)).toMatch(/disabled=""[^>]*>选择下载/);
+  }
+  expect(renderToStaticMarkup(<ResourceResults result={result} onDownload={() => {}} downloadEnabled={false} />)).toMatch(/disabled=""[^>]*>选择下载/);
+});
