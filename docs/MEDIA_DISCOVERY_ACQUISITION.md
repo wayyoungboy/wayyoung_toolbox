@@ -1,6 +1,6 @@
 # 发现、想要与获取：后续完整范围
 
-这是完整目标的行为核对和实施边界，不是已交付功能列表。当前交付状态仍以 [功能对照](MEDIA_CENTER_PARITY.md) 为准；本轮先实现[只读资源搜索](RESOURCE_SEARCH.md)，没有用书签 CRUD 或原有 RSS 替代完整发现/想要闭环。
+这是完整目标的行为核对和实施边界，不是已交付功能列表。当前交付状态仍以 [功能对照](MEDIA_CENTER_PARITY.md) 为准；已有[资源搜索](RESOURCE_SEARCH.md)及[显式下载](RESOURCE_DOWNLOADS.md)，0.7.10 源码新增[想要与实际入库关联](WANTS.md)，没有用手工清单或原有 RSS 替代完整发现。
 
 基线为 Peach 固定提交 `de22796c04919aaa057d77930c33c81313765569`。仅以行为契约独立设计 Go 模型，不直接逐行翻译 Python 实现；若后续复用实现，须另外记录 AGPL 归属及义务。
 
@@ -37,4 +37,4 @@
 
 依据：[magnet_chain.py](https://github.com/peach-mitao/peach/blob/de22796c04919aaa057d77930c33c81313765569/src/peach/magnet_chain.py)、[资源 API](https://github.com/peach-mitao/peach/blob/de22796c04919aaa057d77930c33c81313765569/src/peach/web_resource_search.py)、[downloads.py](https://github.com/peach-mitao/peach/blob/de22796c04919aaa057d77930c33c81313765569/src/peach/downloads.py)。
 
-下一阶段需要发现/想要持久模型、身份绑定的新作订阅、多来源与 Torznab、独立且可审计的显式下载生产者及各真实云渠道的配置/认证/轮询/落地验收。这里只记录完整缺口，不以本轮只读搜索代替这些功能。
+后续仍需要身份绑定的新作订阅、feed 已读/忽略、来源补全、多来源与 Torznab、远端取消，以及各真实云渠道的配置/认证/轮询/落地验收。手工想要状态、入库凭据和独立显式下载生产者已实现的部分分别记录，不据此标记完整 F12/F16 完成。
