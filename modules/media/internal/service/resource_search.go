@@ -161,6 +161,15 @@ func (s *Service) handleResourceSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.resourceSearchMu.Unlock()
+	configFailure := func(message string) {
+		if r.Context().Err() == nil {
+			if err := s.db.recordResourceFailure(r.Context(), javspengine.ResourceSearchResult{Code: code, Provider: payload.Provider, State: "config_unavailable"}); err != nil {
+				catalogError(w, err)
+				return
+			}
+		}
+		writeError(w, 503, errors.New(message))
+	}
 	cfg, err := s.db.JavspConfigPrivate()
 	if err != nil {
 		catalogError(w, err)
@@ -170,7 +179,7 @@ func (s *Service) handleResourceSearch(w http.ResponseWriter, r *http.Request) {
 	// runtime assets, write config.yml, acquire media-file locks or start a scan.
 	raw, err := s.javsp.prepareConfigDataContext(r.Context(), cfg, false)
 	if err != nil {
-		writeError(w, 503, fmt.Errorf("资源搜索配置暂不可读，请检查 JAVSP 组件"))
+		configFailure("资源搜索配置暂不可读，请检查 JAVSP 组件")
 		return
 	}
 	defer clear(raw)
@@ -183,7 +192,7 @@ func (s *Service) handleResourceSearch(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, context.DeadlineExceeded) {
 			result.State = "timed_out"
 		} else {
-			writeError(w, 503, fmt.Errorf("资源搜索配置无效，请检查已配置的站点与代理"))
+			configFailure("资源搜索配置无效，请检查已配置的站点与代理")
 			return
 		}
 	}
