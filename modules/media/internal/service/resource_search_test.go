@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -186,6 +187,21 @@ func TestResourceSearchCacheBudgetAndAtomicFailure(t *testing.T) {
 	got = resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-001&provider=javdb", nil, 200)
 	if got["state"] != "ready" || len(got["items"].([]any)) != 1 {
 		t.Fatal("cache partially replaced", got)
+	}
+}
+
+func TestResourceSearchConfigFailureRetainsStaleEvidence(t *testing.T) {
+	s, _, _ := resourceServiceFixture(t)
+	body := map[string]string{"code": "TEST-001", "provider": "javdb"}
+	prior := resourceResponse(t, s, "POST", "/api/resources/search", body, 200)
+	path := filepath.Join(s.javsp.bundleRoot, "runtime", "config.yml")
+	if err := os.Rename(path, path+".kept"); err != nil {
+		t.Fatal(err)
+	}
+	resourceResponse(t, s, "POST", "/api/resources/search", body, 503)
+	current := resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-001&provider=javdb", nil, 200)
+	if current["state"] != "config_unavailable" || current["stale"] != true || current["searched_at"] != prior["searched_at"] || current["attempted_at"] == prior["attempted_at"] || len(current["items"].([]any)) != 1 {
+		t.Fatalf("configuration failure lost on refresh: %v", current)
 	}
 }
 
