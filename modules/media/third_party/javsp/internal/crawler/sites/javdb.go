@@ -194,8 +194,10 @@ func (j *JavDB) parseDetail(detailURL string, doc *html.Node, requestedDVDID str
 	genre, genreID, uncensored := javdbGenres(infoNode)
 	actress := javdbActress(infoNode)
 	// The responsive column classes are not part of the resource identity.
-	// Current pages use only magnet-name, with the panel adjacent to video-detail.
-	magnet := allAttrs(doc, "//div[contains(concat(' ',normalize-space(@class),' '),' magnet-name ')]/a", "href")
+	// Support the detail's own links and an adjacent dedicated resource panel,
+	// without collecting same-class links from unrelated page widgets.
+	magnetName := "div[contains(concat(' ',normalize-space(@class),' '),' magnet-name ')]/a"
+	magnet := allAttrs(container, ".//"+magnetName+" | ../article[contains(concat(' ',normalize-space(@class),' '),' video-panel ')]//div[contains(concat(' ',normalize-space(@class),' '),' magnet-links ')]//"+magnetName, "href")
 	for i, item := range magnet {
 		magnet[i] = strings.ReplaceAll(item, "[javdb.com]", "")
 	}

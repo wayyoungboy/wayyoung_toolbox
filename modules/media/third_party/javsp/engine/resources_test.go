@@ -94,8 +94,8 @@ func TestResourceSearchCurrentJavDBMagnetClassTokensAndAdjacentPanel(t *testing.
 					fmt.Fprint(w, `<a class="box" href="/v/test"><div class="video-title"><strong>TEST-001</strong></div></a>`)
 					return
 				}
-				// Current site: the resource panel is adjacent to video-detail and
-				// magnet-name no longer includes the old responsive column classes.
+				// Support adjacent resource panels as well as the current simplified
+				// magnet-name class, without relying on responsive column classes.
 				panel := fmt.Sprintf(`<article class="message video-panel"><div class="message-body"><div class="magnet-links"><div class="item odd"><div class="%s"><a href="magnet:?xt=urn:btih:%s">Sample</a></div></div></div></div></article>`, class, resourceHash)
 				panel += `<div class="not-magnet-name"><a href="magnet:?xt=urn:btih:ffffffffffffffffffffffffffffffffffffffff">Unrelated widget</a></div>`
 				panel += `<aside><div class="magnet-name"><a href="magnet:?xt=urn:btih:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee">Other work</a></div></aside>`
