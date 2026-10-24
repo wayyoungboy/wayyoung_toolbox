@@ -251,3 +251,66 @@ func TestMovieCatalogRejectsChangedOutputWithoutRerunningOrganizer(t *testing.T)
 		t.Fatalf("changed output published: %+v %v", job, err)
 	}
 }
+
+func TestMovieCatalogDoesNotWaitForReusedOriginalInputPath(t *testing.T) {
+	f := newMovieQueueFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.root, "organized"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	catalogLibrary(t, f.s, filepath.Join(f.root, "organized"))
+	setCatalogAutomation(t, f.s, true)
+	if err := f.s.drainPendingMovies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.db.EnqueueMediaJob(MediaJob{Key: "next-intake", Kind: "torrent", Phase: "qb_cleanup", TargetPath: f.source, Organize: true}); err != nil {
+		t.Fatal(err)
+	}
+	w := catalogRequest(t, f.s, "GET", fmt.Sprintf("/api/queue/%d", f.job.ID), nil)
+	var detail struct {
+		Job MediaQueueJob `json:"job"`
+	}
+	decodeResponseJSON(t, w, &detail)
+	if len(detail.Job.WaitingForIntake) != 0 {
+		t.Fatalf("catalog showed obsolete input dependency: %+v", detail.Job.WaitingForIntake)
+	}
+	if err := f.s.drainPendingMovies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.s.db.MediaJob(f.job.ID)
+	if err != nil || job.Phase != "done" || job.Status != "success" || f.runs != 1 {
+		t.Fatalf("completed output starved on old input: %+v %v", job, err)
+	}
+}
+
+func TestPipelineSeparatesCatalogAttentionFromJavsp(t *testing.T) {
+	f := newMovieQueueFixture(t)
+	setCatalogAutomation(t, f.s, true)
+	for i := 0; i < 2; i++ {
+		if err := f.s.drainPendingMovies(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := catalogRequest(t, f.s, "GET", "/api/pipeline", nil)
+	if w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	var result struct {
+		Stages []pipelineStage `json:"stages"`
+	}
+	decodeResponseJSON(t, w, &result)
+	found := false
+	for _, stage := range result.Stages {
+		if stage.Key == "catalog" {
+			found = true
+			if stage.AttentionCount != 1 || stage.Status != "warning" {
+				t.Fatalf("catalog failure hidden: %+v", stage)
+			}
+		}
+		if stage.Key == "javsp" && stage.AttentionCount != 0 {
+			t.Fatalf("successful JAVSP shown as failed registration: %+v", stage)
+		}
+	}
+	if !found {
+		t.Fatal("no separate catalog registration stage")
+	}
+}
