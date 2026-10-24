@@ -91,6 +91,7 @@ func (s *Service) discoverIntakeMovies(ctx context.Context, job MediaJob) ([]Med
 		children[i].ParentID = job.ID
 		children[i].TorrentHash, children[i].TorrentAddedOn = job.TorrentHash, job.TorrentAddedOn
 		children[i].RSSID, children[i].RSSItemKey, children[i].SourceURL = job.RSSID, job.RSSItemKey, job.SourceURL
+		children[i].Resource = job.Resource
 	}
 	return children, nil
 }
@@ -131,6 +132,7 @@ func (d *Database) saveIntakeMovies(ctx context.Context, id, version int64, chil
 			child.ParentID = id
 			child.TorrentHash, child.TorrentAddedOn = candidate.TorrentHash, candidate.TorrentAddedOn
 			child.RSSID, child.RSSItemKey, child.SourceURL = candidate.RSSID, candidate.RSSItemKey, candidate.SourceURL
+			child.Resource = candidate.Resource
 			if _, err := tx.ExecContext(ctx, `UPDATE media_jobs SET parent_id=?,payload=? WHERE id=?`, id, encodeJSON(child), child.ID); err != nil {
 				return MediaJob{}, 0, err
 			}

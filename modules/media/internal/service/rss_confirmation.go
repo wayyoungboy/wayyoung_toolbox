@@ -50,21 +50,32 @@ func (s *Service) reconcileRSSSubmissions(ctx context.Context) error {
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	session, loginErr := s.collector.OpenQBSession(requestCtx, settings)
-	if session != nil {
-		defer session.Close()
-	}
+	var session *QBSession
+	var loginErr error
+	opened := false
+	defer func() {
+		if session != nil {
+			session.Close()
+		}
+	}()
 	for _, job := range jobs {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		var torrent *QBTorrent
-		pollErr := loginErr
+		var pollErr error
 		if job.Resource != nil {
 			identity, identityErr := resourceDownloaderIdentity(settings)
 			if identityErr != nil || identity != job.Resource.DownloaderIdentity {
 				pollErr = errIntakeConflict
 			}
+		}
+		if pollErr == nil && !opened {
+			session, loginErr = s.collector.OpenQBSession(requestCtx, settings)
+			opened = true
+		}
+		if pollErr == nil {
+			pollErr = loginErr
 		}
 		if pollErr == nil {
 			value, present, err := session.Torrent(requestCtx, job.TorrentHash)

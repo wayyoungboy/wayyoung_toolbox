@@ -263,9 +263,19 @@ func (d *Database) registerIntakeJob(candidate MediaJob) (MediaJob, error) {
 	}
 	defer tx.Rollback()
 	job, err := scanMediaJob(tx.QueryRow(`SELECT `+mediaJobColumns+` FROM media_jobs
-WHERE kind='torrent' AND status<>'skipped' AND json_extract(payload,'$.discovery') IS NOT NULL
+WHERE kind='torrent' AND status<>'skipped' AND (json_extract(payload,'$.discovery') IS NOT NULL OR json_extract(payload,'$.resource') IS NOT NULL)
 AND lower(json_extract(payload,'$.torrent_hash'))=?
 AND (json_extract(payload,'$.torrent_added_on')=? OR (phase='discovered' AND COALESCE(json_extract(payload,'$.torrent_added_on'),0)=0)) ORDER BY id LIMIT 1`, strings.ToLower(candidate.TorrentHash), candidate.TorrentAddedOn))
+	if err == nil && job.Resource != nil {
+		values, readErr := readSettings(context.Background(), tx)
+		if readErr != nil {
+			return MediaJob{}, readErr
+		}
+		identity, identityErr := resourceDownloaderIdentity(resourceSettings(values))
+		if identityErr != nil || identity != job.Resource.DownloaderIdentity {
+			return MediaJob{}, fmt.Errorf("%w：下载器与原资源任务不一致", errIntakeConflict)
+		}
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		job, err = enqueueMediaJobTx(tx, candidate)
 	} else if err == nil && job.Status == "pending" && job.Phase == "download" {

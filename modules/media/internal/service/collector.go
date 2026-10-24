@@ -432,8 +432,9 @@ func qbLogin(ctx context.Context, settings Settings) (*http.Client, *url.URL, er
 }
 
 type QBSession struct {
-	client *http.Client
-	base   *url.URL
+	client   *http.Client
+	base     *url.URL
+	identity string
 }
 
 func (Collector) OpenQBSession(ctx context.Context, settings Settings) (*QBSession, error) {
@@ -441,7 +442,8 @@ func (Collector) OpenQBSession(ctx context.Context, settings Settings) (*QBSessi
 	if err != nil {
 		return nil, err
 	}
-	return &QBSession{client: client, base: base}, nil
+	identity, _ := resourceDownloaderIdentity(settings) // Legacy RSS accepts older endpoint forms; resource jobs require a valid identity.
+	return &QBSession{client: client, base: base, identity: identity}, nil
 }
 
 func (session *QBSession) Close() { session.client.CloseIdleConnections() }

@@ -150,6 +150,23 @@ func (s *Service) refreshQueuedDownloads(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	eligible := jobs[:0]
+	for _, job := range jobs {
+		if job.Resource != nil {
+			identity, identityErr := resourceDownloaderIdentity(settings)
+			if identityErr != nil || identity != job.Resource.DownloaderIdentity {
+				if err := s.db.recordDownloadObservation(ctx, job, nil, fmt.Errorf("下载器配置已变化，未查询其他下载器；请恢复原配置后重试")); err != nil && !errors.Is(err, errMediaJobConflict) {
+					return err
+				}
+				continue
+			}
+		}
+		eligible = append(eligible, job)
+	}
+	jobs = eligible
+	if len(jobs) == 0 {
+		return nil
+	}
 	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	session, pollErr := s.collector.OpenQBSession(requestCtx, settings)

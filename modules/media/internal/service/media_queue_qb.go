@@ -42,6 +42,9 @@ func validateQueuedTorrent(torrent *QBTorrent, job MediaJob, captured bool) erro
 }
 
 func cleanupQueuedTorrent(ctx context.Context, session *QBSession, job MediaJob) error {
+	if err := validateResourceSession(session, job); err != nil {
+		return err
+	}
 	torrent, err := queuedTorrent(ctx, session, job.TorrentHash)
 	if err != nil {
 		return err
@@ -69,6 +72,9 @@ func queuedTorrentStopped(torrent *QBTorrent) bool {
 }
 
 func prepareQueuedIntake(ctx context.Context, session *QBSession, job MediaJob) error {
+	if err := validateResourceSession(session, job); err != nil {
+		return err
+	}
 	captured, err := queuedIntakeCaptured(job)
 	if err != nil {
 		return err
@@ -110,4 +116,11 @@ func prepareQueuedIntake(ctx context.Context, session *QBSession, job MediaJob) 
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+}
+
+func validateResourceSession(session *QBSession, job MediaJob) error {
+	if job.Resource != nil && (session == nil || session.identity == "" || session.identity != job.Resource.DownloaderIdentity) {
+		return fmt.Errorf("%w：当前会话不是资源任务的原下载器，不会停止、搬运或删除任务", errIntakeConflict)
+	}
+	return nil
 }

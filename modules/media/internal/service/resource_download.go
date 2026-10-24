@@ -35,6 +35,11 @@ type ResourceAcquisition struct {
 	ConfirmationCheckedAt string `json:"confirmation_checked_at,omitempty"`
 }
 
+func resourceSettings(values map[string]json.RawMessage) Settings {
+	defaults := defaultSettings()
+	return Settings{QBHost: decodeSetting(values, "qb_host", defaults.QBHost), QBPort: decodeSetting(values, "qb_port", defaults.QBPort), QBUsername: decodeSetting(values, "qb_username", defaults.QBUsername)}
+}
+
 func resourceDownloaderIdentity(settings Settings) (string, error) {
 	base, err := qbBaseURL(settings)
 	if err != nil || base.User != nil || base.RawQuery != "" || base.Fragment != "" || len(base.String()) > 2048 {
@@ -120,7 +125,7 @@ ORDER BY id LIMIT 1`, key, input.InfoHash, input.Code))
 	if err != nil {
 		return MediaJob{}, false, err
 	}
-	settings := Settings{QBHost: decodeSetting(values, "qb_host", ""), QBPort: decodeSetting(values, "qb_port", 0), QBUsername: decodeSetting(values, "qb_username", "")}
+	settings := resourceSettings(values)
 	identity, err := resourceDownloaderIdentity(settings)
 	if err != nil {
 		return MediaJob{}, false, err

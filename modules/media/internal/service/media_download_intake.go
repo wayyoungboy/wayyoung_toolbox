@@ -29,7 +29,7 @@ func (d *Database) trackedDownloadsForIntake(ctx context.Context, torrents []QBT
 	// download or every torrent found under an old directory.
 	rows, err := d.db.QueryContext(ctx, `SELECT `+mediaJobColumns+` FROM media_jobs
 WHERE kind='torrent' AND phase='download' AND status='pending'
-AND json_extract(payload,'$.discovery') IS NOT NULL
+AND (json_extract(payload,'$.discovery') IS NOT NULL OR json_extract(payload,'$.resource') IS NOT NULL)
 AND COALESCE(json_extract(payload,'$.intake_source_root'),'')<>''
 AND EXISTS (SELECT 1 FROM json_each(?) remote WHERE json_extract(remote.value,'$.hash')=lower(json_extract(payload,'$.torrent_hash'))
 AND json_extract(remote.value,'$.added_on')=json_extract(payload,'$.torrent_added_on')) ORDER BY id`, string(encoded))
