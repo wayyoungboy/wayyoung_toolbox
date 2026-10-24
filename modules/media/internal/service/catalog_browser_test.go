@@ -95,6 +95,35 @@ func TestCatalogBrowserJourney(t *testing.T) {
 			w.WriteHeader(200)
 			return
 		}
+		if r.Method == "POST" && (r.URL.Path == "/__fixture/scans/checkpoint" || r.URL.Path == "/__fixture/scans/finish") {
+			fixtureMu.Lock()
+			defer fixtureMu.Unlock()
+			if r.URL.Path == "/__fixture/scans/finish" {
+				if err := service.drainCatalogScans(r.Context()); err != nil {
+					http.Error(w, "fixture scan failed", 500)
+					return
+				}
+			} else {
+				job, err := service.db.catalog.NextPendingScan(r.Context())
+				if err != nil {
+					http.Error(w, "fixture scan absent", 500)
+					return
+				}
+				job, err = service.db.catalog.ClaimScan(r.Context(), job.ID, job.Version)
+				if err != nil {
+					http.Error(w, "fixture claim failed", 500)
+					return
+				}
+				for range 2 {
+					if _, err := service.db.catalog.ScanBatch(r.Context(), job.ID, job.Version, 1); err != nil {
+						http.Error(w, "fixture checkpoint failed", 500)
+						return
+					}
+				}
+			}
+			w.WriteHeader(200)
+			return
+		}
 		// Only compiled into this isolated test binary. No production test routes
 		// or external crawlers: a synthetic organizer exercises the real queue,
 		// receipt validation, move, SQLite registration and HTTP UI together.
