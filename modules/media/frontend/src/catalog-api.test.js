@@ -3,7 +3,7 @@ import { api } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
 it('queues background scans and sends exact lifecycle revisions without replaying failures', async () => {
-  const fetch = vi.fn().mockImplementation(async (url, options) => ({
+  const fetch = vi.fn().mockImplementation(async url => ({
     ok: !url.endsWith('/pause'), status: url.endsWith('/pause') ? 409 : 200,
     json: async () => url.endsWith('/session') ? { csrf: 'scan-token' } : url.endsWith('/pause') ? { error: '状态已变化' } : { items: [] },
   }));

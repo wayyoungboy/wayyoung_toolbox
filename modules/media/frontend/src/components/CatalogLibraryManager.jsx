@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Modal from '@douyinfe/semi-ui/lib/es/modal';
 import Button from '@douyinfe/semi-ui/lib/es/button';
 import FolderPicker from './FolderPicker';
 import CatalogAutomation from './CatalogAutomation';
+import CatalogScanControl from './CatalogScanControl';
 import { api } from '../api';
 
 export default function CatalogLibraryManager({ libraries, completedRoot, onChanged, onClose }) {
@@ -13,8 +14,6 @@ export default function CatalogLibraryManager({ libraries, completedRoot, onChan
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [relink, setRelink] = useState(null);
-  const scanController = useRef(null);
-  useEffect(() => () => scanController.current?.abort(), []);
   const directories = useCallback(path => api.javspDirectories(path || root || completedRoot || undefined, { target: 'output' }), [root, completedRoot]);
 
   const add = async event => {
@@ -30,28 +29,17 @@ export default function CatalogLibraryManager({ libraries, completedRoot, onChan
     } catch (failure) { setError(failure.message); }
     finally { setBusy(''); }
   };
-  const scan = async library => {
-    setBusy(String(library.id)); setError(''); setNotice('');
-    scanController.current = new AbortController();
-    try {
-      const result = await api.catalogScan(library.id, { signal: scanController.current.signal });
-      setNotice(`扫描完成：${result.work_count} 部作品、${result.asset_count} 个文件，${result.issue_count} 个文件资料需检查。原文件未修改。`);
-      await onChanged();
-    } catch (failure) { setError(failure.name === 'AbortError' ? '扫描已取消，上次馆藏记录保留。' : failure.message); }
-    finally { setBusy(''); scanController.current = null; }
-  };
 
   return <>
-    <Modal title="媒体库管理" visible width="min(760px, calc(100vw - 24px))" maskClosable={false} onCancel={() => { scanController.current?.abort(); onClose(); }} footer={null}>
+    <Modal title="媒体库管理" visible width="min(760px, calc(100vw - 24px))" maskClosable={false} onCancel={onClose} footer={null}>
       <p className="catalog-help">添加已有目录，读取视频、本地 NFO、封面与字幕。扫描不会启动下载或 JAVSP，也不会修改原文件。</p>
       {error && <p className="catalog-alert" role="alert">{error}</p>}
       {notice && <p className="catalog-notice" role="status">{notice}</p>}
       <div className="catalog-library-list">
-        {libraries.map(library => <div key={library.id} className="catalog-library-row">
+        {libraries.map(library => <div key={library.id} className="catalog-library-card"><div className="catalog-library-row">
           <div><strong>{library.name}</strong><code>{library.root}</code><small>{library.scanned_at ? `${library.asset_count} 个文件 · ${new Date(library.scanned_at).toLocaleString()} 扫描` : '尚未扫描'}{library.scan_error ? ` · ${library.scan_error}` : ''}</small></div>
-          <div className="catalog-actions"><Button disabled={Boolean(busy)} onClick={() => { setRelink(library); setRoot(library.root); setName(library.name); }}>重新关联</Button><Button disabled={Boolean(busy)} loading={busy === String(library.id)} onClick={() => scan(library)}>扫描馆藏</Button></div>
-        </div>)}
-        {busy && busy !== 'add' && <Button onClick={() => scanController.current?.abort()}>取消扫描</Button>}
+          <div className="catalog-actions"><Button disabled={Boolean(busy)} onClick={() => { setRelink(library); setRoot(library.root); setName(library.name); }}>重新关联</Button></div>
+        </div><CatalogScanControl libraryID={library.id} onChanged={onChanged} /></div>)}
       </div>
       <CatalogAutomation />
       <form className="catalog-library-form" onSubmit={add}>

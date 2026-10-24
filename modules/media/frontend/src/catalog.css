@@ -34,6 +34,11 @@
 .catalog-notice { background: #edf8f2; color: #16633c; }
 .catalog-help { color: var(--subtle-text); line-height: 1.7; font-size: 13px; }
 .catalog-library-list { display: grid; gap: 12px; margin: 20px 0; }
+.catalog-library-card { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.catalog-library-card .catalog-library-row { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+.catalog-scan-status { padding: 14px; display: grid; gap: 8px; min-width: 0; background: var(--surface); }
+.catalog-scan-status p { margin: 0; }
+.catalog-scan-status code { overflow-wrap: anywhere; font-size: 11px; color: var(--subtle-text); }
 .catalog-library-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 6px; }
 .catalog-library-row > div { min-width: 0; display: grid; gap: 7px; }
 .catalog-library-row code { font-size: 11px; overflow-wrap: anywhere; color: var(--subtle-text); }
