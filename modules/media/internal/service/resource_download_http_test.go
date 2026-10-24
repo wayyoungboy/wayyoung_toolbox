@@ -1,11 +1,56 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestResourceDownloadSelectionLookupIsReadOnlyAndIncludesExistingRSSOwner(t *testing.T) {
+	s, input := resourceDownloadFixture(t)
+	path := "/api/resources/downloads/selection?code=" + input.Code + "&provider=" + input.Provider + "&infohash=" + input.InfoHash
+	if got := resourceResponse(t, s, "GET", path, nil, 200); got["job"] != nil {
+		t.Fatal(got)
+	}
+	job, _, err := s.db.EnqueueResourceDownload(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.db.Exec("DELETE FROM resource_search_cache"); err != nil {
+		t.Fatal(err)
+	}
+	got := resourceResponse(t, s, "GET", path, nil, 200)
+	if got["job"].(map[string]any)["id"] != float64(job.ID) {
+		t.Fatal(got)
+	}
+	var count int
+	if err := s.db.db.QueryRow("SELECT COUNT(*) FROM media_jobs").Scan(&count); err != nil || count != 1 {
+		t.Fatal(count, err)
+	}
+	for _, suffix := range []string{"&extra=1", "&code=OTHER-001"} {
+		resourceResponse(t, s, "GET", path+suffix, nil, 400)
+	}
+
+	other, selection := resourceDownloadFixture(t)
+	rss, err := other.db.EnqueueRSSAcquisition(Task{ID: 42}, FeedEntry{EntryID: "one", Title: "TEST-001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rss, err = other.db.ClaimMediaJob(rss.ID, rss.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rss, err = other.db.ReserveRSSDownload(rss.ID, rss.Version, "magnet:?xt=urn:btih:"+selection.InfoHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = resourceResponse(t, other, "GET", path, nil, 200)
+	if got["job"].(map[string]any)["id"] != float64(rss.ID) || got["job"].(map[string]any)["rss_id"] != float64(42) {
+		t.Fatal(got)
+	}
+}
 
 func resourceDownloadBody(input ResourceDownloadSelection) map[string]any {
 	return map[string]any{"code": input.Code, "provider": input.Provider, "infohash": input.InfoHash, "searched_at": input.SearchedAt, "confirmation": "下载资源"}
