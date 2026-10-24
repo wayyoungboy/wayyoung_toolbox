@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -73,10 +74,13 @@ func (d *Database) saveResources(ctx context.Context, result javspengine.Resourc
 	if result.State != "ready" && result.State != "empty" {
 		return view, catalog.ErrInvalid
 	}
-	raw, err := json.Marshal(result)
-	if err != nil {
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false) // JSON data only; no HTML/JS embedding. Match the HTTP encoder.
+	if err := encoder.Encode(result); err != nil {
 		return view, err
 	}
+	raw := encoded.Bytes()
 	if len(raw) > 128<<10 {
 		return view, catalog.ErrInvalid
 	}
