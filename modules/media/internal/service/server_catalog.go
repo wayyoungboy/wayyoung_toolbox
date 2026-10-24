@@ -24,6 +24,7 @@ func (s *Service) registerCatalogRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/resources/search", s.handleResourceSearchCache)
 	mux.HandleFunc("POST /api/resources/search", s.catalogSameOrigin(s.handleResourceSearch))
 	mux.HandleFunc("GET /api/resources/downloads", s.handleResourceDownloads)
+	mux.HandleFunc("GET /api/resources/downloads/selection", s.handleResourceDownloadSelection)
 	mux.HandleFunc("POST /api/resources/downloads", s.catalogSameOrigin(s.handleResourceDownload))
 	mux.HandleFunc("GET /api/catalog/session", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

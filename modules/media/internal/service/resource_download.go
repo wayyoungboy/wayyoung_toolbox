@@ -50,16 +50,36 @@ func resourceDownloaderIdentity(settings Settings) (string, error) {
 }
 
 func resourceSelection(input ResourceDownloadSelection) (ResourceDownloadSelection, error) {
+	if input.SearchedAt == "" || len(input.SearchedAt) > 64 {
+		return input, catalog.ErrInvalid
+	}
+	return resourceDownloadIdentity(input)
+}
+
+func resourceDownloadIdentity(input ResourceDownloadSelection) (ResourceDownloadSelection, error) {
 	code, err := resourceSearchInput(input.Code, input.Provider)
 	if err != nil {
 		return input, err
 	}
 	input.Code, input.InfoHash = code, strings.ToLower(input.InfoHash)
 	decoded, err := hex.DecodeString(input.InfoHash)
-	if err != nil || len(decoded) != 20 || input.SearchedAt == "" || len(input.SearchedAt) > 64 {
+	if err != nil || len(decoded) != 20 {
 		return input, catalog.ErrInvalid
 	}
 	return input, nil
+}
+
+// Both registration and uncertain-response lookup use the same reservation
+// identity. The lookup can also report an original RSS/movie owner, even when
+// that row does not appear in the recent independent resource-download list.
+func findResourceDownloadOwner(ctx context.Context, query interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, input ResourceDownloadSelection) (MediaJob, error) {
+	return scanMediaJob(query.QueryRowContext(ctx, `SELECT `+mediaJobColumns+` FROM media_jobs
+WHERE job_key=? OR (status<>'skipped' AND COALESCE(json_extract(payload,'$.related_job_id'),0)=0
+ AND (lower(json_extract(payload,'$.torrent_hash'))=? OR (media_id<>'' AND media_id=?))
+ AND (COALESCE(json_extract(payload,'$.discovery.magnet'),'')<>'' OR json_extract(payload,'$.resource') IS NOT NULL OR phase<>'discovered'))
+ORDER BY id LIMIT 1`, "resource:"+input.InfoHash, input.InfoHash, input.Code))
 }
 
 // EnqueueResourceDownload atomically checks the selected cache snapshot and
@@ -76,11 +96,7 @@ func (d *Database) EnqueueResourceDownload(ctx context.Context, input ResourceDo
 	}
 	defer tx.Rollback()
 	key := "resource:" + input.InfoHash
-	job, err := scanMediaJob(tx.QueryRowContext(ctx, `SELECT `+mediaJobColumns+` FROM media_jobs
-WHERE job_key=? OR (status<>'skipped' AND COALESCE(json_extract(payload,'$.related_job_id'),0)=0
- AND (lower(json_extract(payload,'$.torrent_hash'))=? OR (media_id<>'' AND media_id=?))
- AND (COALESCE(json_extract(payload,'$.discovery.magnet'),'')<>'' OR json_extract(payload,'$.resource') IS NOT NULL OR phase<>'discovered'))
-ORDER BY id LIMIT 1`, key, input.InfoHash, input.Code))
+	job, err := findResourceDownloadOwner(ctx, tx, input)
 	if err == nil {
 		if job.MediaID != "" && job.MediaID != input.Code {
 			return MediaJob{}, false, catalog.ErrConflict

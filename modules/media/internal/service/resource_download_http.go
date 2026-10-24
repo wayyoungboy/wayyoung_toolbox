@@ -1,12 +1,43 @@
 package service
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
 
 	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
 )
+
+func (s *Service) handleResourceDownloadSelection(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	for key, values := range query {
+		if (key != "code" && key != "provider" && key != "infohash") || len(values) != 1 {
+			err = catalog.ErrInvalid
+		}
+	}
+	input, inputErr := resourceDownloadIdentity(ResourceDownloadSelection{Code: query.Get("code"), Provider: query.Get("provider"), InfoHash: query.Get("infohash")})
+	if err != nil || inputErr != nil {
+		catalogError(w, catalog.ErrInvalid)
+		return
+	}
+	job, err := findResourceDownloadOwner(r.Context(), s.db.db, input)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, 200, map[string]any{"job": nil})
+		return
+	}
+	if err != nil {
+		catalogError(w, err)
+		return
+	}
+	if job.MediaID != "" && job.MediaID != input.Code {
+		catalogError(w, catalog.ErrConflict)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"job": job})
+}
 
 // The POST only persists explicit intent. The shared in-process queue performs
 // dispatch; HTTP retries never replay a qB request or reset the durable state.
