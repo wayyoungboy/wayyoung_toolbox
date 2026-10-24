@@ -88,11 +88,11 @@ func wantPhase(w Want, today string) string {
 	if w.State == "acquired" {
 		return "acquired"
 	}
-	if w.ReleaseDate != "" && w.ReleaseDate > today {
-		return "unreleased"
-	}
 	if w.State == "given_up" {
 		return "given_up"
+	}
+	if w.ReleaseDate != "" && w.ReleaseDate > today {
+		return "unreleased"
 	}
 	return "searching"
 }
@@ -290,7 +290,7 @@ func (s *Store) Wants(ctx context.Context, filter WantFilter) (WantPage, error) 
 		}
 	}
 	today := time.Now().Format("2006-01-02")
-	phaseSQL := `CASE WHEN w.state='acquired' THEN 'acquired' WHEN w.release_date<>'' AND w.release_date>? THEN 'unreleased' WHEN w.state='given_up' THEN 'given_up' ELSE 'searching' END`
+	phaseSQL := `CASE WHEN w.state='acquired' THEN 'acquired' WHEN w.state='given_up' THEN 'given_up' WHEN w.release_date<>'' AND w.release_date>? THEN 'unreleased' ELSE 'searching' END`
 	where := `(instr(lower(w.code),lower(?))>0 OR instr(lower(w.title),lower(?))>0 OR instr(lower(w.actors),lower(?))>0 OR instr(lower(w.studio),lower(?))>0)`
 	args := []any{filter.Query, filter.Query, filter.Query, filter.Query}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
