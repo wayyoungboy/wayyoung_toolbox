@@ -27,7 +27,7 @@ export function ResourceResults({ result }) {
   if (!result) return null;
   const items = result.items || [];
   return <section className="resource-results" aria-label="资源查询结果">
-    <h3>{result.code} · {result.state === 'ready' ? `找到 ${items.length} 个候选` : '查询状态'}</h3>
+    <h3 role={result.state === 'ready' ? 'status' : undefined}>{result.code} · {result.state === 'ready' ? `找到 ${items.length} 个候选` : '查询状态'}</h3>
     {result.state !== 'ready' && <p role="status">{states[result.state] || '查询未成功，请核对后手动重试。'}</p>}
     {result.stale ? <p className="catalog-alert">以下为上次成功结果，不代表本次查询成功；有效性尚未重新确认。</p> : result.cached ? <p className="catalog-help">本地缓存，不会因读取而查询外站。</p> : null}
     {result.searched_at && <p className="catalog-help">上次成功：<time dateTime={result.searched_at}>{result.searched_at}</time></p>}

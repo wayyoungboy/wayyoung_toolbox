@@ -3,8 +3,7 @@ export const primaryNavigation = [
   { key: 'people', label: '人物', group: 'watching' },
   { key: 'personal', label: '个人记录', group: 'watching' },
   { key: 'dashboard', label: '工作台', group: 'primary' },
-  { key: 'subscriptions', label: '订阅来源', group: 'primary' },
-  { key: 'resources', label: '资源搜索', group: 'primary' },
+  { key: 'subscriptions', label: '发现与采集', group: 'primary' },
   { key: 'queue', label: '处理队列', group: 'primary' },
   { key: 'maintenance', label: '媒体维护', group: 'tools' },
   { key: 'settings', label: '设置', group: 'system' },
@@ -21,6 +20,7 @@ export const settingsTabs = [
 
 // Existing acquisition bookmarks remain reachable alongside the watching entry.
 export function resolveDestination(page, tab = '') {
+  if (page === 'resources') return { page: 'subscriptions', tab: 'resources' };
   if (page === 'tasks') page = 'subscriptions';
   if (page === 'runs') return { page: 'queue', tab: 'history' };
   if (['intake', 'javsp', 'anime'].includes(page)) return { page: 'settings', tab: page };
@@ -32,7 +32,8 @@ export function resolveDestination(page, tab = '') {
   if (page === 'settings') return { page, tab: settingsTabs.some((item) => item.key === tab) ? tab : 'paths' };
   if (page === 'queue') return { page, tab: tab === 'history' ? tab : 'jobs' };
   if(page==='personal')return {page,tab:['lists','taste','sources'].includes(tab)?tab:'history'};
-  if (['catalog', 'people', 'dashboard', 'subscriptions', 'resources', 'maintenance'].includes(page)) return { page, tab: '' };
+  if(page==='subscriptions')return {page,tab:tab==='resources'?tab:''};
+  if (['catalog', 'people', 'dashboard', 'maintenance'].includes(page)) return { page, tab: '' };
   return { page: 'catalog', tab: '' };
 }
 

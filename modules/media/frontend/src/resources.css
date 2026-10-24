@@ -16,5 +16,7 @@
 .resource-hash { font: 12px ui-monospace,monospace; color: var(--subtle-text); overflow-wrap: anywhere; }
 .resource-candidate textarea { resize: vertical; font-family: ui-monospace,monospace; overflow-wrap: anywhere; }
 .resource-candidate .catalog-actions { margin-top: 12px; }
+.resource-candidate a { color: var(--status-running); text-underline-offset: 3px; }
+.resource-candidate a:focus-visible { outline: 2px solid var(--app-blue); outline-offset: 3px; }
 .catalog-resource-section { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 18px; }
 @media(max-width:600px) { .resource-candidate-heading { flex-direction: column; gap: 6px; }.resource-candidate { padding: 12px; }.resource-panel { padding:16px; } }

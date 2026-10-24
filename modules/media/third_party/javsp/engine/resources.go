@@ -75,7 +75,7 @@ func SearchResources(ctx context.Context, options ResourceSearchOptions) (Resour
 		base = "https://javdb.com"
 	}
 	origin, err := url.Parse(base)
-	if err != nil || origin.User != nil || origin.Hostname() == "" || (origin.Scheme != "https" && origin.Scheme != "http") || origin.RawQuery != "" || origin.Fragment != "" {
+	if err != nil || len(base) > 1024 || origin.User != nil || origin.Hostname() == "" || (origin.Scheme != "https" && origin.Scheme != "http") || origin.RawQuery != "" || origin.Fragment != "" {
 		return result, ErrResourceInput
 	}
 	client, err := buildHTTPClient(cfg)
@@ -123,6 +123,9 @@ func SearchResources(ctx context.Context, options ResourceSearchOptions) (Resour
 		return result, nil
 	}
 	page.RawQuery, page.Fragment, page.User = "", "", nil
+	if len(page.String()) > 1024 {
+		return result, nil
+	}
 	seen := map[string]bool{}
 	for _, raw := range info.Magnet {
 		hash, name, ok := resourceMagnet(raw)
@@ -170,7 +173,7 @@ type resourceTransport struct {
 }
 
 func (t *resourceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if !sameResourceOrigin(req.URL, t.origin) || t.requests.Add(1) > 6 {
+	if !sameResourceOrigin(req.URL, t.origin) || len(req.URL.String()) > 2048 || t.requests.Add(1) > 6 {
 		return nil, errResourceBoundary
 	}
 	resp, err := t.next.RoundTrip(req)

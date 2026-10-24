@@ -15,7 +15,6 @@ const icons = {
   personal: IconHistory,
   dashboard: IconHome,
   subscriptions: IconSignal,
-  resources: IconSearch,
   queue: IconList,
   maintenance: IconSearch,
   settings: IconSetting,

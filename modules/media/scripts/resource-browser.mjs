@@ -76,6 +76,11 @@ try {
   await dialog.getByRole('button', { name: '读取上次结果', exact: true }).click();
   await visible('详情页未提供可用磁力', dialog);
   assert.equal((await fixture()).calls, count);
+  await page.goto(`${base}?page=subscriptions`);
+  await page.getByRole('heading', { name: 'RSS 订阅', exact: true }).waitFor();
+  await page.getByRole('tab', { name: '资源搜索', exact: true }).click();
+  await page.getByRole('heading', { name: '资源搜索', exact: true }).waitFor();
+  assert.equal((await fixture()).calls, count, 'tab navigation contacted provider');
   assert.deepEqual(errors, []);
   console.log('PASS: resource entry → explicit search → cache/stale/reload → mobile/dark → cancel/empty → catalog detail; Browser plugin not available; local Playwright, actual HTTP/SQLite and synthetic provider only.');
 } finally {

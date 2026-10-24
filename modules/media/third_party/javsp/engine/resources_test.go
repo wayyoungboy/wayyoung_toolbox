@@ -206,7 +206,7 @@ func TestResourceSearchBlocksOffOriginRequestsAndOversizedBodies(t *testing.T) {
 					t.Fatalf("unbounded candidates: %+v", got)
 				}
 			} else if got.State != "unavailable" {
-				t.Fatalf("unsafe response accepted: state=%s items=%d", got.State,len(got.Items))
+				t.Fatalf("unsafe response accepted: state=%s items=%d", got.State, len(got.Items))
 			}
 			if outside.Load() != 0 {
 				t.Fatal("off-origin request reached server")
