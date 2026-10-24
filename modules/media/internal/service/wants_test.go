@@ -347,3 +347,19 @@ func TestWantsRejectNullUnknownOrStaleEditsAndKeepMetadataOnIdempotentAdds(t *te
 		t.Fatal("cancelled removal accepted")
 	}
 }
+
+func TestWantExactIdentityReconciliationIgnoresSubstringMatchesAndPageHistory(t *testing.T) {
+	s := testService(t)
+	want := addWant(t, s, "TEST-001")
+	for i := 100; i < 150; i++ {
+		addWant(t, s, fmt.Sprintf("TEST-001%d", i))
+	}
+	page := wantRequest(t, s, "GET", "/api/wants?code=TEST-001&limit=1&offset=0", nil, 200)
+	items := page["items"].([]any)
+	if page["total"] != float64(1) || len(items) != 1 || items[0].(map[string]any)["id"] != want["id"] {
+		t.Fatal("identity reconciliation returned another code", page)
+	}
+	for _, query := range []string{"code=646-C", "code=TEST-001&code=TEST-002", "code=" + strings.Repeat("a", 129)} {
+		wantRequest(t, s, "GET", "/api/wants?"+query, nil, 400)
+	}
+}

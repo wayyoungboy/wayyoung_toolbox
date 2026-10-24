@@ -9,6 +9,9 @@ it('reads only local wants and protects explicit versioned writes without downlo
   const signal = new AbortController().signal;
   await api.wants({ query: 'Test Actor', phase: 'searching', offset: 48, signal });
   await api.want(7, { signal });
+  expect(typeof api.wantByCode).toBe('function');
+  await api.wantByCode('TEST-001', { signal });
+  expect(fetch.mock.calls.at(-1)[0]).toBe('/api/wants?code=TEST-001&limit=1&offset=0');
   expect(fetch.mock.calls.every(([, options]) => !options.method)).toBe(true);
   expect(fetch.mock.calls[0][0]).toMatch(/\/wants\?query=Test\+Actor&phase=searching&limit=48&offset=48$/);
   const payload = { code: 'TEST-001', title: 'Neutral title' };
