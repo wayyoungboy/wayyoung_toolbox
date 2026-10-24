@@ -100,7 +100,7 @@ func TestResourceSearchAPICacheFailureAndNoAutomation(t *testing.T) {
 	if got["state"] != "empty" || len(got["items"].([]any)) != 0 || got["stale"] != false {
 		t.Fatal("real empty result not distinguished", got)
 	}
-	for _, table := range []string{"media_jobs", "runs", "javsp_runs", "catalog_works", "catalog_scan_jobs"} {
+	for _, table := range []string{"media_jobs", "task_runs", "javsp_runs", "catalog_works", "catalog_scan_jobs"} {
 		var n int
 		if err := s.db.db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&n); err != nil || n != 0 {
 			t.Fatalf("search mutated %s: %d %v", table, n, err)
