@@ -7,6 +7,7 @@ import { CatalogPoster } from './CatalogCards';
 import CatalogPlayer from './CatalogPlayer';
 import CatalogMetadata from './CatalogMetadata';
 import CatalogPersonalControls from './CatalogPersonalControls';
+import ResourceSearch from './ResourceSearch';
 
 const issueLabels = {
   identity_unknown: '番号待确认，不会猜测缺失前缀', identity_conflict: '文件名与 NFO 番号冲突',
@@ -25,6 +26,7 @@ export default function CatalogDetails({ id, onClose, onChanged, onSearch, onAct
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState('');
+  const [resources, setResources] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     api.catalogWork(id, { signal: controller.signal }).then(value => {
@@ -69,6 +71,7 @@ export default function CatalogDetails({ id, onClose, onChanged, onSearch, onAct
           </div>
         </div>
         {work.plot && <section className="catalog-synopsis"><h3>简介</h3><p>{work.plot}</p></section>}
+        {work.code && <section className="catalog-resource-section"><Button aria-expanded={resources} onClick={() => setResources(value => !value)}>{resources ? '收起资源搜索' : '搜索此作品的资源'}</Button>{resources && <ResourceSearch key={work.code} initialCode={work.code} />}</section>}
         <section className="catalog-asset-section"><h3>版本与文件 <small>{work.asset_count} 个</small></h3>
           <label className="catalog-asset-select">选择播放文件<select value={selectedID} onChange={event => setSelectedID(event.target.value)}>
             {!selectedID && <option value="">没有可播放文件</option>}

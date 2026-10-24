@@ -26,6 +26,10 @@ func resourceServiceFixture(t *testing.T) (*Service, *atomic.Int32, *atomic.Int3
 	var mode, calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
+		if mode.Load() == 3 {
+			<-r.Context().Done()
+			return
+		}
 		if mode.Load() == 1 {
 			http.Error(w, "Just a moment", 403)
 			return
@@ -202,6 +206,28 @@ func TestResourceSearchConfigFailureRetainsStaleEvidence(t *testing.T) {
 	current := resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-001&provider=javdb", nil, 200)
 	if current["state"] != "config_unavailable" || current["stale"] != true || current["searched_at"] != prior["searched_at"] || current["attempted_at"] == prior["attempted_at"] || len(current["items"].([]any)) != 1 {
 		t.Fatalf("configuration failure lost on refresh: %v", current)
+	}
+}
+
+func TestResourceSearchRejectsInvalidCacheWritesAndOversizedRead(t *testing.T) {
+	s, _, _ := resourceServiceFixture(t)
+	for _, result := range []javspengine.ResourceSearchResult{
+		{Code: "TEST-001", Provider: "javdb", State: "blocked"},
+		{Code: "TEST-001", Provider: "javdb", State: "ready", Items: []javspengine.ResourceCandidate{{Name: strings.Repeat("x", 129<<10)}}},
+	} {
+		if _, err := s.db.saveResources(context.Background(), result); err == nil {
+			t.Fatal("invalid cache write accepted")
+		}
+	}
+	raw := `{"state":"ready","padding":"` + strings.Repeat("x", 129<<10) + `"}`
+	if _, err := s.db.db.Exec(`INSERT INTO resource_search_cache(code,provider,result,searched_at,last_state,attempted_at) VALUES('TEST-001','javdb',?,'','ready','')`, raw); err != nil {
+		t.Fatal(err)
+	}
+	resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-001&provider=javdb", nil, 500)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := s.db.cachedResources(ctx, "TEST-001", "javdb"); err == nil {
+		t.Fatal("cache ignored cancellation")
 	}
 }
 

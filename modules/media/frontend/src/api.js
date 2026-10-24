@@ -35,6 +35,8 @@ async function playbackSessionMutation(id,action,payload){
 }
 
 export const api = {
+  resourceCache: (code, { signal } = {}) => request(`/resources/search?${new URLSearchParams({ code, provider: 'javdb' })}`, { signal }),
+  resourceSearch: (code, { signal } = {}) => catalogMutation('/resources/search', 'POST', { code, provider: 'javdb' }, { signal }),
   catalogAutomation: ({ signal } = {}) => request('/catalog/automation', { signal }),
   catalogAutomationSave: payload => catalogMutation('/catalog/automation', 'PUT', payload),
   catalogBrowserSources: ({signal}={})=>request('/catalog/browser/sources',{signal}),

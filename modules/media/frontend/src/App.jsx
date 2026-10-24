@@ -11,10 +11,11 @@ const Tasks = lazy(() => import('./pages/Tasks'));
 const Catalog = lazy(() => import('./pages/Catalog'));
 const People = lazy(() => import('./pages/People'));
 const Personal = lazy(() => import('./pages/Personal'));
+const Resources = lazy(() => import('./pages/Resources'));
 const Queue = lazy(() => import('./pages/Queue'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
 const SettingsWorkspace = lazy(() => import('./pages/SettingsWorkspace'));
-const resourceKeys = ['actor', 'work', 'list', 'actor_name', 'tag', 'view', 'query', 'library', 'sort', 'offset'];
+const resourceKeys = ['actor', 'work', 'list', 'actor_name', 'tag', 'view', 'query', 'library', 'sort', 'offset', 'code'];
 const requestedDestination = () => {
   const parameters = new URLSearchParams(window.location.search);
   const result = resolveDestination(parameters.get('page'), parameters.get('tab'));
@@ -68,6 +69,7 @@ export default function App() {
     personal: <Personal tab={destination.tab} onTabChange={tab=>navigate('personal',tab)} onNavigate={navigate} />,
     dashboard: <Dashboard onNavigate={navigate} />,
     subscriptions: <Tasks />,
+    resources: <Resources initialCode={destination.resource?.code} onNavigate={navigate} />,
     queue: <Queue tab={destination.tab} jobID={destination.jobID} onTabChange={(tab) => navigate('queue', tab)} onNavigate={navigate} />,
     maintenance: <Maintenance />,
     settings: <SettingsWorkspace tab={destination.tab} onTabChange={(tab) => navigate('settings', tab)} onNavigate={navigate} />,

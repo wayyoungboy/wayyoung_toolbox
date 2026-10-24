@@ -22,7 +22,7 @@ button, input, select { font: inherit; }
 .sidebar { width: 224px; flex: 0 0 224px; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: #fbfcfd; }
 .brand { height: 76px; display: flex; align-items: center; gap: 12px; padding: 0 20px; font-size: 16px; font-weight: 650; white-space: nowrap; }
 .brand img { width: 38px; height: 38px; border-radius: 10px; }
-.nav-list { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
+.nav-list { display: flex; flex-direction: column; gap: 6px; padding: 12px; min-height: 0; overflow-y: auto; }
 .nav-group-heading { color:var(--subtle-text);font-size:11px;padding:14px 14px 4px; }
 .nav-item { appearance: none; border: 0; background: transparent; color: #41464f; height: 46px; display: flex; align-items: center; gap: 13px; padding: 0 14px; border-radius: 8px; cursor: pointer; text-align: left; }
 .nav-item:hover { background: #f0f3f8; }
