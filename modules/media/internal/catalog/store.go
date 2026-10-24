@@ -111,6 +111,9 @@ INSERT OR IGNORE INTO catalog_automation(id,after_organize,version) VALUES(1,0,1
 	if err := initializeScanJobs(tx); err != nil {
 		return nil, fmt.Errorf("initialize catalog scans: %w", err)
 	}
+	if err := initializeWants(tx); err != nil {
+		return nil, fmt.Errorf("initialize wants: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit catalog schema: %w", err)
 	}

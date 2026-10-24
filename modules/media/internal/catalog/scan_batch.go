@@ -642,6 +642,9 @@ func (s *Store) finishScan(ctx context.Context, root *os.Root, job ScanJob) (Sca
 	if err := syncActorsTx(ctx, tx); err != nil {
 		return job, err
 	}
+	if err := ReconcileWantsTx(ctx, tx, acquiredAssetIDs(assets), "scan", 0, stamp); err != nil {
+		return job, err
+	}
 	if err := clearScanStage(ctx, tx, job.ID); err != nil {
 		return job, err
 	}

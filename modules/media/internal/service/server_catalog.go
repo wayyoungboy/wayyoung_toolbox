@@ -18,6 +18,7 @@ import (
 )
 
 func (s *Service) registerCatalogRoutes(mux *http.ServeMux) {
+	s.registerWantRoutes(mux)
 	s.registerCatalogPersonalRoutes(mux)
 	s.registerCatalogAutomationRoutes(mux)
 	s.registerCatalogScanRoutes(mux)

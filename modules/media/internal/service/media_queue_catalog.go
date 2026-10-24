@@ -51,7 +51,10 @@ func completeCatalogJobTx(ctx context.Context, tx *sql.Tx, attempt MediaJob, res
 	job.HoldFiles = false
 	job.CatalogRegistration = &result
 	_, err = saveMediaJobChange(tx, job, attempt.Version, "catalog_registered")
-	return err
+	if err != nil {
+		return err
+	}
+	return catalog.ReconcileWantsTx(ctx, tx, result.AssetIDs, "organizer", job.ID, nowUTC())
 }
 
 // The caller owns mediaFiles. This successor consumes only durable organizer

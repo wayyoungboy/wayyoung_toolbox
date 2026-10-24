@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -205,6 +206,11 @@ func enqueueMediaJobTx(tx *sql.Tx, job MediaJob) (MediaJob, error) {
 	}
 	if count == 1 {
 		if err := insertMediaEvent(tx, stored, "enqueued"); err != nil {
+			return MediaJob{}, err
+		}
+	}
+	if stored.Kind == "torrent" && stored.MediaID != "" {
+		if err := catalog.LinkWantJobTx(context.Background(), tx, stored.MediaID, stored.ID); err != nil {
 			return MediaJob{}, err
 		}
 	}

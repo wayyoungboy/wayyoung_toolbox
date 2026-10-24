@@ -31,6 +31,7 @@ type RegistrationResult struct {
 	Works      int      `json:"work_count"`
 	LibraryIDs []int64  `json:"library_ids"`
 	WorkIDs    []string `json:"work_ids"`
+	AssetIDs   []string `json:"asset_ids"`
 }
 
 func registrationAbsolute(value string) bool {
@@ -250,6 +251,7 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 				return result, err
 			}
 			result.WorkIDs = append(result.WorkIDs, asset.WorkID)
+			result.AssetIDs = append(result.AssetIDs, asset.ID)
 		}
 	}
 	for oldID, destinations := range transfers {
@@ -268,6 +270,9 @@ func (s *Store) RegisterFiles(ctx context.Context, targets []RegistrationTarget,
 		if err := finish(tx, result); err != nil {
 			return RegistrationResult{}, err
 		}
+	}
+	if err := ReconcileWantsTx(ctx, tx, result.AssetIDs, "registration", 0, stamp); err != nil {
+		return RegistrationResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return RegistrationResult{}, err

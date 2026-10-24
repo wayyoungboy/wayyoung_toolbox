@@ -285,6 +285,9 @@ func (s *Store) Scan(ctx context.Context, id int64) (result ScanResult, resultEr
 	if err := syncActorsTx(ctx, tx); err != nil {
 		return result, err
 	}
+	if err := ReconcileWantsTx(ctx, tx, acquiredAssetIDs(assets), "scan", 0, stamp); err != nil {
+		return result, err
+	}
 	if err := tx.Commit(); err != nil {
 		return result, err
 	}

@@ -102,6 +102,9 @@ func (d *Database) EnqueueResourceDownload(ctx context.Context, input ResourceDo
 		if job.MediaID != "" && job.MediaID != input.Code {
 			return MediaJob{}, false, catalog.ErrConflict
 		}
+		if err := catalog.LinkWantJobTx(ctx, tx, input.Code, job.ID); err != nil {
+			return MediaJob{}, false, err
+		}
 		return job, false, tx.Commit()
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
