@@ -211,3 +211,50 @@ func TestResourceSearchBlocksOffOriginRequestsAndOversizedBodies(t *testing.T) {
 		})
 	}
 }
+
+func TestResourceSearchHonorsTypeSpecificSourceSelection(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
+	defer server.Close()
+	for _, code := range []string{"GETCHU-123", "GYUTTO-123", "FC2-123456"} {
+		opts := resourceOptions(t, server.URL)
+		opts.Code = code
+		var cfg config.Config
+		_ = yaml.Unmarshal(opts.ConfigData, &cfg)
+		cfg.Crawler.Selection.Getchu = []string{"dl_getchu"}
+		cfg.Crawler.Selection.Gyutto = []string{"gyutto"}
+		cfg.Crawler.Selection.FC2 = []string{"fc2"}
+		opts.ConfigData, _ = yaml.Marshal(cfg)
+		got, err := SearchResources(context.Background(), opts)
+		if err != nil || got.State != "disabled" {
+			t.Fatalf("closed type-specific source was used for %s: %+v %v", code, got, err)
+		}
+	}
+	if calls.Load() != 0 {
+		t.Fatal("closed source received a request")
+	}
+}
+
+func TestResourceSearchEmptyProxyDoesNotInheritDefaultTransport(t *testing.T) {
+	var calls atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); http.Error(w, "unexpected proxy", 403) }))
+	defer proxy.Close()
+	proxyURL, _ := url.Parse(proxy.URL)
+	previous := http.DefaultTransport
+	transport := previous.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(proxyURL)
+	http.DefaultTransport = transport
+	t.Cleanup(func() { http.DefaultTransport = previous; transport.CloseIdleConnections() })
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "<html>none</html>") }))
+	defer server.Close()
+	opts := resourceOptions(t, server.URL)
+	var cfg config.Config
+	_ = yaml.Unmarshal(opts.ConfigData, &cfg)
+	empty := ""
+	cfg.Network.ProxyServer = &empty
+	opts.ConfigData, _ = yaml.Marshal(cfg)
+	got, err := SearchResources(context.Background(), opts)
+	if err != nil || got.State != "not_found" || calls.Load() != 0 {
+		t.Fatalf("empty proxy inherited default: %+v %v, calls %d", got, err, calls.Load())
+	}
+}
