@@ -115,7 +115,8 @@ func (s *Service) handleCatalogScanAction(w http.ResponseWriter, r *http.Request
 	// A publishing transaction can then observe cancellation and roll back;
 	// a stale browser revision cannot interrupt a newer attempt.
 	if action == "pause" || action == "cancel" {
-		s.cancelCatalogScanAttempt(id, payload.Version)
+		unlock := s.lockCatalogScanControl(id, payload.Version)
+		defer unlock()
 	}
 	job, err := s.db.catalog.ChangeScanJob(r.Context(), id, payload.Version, action)
 	if err != nil {
