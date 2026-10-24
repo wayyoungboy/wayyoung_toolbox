@@ -8,10 +8,10 @@ import { downloadPercent, queuePhaseLabel, queueStatusLabel, queueSummary } from
 
 const loadIntake = signal => api.intake({ signal });
 
-export function ResourceJobLink({ job, onNavigate }) {
+export function ResourceJobLink({ job, onNavigate, disabled = false }) {
   const label = `查看下载任务 #${job.id}`;
-  return onNavigate ? <Button onClick={() => onNavigate('queue', 'jobs', job.id)}>{label}</Button>
-    : <a href={`?page=queue&tab=jobs&job=${encodeURIComponent(job.id)}`}>{label}</a>;
+  return onNavigate ? <Button disabled={disabled} onClick={() => onNavigate('queue', 'jobs', job.id)}>{label}</Button>
+    : disabled ? <span>{label}</span> : <a href={`?page=queue&tab=jobs&job=${encodeURIComponent(job.id)}`}>{label}</a>;
 }
 
 // A mount only reads configuration. The sole POST is the confirmed event below;

@@ -48,7 +48,7 @@ export function WantCard({ want, disabled, onNavigate, onEdit, onState, onRemove
     <div className="catalog-actions">
       <Button disabled={disabled || !searchable} onClick={() => onNavigate('subscriptions', 'resources', null, { code: want.code })}>搜索资源</Button>
       {acquired && <Button disabled={disabled || !want.available || !want.acquisition?.work_id} onClick={() => onNavigate('catalog', '', null, { work: want.acquisition.work_id })}>查看馆藏作品</Button>}
-      {want.last_job_id > 0 && <ResourceJobLink job={{ id: want.last_job_id }} onNavigate={onNavigate} />}
+      {want.last_job_id > 0 && <ResourceJobLink job={{ id: want.last_job_id }} onNavigate={onNavigate} disabled={disabled} />}
       <Button disabled={disabled} onClick={() => onEdit(want.id)}>编辑资料</Button>
       {!acquired && <Button disabled={disabled} onClick={() => onState(want)}>{want.state === 'given_up' ? '继续查找' : '暂时放弃'}</Button>}
       <Button disabled={disabled} onClick={() => onRemove(want)}>移出想要</Button>
@@ -108,12 +108,13 @@ export default function Wants({ initial = {}, onNavigate }) {
   const { data, loading, error, refresh } = useRemoteResource(load);
   useEffect(() => { alive.current = true; return () => { alive.current = false; request.current?.abort(); }; }, []);
   useEffect(() => {
-    if (!data || loading || error) return;
+    if (!data || loading || error || busy || uncertain) return;
     const lastOffset = Math.max(0, Math.ceil(data.total / 48) - 1) * 48;
-    if (offset > lastOffset) onNavigate('subscriptions', 'wants', null, { query, view: phase, offset: lastOffset ? String(lastOffset) : '' });
-  }, [data, loading, error, offset, onNavigate, query, phase]);
+    if (offset > lastOffset) onNavigate('subscriptions', 'wants', null, { query, view: phase, offset: lastOffset ? String(lastOffset) : '' }, { replace: true });
+  }, [data, loading, error, offset, onNavigate, query, phase, busy, uncertain]);
   const disabled = busy || loading || uncertain || Boolean(error) || Boolean(editing);
-  const filter = (view, nextOffset = 0, nextQuery = query) => { if (!busy) onNavigate('subscriptions', 'wants', null, { view, query: nextQuery, offset: nextOffset ? String(nextOffset) : '' }); };
+  const navigationDisabled = busy || loading || uncertain || Boolean(editing);
+  const filter = (view, nextOffset = 0, nextQuery = query) => { if (!navigationDisabled) onNavigate('subscriptions', 'wants', null, { view, query: nextQuery, offset: nextOffset ? String(nextOffset) : '' }); };
   const act = async (action, success, after, code = '') => {
     if (lock.current || disabled) return;
     lock.current = true; setBusy(true); setNotice('');
@@ -142,7 +143,7 @@ export default function Wants({ initial = {}, onNavigate }) {
   const changeState = want => act(signal => api.wantPatch(want.id, { version: want.version, state: want.state === 'given_up' ? 'wanted' : 'given_up' }, { signal }), '想要状态已更新，没有改变已有下载。');
   const remove = want => {
     if (disabled || !window.confirm(`移除想要“${want.code}”？只移除清单记录，不删除影片、不取消下载，也不删除观看记录。`)) return;
-    act(signal => api.wantRemove(want.id, want.version, { signal }), '已移出想要清单，影片和下载任务保持不变。', () => { if (data?.items.length === 1 && offset > 0) filter(phase, Math.max(0, offset - 48)); });
+    act(signal => api.wantRemove(want.id, want.version, { signal }), '已移出想要清单，影片和下载任务保持不变。');
   };
   const reread = async () => {
     if (lock.current || busy) return;
@@ -173,12 +174,12 @@ export default function Wants({ initial = {}, onNavigate }) {
     <p className="catalog-help">登记只写入本地清单，筛选与刷新只读本地资料；不自动访问外站、投递下载或扫描媒体。已入库状态由实际文件登记确认；元数据自动补齐和演员新作发现尚未接入此清单。</p>
     {notice && <p className={uncertain ? 'catalog-alert' : 'catalog-notice'} role="status">{notice}</p>}
     {adding && <form className="wants-form wants-add" onSubmit={add} aria-label="添加想要作品"><h2>登记作品</h2><label>想要的完整番号<input aria-label="想要的完整番号" required maxLength={128} value={form.code} disabled={busy || uncertain} autoComplete="off" spellCheck="false" placeholder="例如 TEST-001 / FC2-1234567" onChange={event => setForm(value => ({ ...value, code: event.target.value }))} /></label><MetadataFields form={form} setForm={setForm} disabled={busy || uncertain} /><p className="catalog-help">请保留完整前缀，不会猜测或修复缺失的番号。资料可留空，稍后手动补充。</p><div className="catalog-actions"><Button htmlType="submit" theme="solid" disabled={disabled || !form.code.trim()}>登记想要</Button><Button disabled={busy || uncertain} onClick={() => { consumePrefill(); setAdding(false); }}>取消登记</Button></div></form>}
-    <div className="wants-toolbar"><form onSubmit={event => { event.preventDefault(); filter(phase, 0, search); }}><label className="wants-search">搜索想要清单<input aria-label="搜索想要清单" type="search" maxLength={500} value={search} disabled={busy} placeholder="番号、标题、演员或厂牌" onChange={event => setSearch(event.target.value)} /></label><Button htmlType="submit" disabled={busy || loading}>筛选清单</Button></form><div className="want-filters" aria-label="想要阶段筛选">{[['', '全部'], ...Object.entries(phases)].map(([key, label]) => <button type="button" key={key} aria-pressed={phase === key} disabled={busy || loading} onClick={() => filter(key)}>{label}<span>{data ? key ? data.counts[key] : Object.values(data.counts).reduce((sum, n) => sum + n, 0) : '—'}</span></button>)}</div></div>
+    <div className="wants-toolbar"><form onSubmit={event => { event.preventDefault(); filter(phase, 0, search); }}><label className="wants-search">搜索想要清单<input aria-label="搜索想要清单" type="search" maxLength={500} value={search} disabled={navigationDisabled} placeholder="番号、标题、演员或厂牌" onChange={event => setSearch(event.target.value)} /></label><Button htmlType="submit" disabled={navigationDisabled}>筛选清单</Button></form><div className="want-filters" aria-label="想要阶段筛选">{[['', '全部'], ...Object.entries(phases)].map(([key, label]) => <button type="button" key={key} aria-pressed={phase === key} disabled={navigationDisabled} onClick={() => filter(key)}>{label}<span>{data ? key ? data.counts[key] : Object.values(data.counts).reduce((sum, n) => sum + n, 0) : '—'}</span></button>)}</div></div>
     {error && <p role="alert" className="catalog-alert">清单暂不可读：{error}。没有提交下载或自动重试。</p>}
     {loading && !data && <p role="status" className="catalog-loading">正在读取想要清单…</p>}
     {data && <><p className="catalog-help">当前筛选 {data.total} 项 · 每页 48 项</p><div className="wants-grid">{data.items.map(want => <WantCard key={want.id} want={want} disabled={disabled} onNavigate={onNavigate} onEdit={setEditing} onState={changeState} onRemove={remove} />)}</div></>}
     {!loading && !error && data?.total === 0 && <div className="catalog-empty"><h2>{query || phase ? '此筛选下没有想要作品' : '还没有登记想要的作品'}</h2><p>登记完整番号即可保留查找意图；已有馆藏请使用收藏或稍后观看。</p></div>}
-    {(data?.total > 48 || offset > 0) && <nav className="catalog-pagination" aria-label="想要清单分页"><Button disabled={busy || loading || offset === 0} onClick={() => filter(phase, Math.max(0, offset - 48))}>上一页</Button><span>{Math.floor(offset / 48) + 1} / {Math.max(1, Math.ceil((data?.total || 0) / 48))}</span><Button disabled={busy || loading || offset + 48 >= (data?.total || 0)} onClick={() => filter(phase, offset + 48)}>下一页</Button></nav>}
+    {(data?.total > 48 || offset > 0) && <nav className="catalog-pagination" aria-label="想要清单分页"><Button disabled={navigationDisabled || offset === 0} onClick={() => filter(phase, Math.max(0, offset - 48))}>上一页</Button><span>{Math.floor(offset / 48) + 1} / {Math.max(1, Math.ceil((data?.total || 0) / 48))}</span><Button disabled={navigationDisabled || offset + 48 >= (data?.total || 0)} onClick={() => filter(phase, offset + 48)}>下一页</Button></nav>}
     {editing && <WantEditor id={editing} onClose={() => setEditing(null)} onChanged={refresh} />}
   </section>;
 }

@@ -44,7 +44,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', update);
   }, []);
 
-  const navigate = (nextPage, tab, jobID, resource = {}) => {
+  const navigate = (nextPage, tab, jobID, resource = {}, options = {}) => {
     const next = resolveDestination(nextPage, tab);
     next.jobID = next.page === 'queue' ? queueJobID(jobID) : null;
     const url = new URL(window.location.href);
@@ -58,7 +58,8 @@ export default function App() {
       if (resource[key]) url.searchParams.set(key, String(resource[key]).slice(0,500));
       else url.searchParams.delete(key);
     }
-    window.history.pushState(null, '', url);
+    if (options.replace) window.history.replaceState(null, '', url);
+    else window.history.pushState(null, '', url);
     setDestination(next);
   };
 
