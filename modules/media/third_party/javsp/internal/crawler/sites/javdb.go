@@ -41,6 +41,16 @@ func (j *JavDB) ID() model.CrawlerID {
 }
 
 func (j *JavDB) Parse(ctx context.Context, input crawler.MovieRef) (*model.MovieInfo, error) {
+	return j.parse(ctx, input, true)
+}
+
+// ParseResources requires the detail page, not the metadata-only search-card
+// fallback. A login/paywall response is not proof that a work has no resources.
+func (j *JavDB) ParseResources(ctx context.Context, input crawler.MovieRef) (*model.MovieInfo, error) {
+	return j.parse(ctx, input, false)
+}
+
+func (j *JavDB) parse(ctx context.Context, input crawler.MovieRef, allowFallback bool) (*model.MovieInfo, error) {
 	searchURL := j.baseURL + "/search?q=" + url.QueryEscape(input.DVDID)
 	searchDoc, _, err := j.getHTML(ctx, searchURL)
 	if err != nil {
@@ -53,10 +63,23 @@ func (j *JavDB) Parse(ctx context.Context, input crawler.MovieRef) (*model.Movie
 	}
 	detailDoc, _, err := j.getHTML(ctx, detailURL)
 	if err != nil {
-		if errors.Is(err, crawler.ErrCredential) || errors.Is(err, crawler.ErrSitePermission) {
+		if allowFallback && (errors.Is(err, crawler.ErrCredential) || errors.Is(err, crawler.ErrSitePermission)) {
 			return j.parseSearchCard(detailURL, box), nil
 		}
 		return nil, err
+	}
+	if !allowFallback {
+		container := htmlquery.FindOne(detailDoc, "/html/body/section/div/div[@class='video-detail']")
+		if container == nil {
+			return nil, crawler.ErrWebsite
+		}
+		info := htmlquery.FindOne(container, "//nav[@class='panel movie-panel-info']")
+		if info == nil {
+			return nil, crawler.ErrWebsite
+		}
+		if !strings.EqualFold(javdbLabelValue(info, "番號:"), input.DVDID) {
+			return nil, crawler.ErrMovieDuplicate
+		}
 	}
 	return j.parseDetail(detailURL, detailDoc, input.DVDID)
 }
