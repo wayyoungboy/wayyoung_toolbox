@@ -12,10 +12,11 @@ const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await context.newPage();
 page.setDefaultTimeout(10000);
-const errors = [], expectedFailures = [];
+const errors = [], expectedFailures = [], expectedConflicts = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('console', message => { if (message.type() === 'error') {
   if (message.text().includes('net::ERR_FAILED')) expectedFailures.push(message.text());
+  else if (message.text().includes('409')) expectedConflicts.push(message.text());
   else errors.push(message.text());
 } });
 const fixture = action => fetch(new URL(`/__fixture/downloads${action ? `?action=${action}` : ''}`, base), { method: action ? 'POST' : 'GET' }).then(async response => { const text = await response.text(); assert.equal(response.status, 200, text); return JSON.parse(text); });
@@ -41,6 +42,32 @@ try {
   await choose();
   await dialog.getByLabel('输入“下载资源”确认', { exact: true }).fill('not-confirmed');
   assert.equal(await dialog.getByRole('button', { name: '确认登记下载', exact: true }).isEnabled(), false);
+  await dialog.getByLabel('输入“下载资源”确认', { exact: true }).fill('下载资源');
+  // A hanging CSRF/session request must also be abortable without a POST.
+  let heldSession;
+  await page.route('**/api/catalog/session', route => { heldSession = route; });
+  await dialog.getByRole('button', { name: '确认登记下载', exact: true }).click();
+  await dialog.getByRole('button', { name: '停止等待', exact: true }).click();
+  await visible('登记结果未确认');
+  await dialog.getByRole('button', { name: '核对登记结果', exact: true }).click();
+  await visible('尚未找到登记记录');
+  assert.equal((await fixture()).jobs, 0);
+  await heldSession.abort('aborted').catch(() => {});
+  await page.unroute('**/api/catalog/session');
+  await dialog.getByRole('button', { name: '重新确认同一选择', exact: true }).click();
+  await dialog.getByLabel('输入“下载资源”确认', { exact: true }).fill('下载资源');
+  // A known invalid snapshot must be replaceable, not an unknown retry loop.
+  await page.route('**/api/resources/downloads', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: '测试快照已失效' }) });
+  });
+  await dialog.getByRole('button', { name: '确认登记下载', exact: true }).click();
+  await visible('登记未通过');
+  await dialog.getByRole('button', { name: 'close', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: '选择下载', exact: true }).isEnabled(), false);
+  await page.unroute('**/api/resources/downloads');
+  await page.getByRole('button', { name: '读取上次结果', exact: true }).click();
+  await choose();
   await dialog.getByLabel('输入“下载资源”确认', { exact: true }).fill('下载资源');
   await settle();
   await page.screenshot({ path: path.join(report, 'download-confirm-desktop.png') });
@@ -93,6 +120,7 @@ try {
   assert.equal((await fixture()).jobs, 1);
   assert.equal((await fixture()).adds, 1);
   assert.equal(expectedFailures.length, 1, 'intentional lost response was not isolated');
+  assert.equal(expectedConflicts.length, 1, 'intentional invalid snapshot was not isolated');
   assert.deepEqual(errors, []);
   console.log('PASS: confirm/cancel → one registration despite double click and lost response → GET reconciliation → synthetic qB dispatch → progress/stale → mobile/dark → local cancel → existing owner; no scans or real downloads. Browser plugin not available; local Playwright.');
 } finally { await context.close(); await browser.close(); }
