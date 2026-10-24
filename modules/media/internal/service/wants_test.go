@@ -165,3 +165,22 @@ func TestWantDownloadAssociationDoesNotImplyAcquired(t *testing.T) {
 		t.Fatal("want removal touched downloader", current, err)
 	}
 }
+
+func TestWantHistoricalReceiptCannotClaimRehomedAssetStillMatches(t *testing.T) {
+	s := testService(t)
+	want := addWant(t, s, "TEST-001")
+	root := registrationRoot(t)
+	catalogWrite(t, root, "unknown.mp4", "neutral unchanged video")
+	catalogWrite(t, root, "unknown.nfo", "<movie><num>TEST-001</num><title>Original identity</title></movie>")
+	lib := catalogLibrary(t, s, root)
+	catalogScan(t, s, lib)
+	if got := readWant(t, s, want["id"]); got["available"] != true {
+		t.Fatal(got)
+	}
+	catalogWrite(t, root, "unknown.nfo", "<movie><num>TEST-002</num><title>Corrected identity</title></movie>")
+	catalogScan(t, s, lib)
+	got := readWant(t, s, want["id"])
+	if got["state"] != "acquired" || got["available"] != false {
+		t.Fatal("historical receipt incorrectly matches another work", got)
+	}
+}
