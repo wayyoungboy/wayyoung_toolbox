@@ -202,3 +202,21 @@ func TestWantReconciliationDoesNotCapFullLibraryPublicationAtRegistrationBatchSi
 		t.Fatalf("large library publication: %d %v", count, err)
 	}
 }
+
+func TestWantExplicitGiveUpTakesPrecedenceOverFutureRelease(t *testing.T) {
+	s := testService(t)
+	want := wantRequest(t, s, "POST", "/api/wants", map[string]any{"code": "TEST-001", "release_date": "9999-01-01"}, 201)["want"].(map[string]any)
+	path := fmt.Sprintf("/api/wants/%.0f", want["id"])
+	got := wantRequest(t, s, "PATCH", path, map[string]any{"version": 1, "state": "given_up"}, 200)
+	if got["phase"] != "given_up" {
+		t.Fatal("future date masked explicit state", got)
+	}
+	page := wantRequest(t, s, "GET", "/api/wants?phase=given_up", nil, 200)
+	if page["total"] != float64(1) || page["counts"].(map[string]any)["unreleased"] != float64(0) {
+		t.Fatal(page)
+	}
+	got = wantRequest(t, s, "PATCH", path, map[string]any{"version": 2, "state": "wanted"}, 200)
+	if got["phase"] != "unreleased" {
+		t.Fatal("resumed future title lost release phase", got)
+	}
+}
