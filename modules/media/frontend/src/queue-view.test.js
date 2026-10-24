@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { queueActions, queueActionPrompt, queueSummary, queueStatusLabel, queuePhaseLabel, safeSourceURL, loadQueueOverview, queueJobID } from './queue-view';
+import { queueActions, queueActionPrompt, queueSummary, queueStatusLabel, queuePhaseLabel, safeSourceURL, loadQueueOverview, queueJobID, queueEventLabel } from './queue-view';
 
 describe('per-film presentation rules', () => {
+  it('translates durable organization and registration events without exposing internal names', () => {
+    expect(queueEventLabel('organize_checkpoint')).toBe('整理进度已保存');
+    expect(queueEventLabel('catalog_registered')).toBe('已登记馆藏');
+  });
   it('accepts only positive integer job IDs in deep links', () => {
     expect(queueJobID('17')).toBe(17);
     for (const value of ['', null, '1x', '-1', '1.5', 'Infinity', '9007199254740993']) expect(queueJobID(value)).toBe(null);

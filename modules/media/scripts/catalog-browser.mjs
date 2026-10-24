@@ -535,8 +535,14 @@ try {
   const registered=await(await context.request.post(new URL('/__fixture/organizer',url).href)).json();
   assert.equal(registered.job.status,'success');assert.equal(registered.runs,1,'catalog retry reran organizer');
   assert.equal(registered.job.catalog_registration.asset_count,1);
+  // Suppress polling: refreshing the inspector must itself refresh the list.
+  await page.evaluate(()=>Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'}));
+  const updatedList=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/api/queue')&&response.request().method()==='GET',{timeout:2000});
   await page.getByRole('button',{name:'刷新详情',exact:true}).click();
   await page.getByRole('region',{name:'馆藏登记结果',exact:true}).waitFor();
+  await updatedList;
+  await check(async()=>(await page.locator('.queue-list .queue-summary').innerText()).includes('已登记馆藏'),'inspector refreshed but queue list remained stale');
+  await page.evaluate(()=>delete document.visibilityState);
   await screenshot('desktop-registration-success');
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'queue mobile overflow');
