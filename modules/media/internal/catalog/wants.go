@@ -60,8 +60,8 @@ type WantPatch struct {
 }
 
 type WantFilter struct {
-	Query, Phase  string
-	Limit, Offset int
+	Query, Phase, Code string
+	Limit, Offset      int
 }
 type WantPage struct {
 	Items  []Want         `json:"items"`
@@ -284,6 +284,9 @@ func (s *Store) Wants(ctx context.Context, filter WantFilter) (WantPage, error) 
 	if filter.Limit < 1 || filter.Limit > 100 || filter.Offset < 0 || filter.Offset > 10000 || !wantText(filter.Query, 500) {
 		return page, ErrInvalid
 	}
+	if filter.Code != "" && (len(filter.Code) > 128 || s.code(filter.Code) != filter.Code) {
+		return page, ErrInvalid
+	}
 	if filter.Phase != "" {
 		if _, ok := page.Counts[filter.Phase]; !ok {
 			return page, ErrInvalid
@@ -293,6 +296,10 @@ func (s *Store) Wants(ctx context.Context, filter WantFilter) (WantPage, error) 
 	phaseSQL := `CASE WHEN w.state='acquired' THEN 'acquired' WHEN w.state='given_up' THEN 'given_up' WHEN w.release_date<>'' AND w.release_date>? THEN 'unreleased' ELSE 'searching' END`
 	where := `(instr(lower(w.code),lower(?))>0 OR instr(lower(w.title),lower(?))>0 OR instr(lower(w.actors),lower(?))>0 OR instr(lower(w.studio),lower(?))>0)`
 	args := []any{filter.Query, filter.Query, filter.Query, filter.Query}
+	if filter.Code != "" {
+		where += " AND w.code=?"
+		args = append(args, filter.Code)
+	}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return page, err

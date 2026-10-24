@@ -31,11 +31,11 @@ func (s *Service) handleWants(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	query, err := url.ParseQuery(r.URL.RawQuery)
 	for key, values := range query {
-		if (key != "query" && key != "phase" && key != "limit" && key != "offset") || len(values) != 1 {
+		if (key != "query" && key != "phase" && key != "code" && key != "limit" && key != "offset") || len(values) != 1 {
 			err = catalog.ErrInvalid
 		}
 	}
-	filter := catalog.WantFilter{Query: query.Get("query"), Phase: query.Get("phase"), Limit: 48}
+	filter := catalog.WantFilter{Query: query.Get("query"), Phase: query.Get("phase"), Code: query.Get("code"), Limit: 48}
 	for key, target := range map[string]*int{"limit": &filter.Limit, "offset": &filter.Offset} {
 		if value, ok := query[key]; ok {
 			parsed, parseErr := strconv.Atoi(value[0])

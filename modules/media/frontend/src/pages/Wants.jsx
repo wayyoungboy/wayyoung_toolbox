@@ -146,7 +146,7 @@ export default function Wants({ initial = {}, onNavigate }) {
     try {
       // Reconcile the submitted identity, not the currently filtered page. A
       // missing result never automatically causes another POST.
-      const result = await api.wants({ query: code, signal: controller.signal });
+      const result = await api.wantByCode(code, { signal: controller.signal });
       if (!alive.current) return;
       const found = result.items.some(want => want.code === code);
       pendingAdd.current = ''; setUncertain(false);
