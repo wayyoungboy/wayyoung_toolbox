@@ -54,12 +54,14 @@ describe('native information architecture', () => {
   });
 
   it('routes every live pipeline stage to an existing workspace tab', () => {
-    expect(['rss', 'qb', 'intake', 'javsp'].map(pipelineStageTab)).toEqual([
+    expect(['rss', 'qb', 'intake', 'javsp', 'catalog'].map(pipelineStageTab)).toEqual([
       'rss',
       'overview',
       'intake',
       'javsp',
+      'catalog',
     ]);
+    expect(resolveDestination('pipeline', 'catalog')).toEqual({ page: 'queue', tab: 'jobs' });
   });
 
   it('offers every workspace module in the unified run filter', () => {
@@ -80,7 +82,7 @@ describe('native information architecture', () => {
 
   it('turns a pipeline load failure into persistent stage errors', () => {
     const stages = pipelineFailureStages('服务暂时不可用');
-    expect(stages).toHaveLength(4);
+    expect(stages).toHaveLength(5);
     expect(stages.every((stage) => stage.status === 'error')).toBe(true);
     expect(stages.every((stage) => stage.error === '服务暂时不可用')).toBe(true);
   });

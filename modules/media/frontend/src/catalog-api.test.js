@@ -2,6 +2,23 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
+it('reads opt-in catalog automation and saves the exact revision without scanning or replaying a conflict', async () => {
+  const fetch = vi.fn().mockImplementation(async (url, options) => ({
+    ok: !options?.method || options.method !== 'PUT', status: 409,
+    json: async () => url.endsWith('/session') ? { csrf: 'automation-token' } : options?.method === 'PUT' ? { error: '配置已变化' } : { after_organize: false, version: 3 },
+  }));
+  vi.stubGlobal('fetch', fetch);
+  const signal = new AbortController().signal;
+  expect(await api.catalogAutomation({ signal })).toEqual({ after_organize: false, version: 3 });
+  expect(fetch.mock.calls[0][1].signal).toBe(signal);
+  await expect(api.catalogAutomationSave({ after_organize: true, version: 3 })).rejects.toMatchObject({ status: 409 });
+  const writes = fetch.mock.calls.filter(([, options]) => options.method);
+  expect(writes).toHaveLength(1);
+  expect(writes[0][0]).toMatch(/\/catalog\/automation$/);
+  expect(writes[0][1]).toMatchObject({ method: 'PUT', headers: { 'X-Catalog-CSRF': 'automation-token' } });
+  expect(JSON.parse(writes[0][1].body)).toEqual({ after_organize: true, version: 3 });
+  expect(fetch.mock.calls.some(([url]) => url.endsWith('/scan'))).toBe(false);
+});
 it('prepares progress CSRF before playback so final save sends one keepalive PUT',async()=>{
  const fetch=vi.fn().mockImplementation(async url=>({ok:true,json:async()=>url.endsWith('/catalog/session')?{csrf:'held-progress-token'}:{revision:1}}));vi.stubGlobal('fetch',fetch);
  await api.prepareCatalogSession();fetch.mockClear();await api.catalogProgress('asset',{position:9,duration:100,revision:0});

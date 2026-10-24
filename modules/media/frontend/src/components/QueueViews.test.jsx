@@ -5,6 +5,15 @@ import { QueueJobDetails, QueueJobsTable } from './QueueViews';
 const movie = { id: 7, kind: 'movie', title: 'TEST-001.mp4', media_id: 'TEST-001', status: 'pending', phase: 'organize', version: 2, source_paths: ['/pending/TEST-001.1.mp4', '/pending/TEST-001.2.mp4'], waiting_for_intake: [5], parent_id: 5 };
 
 describe('queue views', () => {
+  it('shows the committed catalog receipt and a catalog destination without suggesting another scan', () => {
+    const html = renderToStaticMarkup(<QueueJobDetails job={{ ...movie, waiting_for_intake: [], phase: 'done', status: 'success', catalog_registration: { asset_count: 2, work_count: 1, library_ids: [1], work_ids: ['test'] } }} events={[{ id: 1, reason: 'catalog_registered', phase: 'done', status: 'success' }]} onSelect={() => {}} onAction={() => {}} onNavigate={() => {}} />);
+    expect(html).toContain('馆藏登记结果');
+    expect(html).toContain('2 个文件');
+    expect(html).toContain('1 部作品');
+    expect(html).toContain('前往馆藏');
+    expect(html).toContain('已登记馆藏');
+    expect(html).not.toContain('扫描馆藏');
+  });
   it('shows the film, phase, waiting reason and an accessible detail action', () => {
     const html = renderToStaticMarkup(<QueueJobsTable jobs={[movie]} onSelect={() => {}} />);
     expect(html).toContain('TEST-001');

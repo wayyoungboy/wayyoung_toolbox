@@ -29,6 +29,16 @@ describe('per-film presentation rules', () => {
       .toEqual(['排队中', '运行中', '成功', '部分成功', '失败', '已取消', '已超时', '待人工处理', '已跳过']);
     expect(queuePhaseLabel({ phase: 'qb_cleanup' })).toBe('qB 记录清理');
     expect(queuePhaseLabel({ phase: 'organize' })).toBe('影片整理');
+    expect(queuePhaseLabel({ phase: 'catalog' })).toBe('馆藏登记');
+  });
+  it('separates catalog registration from organization and retries only registration', () => {
+    const job = { id: 12, kind: 'movie', phase: 'catalog', status: 'pending', version: 4 };
+    expect(queueSummary(job)).toContain('整理已完成，等待登记馆藏');
+    expect(queueSummary({ ...job, status: 'running' })).toContain('核对已完成输出');
+    expect(queueActions({ ...job, status: 'needs_attention' })[0].label).toBe('重试馆藏登记');
+    expect(queueActionPrompt('retry', job)).toContain('不会重新刮削或搬运');
+    expect(queueSummary({ ...job, phase: 'done', status: 'success', catalog_registration: { asset_count: 2, work_count: 1 } })).toContain('已登记馆藏');
+    expect(queueSummary({ ...job, phase: 'done', status: 'success' })).not.toContain('已登记馆藏');
   });
   it('offers only supported versioned actions and labels cleanup-only retry explicitly', () => {
     expect(queueActions({ phase: 'qb_cleanup', status: 'failed', version: 4 }).map((a) => a.label)).toEqual(['重试 qB 清理', '取消任务']);
