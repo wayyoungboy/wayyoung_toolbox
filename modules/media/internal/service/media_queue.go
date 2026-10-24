@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/wayyoungboy/fnos-media-acquisition-center/internal/catalog"
 )
 
 var errMediaJobConflict = errors.New("任务已变化，请刷新后重试")
@@ -14,46 +16,47 @@ var errMediaJobConflict = errors.New("任务已变化，请刷新后重试")
 // MediaJob keeps business provenance independently of rotated run logs. Key is
 // the producer's stable artifact identity, not merely a film/catalog number.
 type MediaJob struct {
-	Archived          bool                 `json:"archived,omitempty"`
-	Duplicate         *MediaDuplicate      `json:"duplicate,omitempty"`
-	Download          *DownloadObservation `json:"download,omitempty"`
-	IntakeMoviesReady bool                 `json:"intake_movies_ready,omitempty"`
-	ChildJobIDs       []int64              `json:"child_job_ids,omitempty"`
-	DiscoveryRunID    int64                `json:"discovery_run_id,omitempty"`
-	SourceIdentities  []queuedMovieFile    `json:"source_identities,omitempty"`
-	SourcePaths       []string             `json:"source_paths,omitempty"`
-	MovieSourceRoot   string               `json:"movie_source_root,omitempty"`
-	Discovery         *RSSDiscovery        `json:"discovery,omitempty"`
-	RelatedJobID      int64                `json:"related_job_id,omitempty"`
-	LastJavspRunID    int64                `json:"last_javsp_run_id,omitempty"`
-	MoviePlan         *queuedMoviePlan     `json:"movie_plan,omitempty"`
-	PlannedPaths      []string             `json:"planned_paths,omitempty"`
-	IntakeSourceRoot  string               `json:"intake_source_root,omitempty"`
-	IntakeTargetRoot  string               `json:"intake_target_root,omitempty"`
-	Organize          bool                 `json:"organize"`
-	HoldFiles         bool                 `json:"hold_files"`
-	TransferResult    string               `json:"transfer_result,omitempty"`
-	ID                int64                `json:"id"`
-	Key               string               `json:"key"`
-	Kind              string               `json:"kind"`
-	ParentID          int64                `json:"parent_id,omitempty"`
-	MediaID           string               `json:"media_id"`
-	Title             string               `json:"title"`
-	RSSID             int64                `json:"rss_id,omitempty"`
-	RSSItemKey        string               `json:"rss_item_key,omitempty"`
-	SourceURL         string               `json:"source_url,omitempty"`
-	TorrentHash       string               `json:"torrent_hash,omitempty"`
-	TorrentAddedOn    int64                `json:"torrent_added_on,omitempty"`
-	SourcePath        string               `json:"source_path"`
-	TargetPath        string               `json:"target_path"`
-	OutputPaths       []string             `json:"output_paths"`
-	Phase             string               `json:"phase"`
-	Status            string               `json:"status"`
-	Version           int64                `json:"version"`
-	Attempts          int                  `json:"attempts"`
-	Error             string               `json:"error"`
-	CreatedAt         string               `json:"created_at"`
-	UpdatedAt         string               `json:"updated_at"`
+	CatalogRegistration *catalog.RegistrationResult `json:"catalog_registration,omitempty"`
+	Archived            bool                        `json:"archived,omitempty"`
+	Duplicate           *MediaDuplicate             `json:"duplicate,omitempty"`
+	Download            *DownloadObservation        `json:"download,omitempty"`
+	IntakeMoviesReady   bool                        `json:"intake_movies_ready,omitempty"`
+	ChildJobIDs         []int64                     `json:"child_job_ids,omitempty"`
+	DiscoveryRunID      int64                       `json:"discovery_run_id,omitempty"`
+	SourceIdentities    []queuedMovieFile           `json:"source_identities,omitempty"`
+	SourcePaths         []string                    `json:"source_paths,omitempty"`
+	MovieSourceRoot     string                      `json:"movie_source_root,omitempty"`
+	Discovery           *RSSDiscovery               `json:"discovery,omitempty"`
+	RelatedJobID        int64                       `json:"related_job_id,omitempty"`
+	LastJavspRunID      int64                       `json:"last_javsp_run_id,omitempty"`
+	MoviePlan           *queuedMoviePlan            `json:"movie_plan,omitempty"`
+	PlannedPaths        []string                    `json:"planned_paths,omitempty"`
+	IntakeSourceRoot    string                      `json:"intake_source_root,omitempty"`
+	IntakeTargetRoot    string                      `json:"intake_target_root,omitempty"`
+	Organize            bool                        `json:"organize"`
+	HoldFiles           bool                        `json:"hold_files"`
+	TransferResult      string                      `json:"transfer_result,omitempty"`
+	ID                  int64                       `json:"id"`
+	Key                 string                      `json:"key"`
+	Kind                string                      `json:"kind"`
+	ParentID            int64                       `json:"parent_id,omitempty"`
+	MediaID             string                      `json:"media_id"`
+	Title               string                      `json:"title"`
+	RSSID               int64                       `json:"rss_id,omitempty"`
+	RSSItemKey          string                      `json:"rss_item_key,omitempty"`
+	SourceURL           string                      `json:"source_url,omitempty"`
+	TorrentHash         string                      `json:"torrent_hash,omitempty"`
+	TorrentAddedOn      int64                       `json:"torrent_added_on,omitempty"`
+	SourcePath          string                      `json:"source_path"`
+	TargetPath          string                      `json:"target_path"`
+	OutputPaths         []string                    `json:"output_paths"`
+	Phase               string                      `json:"phase"`
+	Status              string                      `json:"status"`
+	Version             int64                       `json:"version"`
+	Attempts            int                         `json:"attempts"`
+	Error               string                      `json:"error"`
+	CreatedAt           string                      `json:"created_at"`
+	UpdatedAt           string                      `json:"updated_at"`
 }
 
 type MediaJobTransition struct {
@@ -125,7 +128,7 @@ func mediaPhaseIndex(kind, phase string) int {
 	case "torrent":
 		phases = []string{"discovered", "download", "transfer", "qb_cleanup", "done"}
 	case "movie":
-		phases = []string{"organize", "done"}
+		phases = []string{"organize", "catalog", "done"}
 	default:
 		return -1
 	}
@@ -350,13 +353,26 @@ func (d *Database) changeMediaJobTx(id, version int64, reason string, change fun
 	if err := change(tx, &job); err != nil {
 		return MediaJob{}, err
 	}
+	job, err = saveMediaJobChange(tx, job, version, reason)
+	if err != nil {
+		return MediaJob{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return MediaJob{}, err
+	}
+	return job, nil
+}
+
+// saveMediaJobChange is shared with atomic catalog publication; the caller owns
+// both the transaction and the prior version/status checks.
+func saveMediaJobChange(tx *sql.Tx, job MediaJob, version int64, reason string) (MediaJob, error) {
 	job.Version++
 	job.UpdatedAt = nowUTC()
 	data, err := json.Marshal(job)
 	if err != nil {
 		return MediaJob{}, err
 	}
-	res, err := tx.Exec(`UPDATE media_jobs SET phase=?,status=?,version=?,attempts=?,payload=?,error=?,updated_at=? WHERE id=? AND version=?`, job.Phase, job.Status, job.Version, job.Attempts, string(data), job.Error, job.UpdatedAt, id, version)
+	res, err := tx.Exec(`UPDATE media_jobs SET phase=?,status=?,version=?,attempts=?,payload=?,error=?,updated_at=? WHERE id=? AND version=?`, job.Phase, job.Status, job.Version, job.Attempts, string(data), job.Error, job.UpdatedAt, job.ID, version)
 	if err != nil {
 		return MediaJob{}, err
 	}
@@ -368,9 +384,6 @@ func (d *Database) changeMediaJobTx(id, version int64, reason string, change fun
 		return MediaJob{}, errMediaJobConflict
 	}
 	if err := insertMediaEvent(tx, job, reason); err != nil {
-		return MediaJob{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return MediaJob{}, err
 	}
 	return job, nil
@@ -436,12 +449,29 @@ func (d *Database) CancelMediaJob(id, version int64) (MediaJob, error) {
 }
 
 func (d *Database) TransitionMediaJob(id, version int64, next MediaJobTransition) (MediaJob, error) {
-	return d.changeMediaJob(id, version, "stage_result", func(job *MediaJob) error {
+	return d.changeMediaJobTx(id, version, "stage_result", func(tx *sql.Tx, job *MediaJob) error {
 		if job.Status != "running" {
 			return errMediaJobConflict
 		}
+		legacyCompletion := false
+		if job.Kind == "movie" && job.Phase == "organize" && next.Phase == "done" && next.Status == "success" {
+			var automatic bool
+			if err := tx.QueryRow("SELECT after_organize FROM catalog_automation WHERE id=1").Scan(&automatic); err != nil {
+				return err
+			}
+			if automatic {
+				copy := *job
+				copy.OutputPaths = next.OutputPaths
+				if _, err := catalogTargetsForMovie(copy); err != nil {
+					return err
+				}
+				next.Phase, next.Status = "catalog", "pending"
+			} else {
+				legacyCompletion = true
+			}
+		}
 		oldIndex, nextIndex := mediaPhaseIndex(job.Kind, job.Phase), mediaPhaseIndex(job.Kind, next.Phase)
-		if nextIndex < oldIndex || nextIndex > oldIndex+1 || nextIndex < 0 {
+		if nextIndex < oldIndex || (nextIndex > oldIndex+1 && !legacyCompletion) || nextIndex < 0 {
 			return fmt.Errorf("不能跳过或回退处理阶段")
 		}
 		if next.Phase == "done" {

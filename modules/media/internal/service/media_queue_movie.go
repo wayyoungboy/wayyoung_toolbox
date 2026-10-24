@@ -23,6 +23,9 @@ func (s *Service) drainPendingMovies(ctx context.Context) error {
 		return nil
 	}
 	defer s.mediaFiles.Unlock()
+	if jobs[0].Phase == "catalog" {
+		return s.registerQueuedMovie(ctx, jobs[0])
+	}
 	if !s.javspLock.TryLock() {
 		return nil
 	}

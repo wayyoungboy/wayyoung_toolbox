@@ -57,6 +57,11 @@ CREATE TABLE IF NOT EXISTS catalog_progress (
  played_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS catalog_progress_played ON catalog_progress(played_at DESC);
+CREATE TABLE IF NOT EXISTS catalog_automation (
+ id INTEGER PRIMARY KEY CHECK(id=1), after_organize INTEGER NOT NULL DEFAULT 0 CHECK(after_organize IN (0,1)),
+ version INTEGER NOT NULL DEFAULT 1
+);
+INSERT OR IGNORE INTO catalog_automation(id,after_organize,version) VALUES(1,0,1);
 `
 	tx, err := db.Begin()
 	if err != nil {
