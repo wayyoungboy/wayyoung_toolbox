@@ -37,6 +37,13 @@ func TestWantsBrowserJourney(t *testing.T) {
 		if r.URL.Path == "/__fixture/wants" {
 			if r.Method == "POST" {
 				switch r.URL.Query().Get("action") {
+				case "seed_pages":
+					for i := 1000; i < 1049; i++ {
+						if _, _, err := f.s.db.catalog.AddWant(r.Context(), catalog.WantInput{Code: fmt.Sprintf("PAGE-%d", i)}); err != nil {
+							http.Error(w, err.Error(), 500)
+							return
+						}
+					}
 				case "publish":
 					catalogWrite(t, root, "TEST-001.mp4", "neutral video fixture")
 					if _, err := f.s.db.catalog.RegisterFiles(r.Context(), []catalog.RegistrationTarget{registrationTarget(t, filepath.Join(root, "TEST-001.mp4"))}, nil); err != nil {

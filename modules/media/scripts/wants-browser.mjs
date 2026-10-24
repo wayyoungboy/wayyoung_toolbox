@@ -64,6 +64,8 @@ try {
   await page.waitForFunction(() => document.querySelector('[role="dialog"] input[aria-label="作品标题（可选）"]')?.value === 'Externally updated neutral title');
   await editor().getByRole('button', { name: '取消', exact: true }).click();
   // A committed POST with a lost response is never replayed automatically.
+  await page.goto(`${entry}&view=acquired&query=non-matching-filter&offset=48`);
+  await visible('此筛选下没有想要作品');
   let posts = 0;
   await page.route('**/api/wants', async route => {
     if (route.request().method() !== 'POST') return route.continue();
@@ -125,6 +127,29 @@ try {
   assert.deepEqual(await fixture(), { wants: 0, jobs: 1, assets: 1, adds: 0, feeds: 0 });
   assert.equal(posts, 1);
   assert.equal(expected.length, 2, 'only the intentional conflict and lost response are expected');
+  // One-use prefill is consumed on cancel/success, not resurrected by reload.
+  await page.goto(`${entry}&code=TEST-003`);
+  await page.getByRole('button', { name: '取消登记', exact: true }).click();
+  await page.reload();
+  await page.getByRole('heading', { name: '想要清单', exact: true }).waitFor();
+  assert.equal(await page.getByRole('form', { name: '添加想要作品', exact: true }).count(), 0);
+  await page.goto(`${entry}&code=TEST-003`);
+  await page.getByRole('button', { name: '登记想要', exact: true }).click();
+  await card('TEST-003').waitFor();
+  await page.reload();
+  await card('TEST-003').waitFor();
+  assert.equal(await page.getByRole('form', { name: '添加想要作品', exact: true }).count(), 0);
+  page.once('dialog', dialog => dialog.accept());
+  await card('TEST-003').getByRole('button', { name: '移出想要', exact: true }).click();
+  await visible('还没有登记想要的作品');
+  await fixture('seed_pages');
+  await page.goto(`${entry}&view=searching&offset=48`);
+  const lastCard = page.getByRole('article').first();
+  await lastCard.getByRole('button', { name: '暂时放弃', exact: true }).click();
+  await page.waitForURL(url => !url.searchParams.has('offset'));
+  await page.getByRole('navigation', { name: '想要清单分页', exact: true }).waitFor({ state: 'hidden' });
+  assert.equal(await page.getByRole('article').count(), 48);
+  assert.equal((await fixture()).wants, 49);
   assert.deepEqual(errors, []);
   console.log('PASS: wants add/pause/resume/edit/CAS/read-only reconciliation → explicit resource selection → producer association → real neutral catalog publication → URL/filter/refresh/mobile/dark → remove list only. Browser plugin not available; local Playwright.');
 } finally { await context.close(); await browser.close(); }
