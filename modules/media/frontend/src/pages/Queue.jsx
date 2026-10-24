@@ -9,7 +9,7 @@ import QueueCleanupDialog from '../components/QueueCleanupDialog';
 
 const tabs = [{ key: 'jobs', label: '影片队列' }, { key: 'history', label: '运行记录' }];
 
-function QueueDetail({ id, onClose, onSelect, onChanged }) {
+function QueueDetail({ id, onClose, onSelect, onChanged, onNavigate }) {
   const load = useCallback((signal) => api.queueJob(id, { signal }), [id]);
   const { data, loading, error, refresh } = useRemoteResource(load, 5000);
   const [busy, setBusy] = useState(false);
@@ -32,7 +32,7 @@ function QueueDetail({ id, onClose, onSelect, onChanged }) {
     {notice ? <div className="workspace-error" role="alert">{notice}</div> : null}
     {error ? <div className="workspace-error" role="alert"><div><strong>无法读取任务</strong><span>{error}</span></div><button type="button" className="queue-button" onClick={refresh}>重新读取详情</button></div> : null}
     {!data && loading ? <p role="status">正在读取任务详情…</p> : null}
-    {data ? <QueueJobDetails job={data.job} events={data.events || []} busy={busy || loading} onSelect={onSelect} onAction={act} /> : null}
+    {data ? <QueueJobDetails job={data.job} events={data.events || []} busy={busy || loading} onSelect={onSelect} onAction={act} onNavigate={onNavigate} /> : null}
   </aside>;
 }
 
@@ -60,7 +60,7 @@ function Jobs({ onNavigate, selectedID }) {
         {data?.jobs?.length ? <QueueJobsTable jobs={data.jobs} selectedID={selectedID} onSelect={setSelectedID} /> : data && !error ? <div className="queue-empty">当前筛选条件下没有任务</div> : null}
         {data ? <div className="queue-pagination"><span>当前 {data.jobs?.length || 0} 项 · 此状态共 {data.total} 项</span><div><button type="button" className="queue-button" disabled={loading || !paging.previous.length} onClick={previous}>上一页</button><button type="button" className="queue-button" disabled={loading || !data.next_cursor} onClick={next}>下一页</button></div></div> : null}
       </div>
-      {selectedID ? <QueueDetail key={selectedID} id={selectedID} onClose={() => setSelectedID(null)} onSelect={setSelectedID} onChanged={refresh} /> : null}
+      {selectedID ? <QueueDetail key={selectedID} id={selectedID} onClose={() => setSelectedID(null)} onSelect={setSelectedID} onChanged={refresh} onNavigate={onNavigate} /> : null}
     </div>
     {cleanup&&<QueueCleanupDialog onClose={()=>setCleanup(false)} onChanged={refresh}/>}
   </>;

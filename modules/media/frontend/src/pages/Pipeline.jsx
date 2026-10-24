@@ -26,7 +26,7 @@ function PipelineOverview({ data, onOpen }) {
     <div className="pipeline-overview-content">
       <section className={`path-diagnostic ${paths.consistent ? 'healthy' : 'attention'}`}>
         <div className="section-heading">
-          <div><h2>目录链路</h2><p>下载完成先搬到未处理目录；刮削、命名和整理成功后才算入库。</p></div>
+          <div><h2>目录链路</h2><p>下载完成先搬到未处理目录，再刮削整理；开启自动登记后，已确认输出才会进入馆藏。</p></div>
           <span>{paths.consistent ? '配置连贯' : `${paths.issues?.length || 0} 项需处理`}</span>
         </div>
         <div className="path-chain">
@@ -83,6 +83,7 @@ export default function Pipeline({ initialTab, onTabChange, onNavigate }) {
   }, [initialTab]);
 
   const selectTab = (nextTab) => {
+    if (nextTab === 'catalog') { onNavigate?.('queue', 'jobs'); return; }
     setTab(nextTab);
     onTabChange?.(nextTab);
   };

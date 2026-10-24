@@ -185,9 +185,9 @@ button, input, select { font: inherit; }
 .semi-table-thead > .semi-table-row > .semi-table-row-head { background: #fafbfc; color: #626872; font-size: 12px; font-weight: 600; }
 .semi-table-tbody > .semi-table-row > .semi-table-row-cell { padding-top: 14px; padding-bottom: 14px; }
 
-/* The four-stage ribbon is the visual anchor: one physical path, four independent controls. */
+/* Five distinct outcomes: discovery, download, intake, organization, catalog. */
 .nav-separator { height: 1px; margin: 7px 10px; background: var(--border); }
-.pipeline-ribbon { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px; margin-bottom: 22px; border: 1px solid #dce7f7; border-radius: 12px; background: #f7faff; }
+.pipeline-ribbon { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; padding: 14px; margin-bottom: 22px; border: 1px solid #dce7f7; border-radius: 12px; background: #f7faff; }
 .pipeline-ribbon::before { position: absolute; top: 41px; left: 8%; right: 8%; height: 2px; background: #c9ddfb; content: ""; }
 .pipeline-stage { position: relative; z-index: 1; min-width: 0; min-height: 126px; display: grid; grid-template-columns: 32px minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 10px; align-content: start; padding: 14px; border: 1px solid #dfe5ed; border-radius: 9px; background: var(--surface); color: inherit; cursor: pointer; text-align: left; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 .pipeline-stage:hover { border-color: #9fc4fb; transform: translateY(-1px); }

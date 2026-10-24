@@ -35,6 +35,8 @@ async function playbackSessionMutation(id,action,payload){
 }
 
 export const api = {
+  catalogAutomation: ({ signal } = {}) => request('/catalog/automation', { signal }),
+  catalogAutomationSave: payload => catalogMutation('/catalog/automation', 'PUT', payload),
   catalogBrowserSources: ({signal}={})=>request('/catalog/browser/sources',{signal}),
   catalogBrowserPreview: payload=>catalogMutation('/catalog/browser/import/preview','POST',payload),
   catalogBrowserImport: payload=>catalogMutation('/catalog/browser/import','POST',payload),

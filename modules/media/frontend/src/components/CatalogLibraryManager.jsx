@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Modal from '@douyinfe/semi-ui/lib/es/modal';
 import Button from '@douyinfe/semi-ui/lib/es/button';
 import FolderPicker from './FolderPicker';
+import CatalogAutomation from './CatalogAutomation';
 import { api } from '../api';
 
 export default function CatalogLibraryManager({ libraries, completedRoot, onChanged, onClose }) {
@@ -52,6 +53,7 @@ export default function CatalogLibraryManager({ libraries, completedRoot, onChan
         </div>)}
         {busy && busy !== 'add' && <Button onClick={() => scanController.current?.abort()}>取消扫描</Button>}
       </div>
+      <CatalogAutomation />
       <form className="catalog-library-form" onSubmit={add}>
         <h3>{relink ? `重新关联 · ${relink.name}` : '添加媒体库'}</h3>
         {relink && <p className="catalog-help">仅在目录迁移、挂载恢复或旧版本升级后需要重新确认时操作。馆藏与观看记录保留；确认后，重新扫描此媒体库才能播放。</p>}

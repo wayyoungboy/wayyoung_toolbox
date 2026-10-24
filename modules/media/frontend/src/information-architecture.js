@@ -24,6 +24,7 @@ export function resolveDestination(page, tab = '') {
   if (page === 'runs') return { page: 'queue', tab: 'history' };
   if (['intake', 'javsp', 'anime'].includes(page)) return { page: 'settings', tab: page };
   if (page === 'pipeline') {
+    if (tab === 'catalog') return { page: 'queue', tab: 'jobs' };
     if (tab === 'rss') return { page: 'subscriptions', tab: '' };
     return { page: 'settings', tab: ['intake', 'javsp'].includes(tab) ? tab : 'diagnostics' };
   }
@@ -46,6 +47,7 @@ const pipelineStageTabs = {
   qb: 'overview',
   intake: 'intake',
   javsp: 'javsp',
+  catalog: 'catalog',
 };
 
 export function pipelineStageTab(stageKey) {
@@ -63,6 +65,7 @@ export function pipelineFailureStages(message) {
     ['qb', 'qBittorrent 下载'],
     ['intake', '下载完成搬运'],
     ['javsp', '刮削整理入库'],
+    ['catalog', '馆藏登记'],
   ].map(([key, label]) => ({
     key,
     label,

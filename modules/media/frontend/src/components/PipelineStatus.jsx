@@ -13,6 +13,7 @@ const fallbackStages = [
   { key: 'qb', label: 'qBittorrent 下载', status: 'idle', summary: '读取中', detail: '' },
   { key: 'intake', label: '下载完成搬运', status: 'idle', summary: '读取中', detail: '' },
   { key: 'javsp', label: '刮削整理入库', status: 'idle', summary: '读取中', detail: '' },
+  { key: 'catalog', label: '馆藏登记', status: 'idle', summary: '读取中', detail: '' },
 ];
 
 export default function PipelineStatus({ stages, activeTab, onSelect }) {

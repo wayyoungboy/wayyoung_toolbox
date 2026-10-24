@@ -110,3 +110,8 @@
 .catalog-results-heading { flex-wrap: wrap; }
 .catalog-views { flex-wrap: wrap; gap: 20px; }
 @media (max-width:700px) { .catalog-views { gap: 18px; } .catalog-views button { font-size: 13px; } .catalog-result-filters { gap: 8px; } }
+.catalog-automation { margin: 18px 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.catalog-automation .section-heading h3 { margin: 0; }
+.catalog-check { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-weight: 600; }
+.catalog-check input { width: 18px; height: 18px; accent-color: var(--app-blue); }
+.queue-catalog-result { padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin: 14px 0; }

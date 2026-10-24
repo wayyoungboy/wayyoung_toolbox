@@ -52,7 +52,7 @@ function QueueDownloadStatus({ job }) {
   </section>;
 }
 
-export function QueueJobDetails({ job, events, onSelect, onAction, busy = false }) {
+export function QueueJobDetails({ job, events, onSelect, onAction, onNavigate, busy = false }) {
   const sourceURL = safeSourceURL(job.source_url);
   const actions = queueActions(job);
   const shownEvents = events.slice(-100).reverse();
@@ -65,6 +65,7 @@ export function QueueJobDetails({ job, events, onSelect, onAction, busy = false 
       <p className="queue-summary">{queueSummary(job)}</p>
       {job.error ? <div role="note" className="error-box">{job.error}</div> : null}
       <QueueDownloadStatus job={job} />
+      {job.catalog_registration ? <section className="queue-catalog-result" aria-label="馆藏登记结果"><h3>馆藏登记结果</h3><p>{job.catalog_registration.work_count} 部作品 · {job.catalog_registration.asset_count} 个文件 · {job.catalog_registration.library_ids?.length || 0} 个媒体库</p>{onNavigate ? <button type="button" className="queue-button" onClick={() => onNavigate('catalog')}>前往馆藏</button> : null}</section> : null}
       {job.waiting_for_intake?.length ? <div className="queue-dependency"><strong>等待搬运登记</strong><JobLinks ids={job.waiting_for_intake} onSelect={onSelect} /></div> : null}
       <div className="queue-detail-actions">{actions.map((action) => <button type="button" className={`queue-button ${action.key === 'cancel' ? 'danger' : 'primary'}`} disabled={busy} key={action.key} onClick={() => onAction(action.key, job)}>{action.label}</button>)}</div>
       {actions.length ? <p className="queue-footnote">重试只接续未完成阶段。取消不会停止 qB 下载，不会撤销已完成的文件操作，也不会删除视频。</p> : null}
