@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The original entry survives rotated run logs. Only resolver input and the
@@ -221,12 +222,20 @@ func (d *Database) ObserveRSSDownload(id, version int64, torrent QBTorrent) (Med
 }
 
 func (d *Database) observeAcquisitionDownload(id, version int64, torrent QBTorrent) (MediaJob, error) {
-	return d.changeMediaJob(id, version, "download_observed", func(job *MediaJob) error {
+	return d.changeMediaJobTx(id, version, "download_observed", func(tx *sql.Tx, job *MediaJob) error {
 		if job.Status != "running" || job.Phase != "discovered" || (job.Discovery == nil) == (job.Resource == nil) {
 			return errMediaJobConflict
 		}
 		if torrent.AddedOn <= 0 || !strings.EqualFold(torrent.Hash, job.TorrentHash) {
 			return fmt.Errorf("%w：无法确认 qB 任务身份", errIntakeConflict)
+		}
+		if job.Resource != nil && (job.Resource.SubmissionState == "dispatching" || job.Resource.SubmissionState == "acknowledged") {
+			var dispatchedAt string
+			err := tx.QueryRow(`SELECT created_at FROM media_job_events WHERE job_id=? AND reason='submission_dispatching' ORDER BY id DESC LIMIT 1`, job.ID).Scan(&dispatchedAt)
+			stamp, parseErr := time.Parse(time.RFC3339, dispatchedAt)
+			if err != nil || parseErr != nil || torrent.AddedOn < stamp.Unix()-30 || torrent.AddedOn > stamp.Add(rssJobTimeout).Unix() {
+				return fmt.Errorf("%w：qB 任务不符合原投递时间，不会接管后来重加的任务", errIntakeConflict)
+			}
 		}
 		job.TorrentAddedOn = torrent.AddedOn
 		job.Phase, job.Status = "download", "pending"

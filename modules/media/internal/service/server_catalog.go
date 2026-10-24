@@ -23,6 +23,8 @@ func (s *Service) registerCatalogRoutes(mux *http.ServeMux) {
 	s.registerCatalogScanRoutes(mux)
 	mux.HandleFunc("GET /api/resources/search", s.handleResourceSearchCache)
 	mux.HandleFunc("POST /api/resources/search", s.catalogSameOrigin(s.handleResourceSearch))
+	mux.HandleFunc("GET /api/resources/downloads", s.handleResourceDownloads)
+	mux.HandleFunc("POST /api/resources/downloads", s.catalogSameOrigin(s.handleResourceDownload))
 	mux.HandleFunc("GET /api/catalog/session", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, map[string]string{"csrf": s.catalogCSRF})
