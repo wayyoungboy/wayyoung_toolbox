@@ -156,4 +156,23 @@ func TestCatalogScanAPILibraryHistoryCannotBeHiddenByOtherLibraries(t *testing.T
 	if response := catalogRequest(t, s, "GET", "/api/catalog/libraries/99999/scans", nil); response.Code != 404 {
 		t.Fatalf("unknown library history=%d", response.Code)
 	}
+	old, err := s.db.catalog.ChangeScanJob(t.Context(), job.ID, job.Version, "cancel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer := startCatalogScan(t, s, first.ID)
+	if _, err := s.db.catalog.ChangeScanJob(t.Context(), newer.ID, newer.Version, "cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.catalog.ChangeScanJob(t.Context(), old.ID, old.Version, "retry"); err != nil {
+		t.Fatal(err)
+	}
+	response = catalogRequest(t, s, "GET", fmt.Sprintf("/api/catalog/libraries/%d/scans?limit=1", first.ID), nil)
+	var active struct {
+		Active *catalog.ScanJob `json:"active"`
+	}
+	decodeResponseJSON(t, response, &active)
+	if active.Active == nil || active.Active.ID != old.ID || active.Active.Status != "pending" {
+		t.Fatalf("retry of older job hidden by newer history: %+v", active)
+	}
 }
