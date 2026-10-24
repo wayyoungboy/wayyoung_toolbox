@@ -88,12 +88,16 @@ func (s *Service) handleCatalogScanJobs(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	var jobs []catalog.ScanJob
+	var active *catalog.ScanJob
 	if r.PathValue("id") != "" {
 		id, ok := catalogScanID(w, r)
 		if !ok {
 			return
 		}
 		jobs, err = s.db.catalog.LibraryScanJobs(r.Context(), id, before, limit)
+		if err == nil {
+			active, err = s.db.catalog.ActiveLibraryScan(r.Context(), id)
+		}
 	} else {
 		jobs, err = s.db.catalog.ScanJobs(r.Context(), before, limit)
 	}
@@ -106,7 +110,7 @@ func (s *Service) handleCatalogScanJobs(w http.ResponseWriter, r *http.Request) 
 		next = jobs[len(jobs)-1].ID
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]any{"items": jobs, "next_cursor": next})
+	writeJSON(w, http.StatusOK, map[string]any{"items": jobs, "next_cursor": next, "active": active})
 }
 
 func (s *Service) handleCatalogScanAction(w http.ResponseWriter, r *http.Request, action string) {

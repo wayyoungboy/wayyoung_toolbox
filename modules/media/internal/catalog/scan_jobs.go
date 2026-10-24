@@ -228,6 +228,20 @@ func (s *Store) NextPendingScan(ctx context.Context) (ScanJob, error) {
 	return readScanJob(s.db.QueryRowContext(ctx, "SELECT "+scanJobColumns+" FROM catalog_scan_jobs WHERE status='pending' ORDER BY id LIMIT 1"))
 }
 
+func (s *Store) ActiveLibraryScan(ctx context.Context, libraryID int64) (*ScanJob, error) {
+	if libraryID < 1 {
+		return nil, ErrInvalid
+	}
+	job, err := readScanJob(s.db.QueryRowContext(ctx, "SELECT "+scanJobColumns+" FROM catalog_scan_jobs WHERE library_id=? AND status IN ('pending','running','paused') LIMIT 1", libraryID))
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
 // ReleaseScanAttempt preserves checkpoints on shutdown/interrupted I/O. A stale
 // attempt must never overwrite an administrator's newer pause/cancel revision.
 func (s *Store) ReleaseScanAttempt(ctx context.Context, id, version int64) error {
