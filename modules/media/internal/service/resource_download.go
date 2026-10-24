@@ -17,10 +17,11 @@ import (
 // ResourceDownloadSelection names a candidate from an exact successful search
 // snapshot. Callers cannot supply a magnet, endpoint, credentials or disk path.
 type ResourceDownloadSelection struct {
-	Code       string `json:"code"`
-	Provider   string `json:"provider"`
-	InfoHash   string `json:"infohash"`
-	SearchedAt string `json:"searched_at"`
+	Code           string `json:"code"`
+	Provider       string `json:"provider"`
+	InfoHash       string `json:"infohash"`
+	SearchedAt     string `json:"searched_at"`
+	IntakeRevision *int64 `json:"intake_revision,omitempty"`
 }
 
 // ResourceAcquisition is a standalone producer on the persistent media ledger,
@@ -146,7 +147,11 @@ func (d *Database) EnqueueResourceDownload(ctx context.Context, input ResourceDo
 	if err != nil {
 		return MediaJob{}, false, err
 	}
-	destination := intakeConfigFromSettings(values).SourceDirectory
+	intake := intakeConfigFromSettings(values)
+	if input.IntakeRevision != nil && intake.Revision != *input.IntakeRevision {
+		return MediaJob{}, false, catalog.ErrConflict
+	}
+	destination := intake.SourceDirectory
 	if !filepath.IsAbs(destination) || filepath.Clean(destination) == string(filepath.Separator) || hasParentSegment(destination) || strings.ContainsRune(destination, 0) {
 		return MediaJob{}, false, catalog.ErrInvalid
 	}

@@ -47,7 +47,7 @@ func (s *Service) handleResourceDownload(w http.ResponseWriter, r *http.Request)
 		ResourceDownloadSelection
 		Confirmation string `json:"confirmation"`
 	}
-	if err := decodeJSON(w, r, &body); err != nil || body.Confirmation != "下载资源" {
+	if err := decodeJSON(w, r, &body); err != nil || body.Confirmation != "下载资源" || body.IntakeRevision == nil || *body.IntakeRevision < 0 {
 		catalogError(w, catalog.ErrInvalid)
 		return
 	}
