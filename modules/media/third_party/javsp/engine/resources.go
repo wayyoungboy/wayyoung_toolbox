@@ -59,13 +59,10 @@ func SearchResources(ctx context.Context, options ResourceSearchOptions) (Resour
 	if err != nil {
 		return result, err
 	}
-	selection := cfg.Crawler.Selection.Normal
-	if avid.GuessAVType(code) == model.DataSourceFC2 {
-		selection = cfg.Crawler.Selection.FC2
-	}
+	selection := selectCrawlerIDs(&model.Movie{DVDID: code, DataSource: avid.GuessAVType(code)}, cfg)
 	enabled := false
 	for _, site := range selection {
-		enabled = enabled || site == options.Provider
+		enabled = enabled || string(site) == options.Provider
 	}
 	if !enabled {
 		result.State = "disabled"
@@ -87,7 +84,7 @@ func SearchResources(ctx context.Context, options ResourceSearchOptions) (Resour
 	}
 	httpClient := client.HTTPClient()
 	transport := httpClient.Transport.(*http.Transport)
-	if cfg.Network.ProxyServer == nil {
+	if cfg.Network.ProxyServer == nil || strings.TrimSpace(*cfg.Network.ProxyServer) == "" {
 		transport.Proxy = nil
 	} // no inherited environment proxy
 	defer transport.CloseIdleConnections()
