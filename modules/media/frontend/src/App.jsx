@@ -67,7 +67,7 @@ export default function App() {
     people: <People actorID={destination.resource?.actor} onNavigate={navigate} />,
     personal: <Personal tab={destination.tab} onTabChange={tab=>navigate('personal',tab)} onNavigate={navigate} />,
     dashboard: <Dashboard onNavigate={navigate} />,
-    subscriptions: <AcquisitionWorkspace tab={destination.tab} initialCode={destination.resource?.code} onTabChange={tab => navigate('subscriptions', tab)} onNavigate={navigate} />,
+    subscriptions: <AcquisitionWorkspace tab={destination.tab} initial={destination.resource} initialCode={destination.resource?.code} onTabChange={tab => navigate('subscriptions', tab)} onNavigate={navigate} />,
     queue: <Queue tab={destination.tab} jobID={destination.jobID} onTabChange={(tab) => navigate('queue', tab)} onNavigate={navigate} />,
     maintenance: <Maintenance />,
     settings: <SettingsWorkspace tab={destination.tab} onTabChange={(tab) => navigate('settings', tab)} onNavigate={navigate} />,

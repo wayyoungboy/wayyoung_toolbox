@@ -111,6 +111,7 @@ export default function ResourceSearch({ initialCode = '', onNavigate }) {
       <div className="catalog-actions">
         <Button disabled={!valid || Boolean(busy || selection)} onClick={() => perform('cache')}>读取上次结果</Button>
         <Button theme="solid" htmlType="submit" disabled={!valid || Boolean(busy || selection)}>搜索 JavDB</Button>
+        {onNavigate && <Button disabled={!valid || Boolean(busy || selection)} onClick={() => onNavigate('subscriptions', 'wants', null, { code: canonical })}>在想要清单登记</Button>}
         {busy && <Button onClick={cancel}>取消查询</Button>}
       </div>
     </form>
