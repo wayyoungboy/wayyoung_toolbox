@@ -48,6 +48,9 @@ func resourceServiceFixture(t *testing.T) (*Service, *atomic.Int32, *atomic.Int3
 				links += fmt.Sprintf(`<div class="magnet-name column is-four-fifths"><a href="magnet:?xt=urn:btih:%040x&amp;dn=%s">download</a></div>`, i, strings.Repeat("%26", 500))
 			}
 		}
+		if mode.Load() == 5 {
+			links = strings.ReplaceAll(links, `class="magnet-name column is-four-fifths"`, `class="magnet-name"`)
+		}
 		fmt.Fprint(w, `<html><body><section><div><div class="video-detail"><h2><strong class="current-title">TEST-001 Sample</strong></h2><nav class="panel movie-panel-info"><div><strong>番號:</strong><span>TEST-001</span></div></nav>`+links+`</div></div></section></body></html>`)
 	}))
 	t.Cleanup(server.Close)
@@ -247,6 +250,19 @@ func TestResourceSearchSerializationBudgetAcceptsBoundedHTMLCharacters(t *testin
 	got = resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-001&provider=javdb", nil, 200)
 	if got["cached"] != true || len(got["items"].([]any)) != 50 {
 		t.Fatal("cache roundtrip lost candidates")
+	}
+}
+
+func TestResourceSearchCurrentJavDBMarkupDoesNotCacheFalseEmpty(t *testing.T) {
+	s, mode, _ := resourceServiceFixture(t)
+	mode.Store(5)
+	got := resourceResponse(t, s, "POST", "/api/resources/search", map[string]string{"code": "TEST-001", "provider": "javdb"}, 200)
+	if got["state"] != "ready" || len(got["items"].([]any)) != 1 {
+		t.Fatalf("current layout misreported as %s", got["state"])
+	}
+	got = resourceResponse(t, s, "GET", "/api/resources/search?code=TEST-001&provider=javdb", nil, 200)
+	if got["state"] != "ready" || got["cached"] != true || len(got["items"].([]any)) != 1 {
+		t.Fatal("false empty persisted")
 	}
 }
 

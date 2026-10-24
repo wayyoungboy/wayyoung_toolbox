@@ -86,6 +86,30 @@ func TestResourceSearchReadOnlyExactIdentityAndPrivateTrackerRemoval(t *testing.
 	}
 }
 
+func TestResourceSearchCurrentJavDBMagnetClassTokensAndAdjacentPanel(t *testing.T) {
+	for _, class := range []string{"magnet-name", "column magnet-name wide", "is-four-fifths magnet-name column"} {
+		t.Run(class, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/search" {
+					fmt.Fprint(w, `<a class="box" href="/v/test"><div class="video-title"><strong>TEST-001</strong></div></a>`)
+					return
+				}
+				// Current site: the resource panel is adjacent to video-detail and
+				// magnet-name no longer includes the old responsive column classes.
+				panel := fmt.Sprintf(`<article class="message video-panel"><div class="message-body"><div class="magnet-links"><div class="item odd"><div class="%s"><a href="magnet:?xt=urn:btih:%s">Sample</a></div></div></div></div></article>`, class, resourceHash)
+				panel += `<div class="not-magnet-name"><a href="magnet:?xt=urn:btih:ffffffffffffffffffffffffffffffffffffffff">Unrelated widget</a></div>`
+				body := strings.Replace(resourceDetail("TEST-001", ""), "</div></div></section>", "</div>"+panel+"</div></section>", 1)
+				fmt.Fprint(w, body)
+			}))
+			defer server.Close()
+			got, err := SearchResources(context.Background(), resourceOptions(t, server.URL))
+			if err != nil || got.State != "ready" || len(got.Items) != 1 || got.Items[0].InfoHash != resourceHash {
+				t.Fatalf("current markup: state=%s items=%d err=%v", got.State, len(got.Items), err)
+			}
+		})
+	}
+}
+
 func TestResourceSearchDistinguishesEmptyRestrictedBlockedAndMismatch(t *testing.T) {
 	for _, mode := range []string{"empty", "login", "blocked", "mismatch", "identity_missing", "not_found", "malformed"} {
 		t.Run(mode, func(t *testing.T) {
