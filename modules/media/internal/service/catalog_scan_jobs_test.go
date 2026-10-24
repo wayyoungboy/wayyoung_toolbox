@@ -200,7 +200,15 @@ func TestCatalogScanJobRejectsChangedFilesSidecarsAndRootWithoutSweeping(t *test
 				if err := os.Mkdir(root, 0o700); err != nil {
 					t.Fatal(err)
 				}
-				t.Cleanup(func() { if err := os.Remove(root); err != nil { t.Error(err); return }; if err := os.Rename(root+"-original", root); err != nil { t.Error(err) } })
+				t.Cleanup(func() {
+					if err := os.Remove(root); err != nil {
+						t.Error(err)
+						return
+					}
+					if err := os.Rename(root+"-original", root); err != nil {
+						t.Error(err)
+					}
+				})
 			}
 			for range 100 {
 				var err error

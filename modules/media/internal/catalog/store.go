@@ -19,6 +19,7 @@ type Store struct {
 	db          *sql.DB
 	resolveCode func(string) (string, bool)
 	scanMu      sync.Mutex
+	scanCache   *scanDirectoryCache // accessed only while scanMu is held; one bounded directory
 }
 
 func New(db *sql.DB, resolveCode func(string) (string, bool)) (*Store, error) {
@@ -106,6 +107,9 @@ INSERT OR IGNORE INTO catalog_automation(id,after_organize,version) VALUES(1,0,1
 	}
 	if err := initializePersonal(tx); err != nil {
 		return nil, fmt.Errorf("initialize personal media: %w", err)
+	}
+	if err := initializeScanJobs(tx); err != nil {
+		return nil, fmt.Errorf("initialize catalog scans: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit catalog schema: %w", err)
