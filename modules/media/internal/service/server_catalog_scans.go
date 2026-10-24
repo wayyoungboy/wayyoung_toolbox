@@ -10,6 +10,7 @@ import (
 
 func (s *Service) registerCatalogScanRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/catalog/libraries/{id}/scans", s.catalogSameOrigin(s.handleCatalogStartScan))
+	mux.HandleFunc("GET /api/catalog/libraries/{id}/scans", s.handleCatalogScanJobs)
 	mux.HandleFunc("GET /api/catalog/scans", s.handleCatalogScanJobs)
 	mux.HandleFunc("GET /api/catalog/scans/{id}", s.handleCatalogScanJob)
 	for _, action := range []string{"pause", "resume", "cancel", "retry"} {
@@ -86,7 +87,16 @@ func (s *Service) handleCatalogScanJobs(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	jobs, err := s.db.catalog.ScanJobs(r.Context(), before, limit)
+	var jobs []catalog.ScanJob
+	if r.PathValue("id") != "" {
+		id, ok := catalogScanID(w, r)
+		if !ok {
+			return
+		}
+		jobs, err = s.db.catalog.LibraryScanJobs(r.Context(), id, before, limit)
+	} else {
+		jobs, err = s.db.catalog.ScanJobs(r.Context(), before, limit)
+	}
 	if err != nil {
 		catalogError(w, err)
 		return

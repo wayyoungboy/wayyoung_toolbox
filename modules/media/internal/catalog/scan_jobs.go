@@ -115,10 +115,24 @@ func (s *Store) ScanJob(ctx context.Context, id int64) (ScanJob, error) {
 }
 
 func (s *Store) ScanJobs(ctx context.Context, before int64, limit int) ([]ScanJob, error) {
+	return s.scanJobs(ctx, before, limit, 0)
+}
+
+func (s *Store) LibraryScanJobs(ctx context.Context, libraryID, before int64, limit int) ([]ScanJob, error) {
+	if libraryID < 1 {
+		return nil, ErrInvalid
+	}
+	if _, err := s.library(ctx, libraryID); err != nil {
+		return nil, err
+	}
+	return s.scanJobs(ctx, before, limit, libraryID)
+}
+
+func (s *Store) scanJobs(ctx context.Context, before int64, limit int, libraryID int64) ([]ScanJob, error) {
 	if before < 0 || limit < 1 || limit > 100 {
 		return nil, ErrInvalid
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+scanJobColumns+" FROM catalog_scan_jobs WHERE (?=0 OR id<?) ORDER BY id DESC LIMIT ?", before, before, limit)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+scanJobColumns+" FROM catalog_scan_jobs WHERE (?=0 OR id<?) AND (?=0 OR library_id=?) ORDER BY id DESC LIMIT ?", before, before, libraryID, libraryID, limit)
 	if err != nil {
 		return nil, err
 	}
