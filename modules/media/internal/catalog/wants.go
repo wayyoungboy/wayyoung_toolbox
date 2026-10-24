@@ -362,7 +362,7 @@ func ReconcileWantsTx(ctx context.Context, tx *sql.Tx, assetIDs []string, source
 	if len(assetIDs) == 0 {
 		return nil
 	}
-	if len(assetIDs) > 1000 || producerID < 0 || (source != "scan" && source != "registration" && source != "organizer") {
+	if producerID < 0 || (source != "scan" && source != "registration" && source != "organizer") {
 		return ErrInvalid
 	}
 	for start := 0; start < len(assetIDs); start += 200 {
