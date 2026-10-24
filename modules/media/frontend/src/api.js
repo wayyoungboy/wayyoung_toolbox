@@ -35,6 +35,11 @@ async function playbackSessionMutation(id,action,payload){
 }
 
 export const api = {
+  wants: ({ query = '', phase = '', offset = 0, signal } = {}) => request(`/wants?${new URLSearchParams({ query, phase, limit: '48', offset: String(offset) })}`, { signal }),
+  want: (id, { signal } = {}) => request(`/wants/${encodeURIComponent(id)}`, { signal }),
+  wantAdd: (payload, options = {}) => catalogMutation('/wants', 'POST', payload, options),
+  wantPatch: (id, payload, options = {}) => catalogMutation(`/wants/${encodeURIComponent(id)}`, 'PATCH', payload, options),
+  wantRemove: (id, version, options = {}) => catalogMutation(`/wants/${encodeURIComponent(id)}`, 'DELETE', { version }, options),
   resourceCache: (code, { signal } = {}) => request(`/resources/search?${new URLSearchParams({ code, provider: 'javdb' })}`, { signal }),
   resourceSearch: (code, { signal } = {}) => catalogMutation('/resources/search', 'POST', { code, provider: 'javdb' }, { signal }),
   resourceDownloads: ({ signal } = {}) => request('/resources/downloads?limit=20', { signal }),

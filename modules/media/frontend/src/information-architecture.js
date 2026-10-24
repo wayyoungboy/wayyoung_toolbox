@@ -32,7 +32,7 @@ export function resolveDestination(page, tab = '') {
   if (page === 'settings') return { page, tab: settingsTabs.some((item) => item.key === tab) ? tab : 'paths' };
   if (page === 'queue') return { page, tab: tab === 'history' ? tab : 'jobs' };
   if(page==='personal')return {page,tab:['lists','taste','sources'].includes(tab)?tab:'history'};
-  if(page==='subscriptions')return {page,tab:tab==='resources'?tab:''};
+  if(page==='subscriptions')return {page,tab:['resources','wants'].includes(tab)?tab:''};
   if (['catalog', 'people', 'dashboard', 'maintenance'].includes(page)) return { page, tab: '' };
   return { page: 'catalog', tab: '' };
 }
