@@ -15,7 +15,7 @@ page.setDefaultTimeout(10000);
 const errors = [], expected = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('console', message => { if (message.type() === 'error') {
-  if (/400|409|net::ERR_FAILED/.test(message.text())) expected.push(message.text());
+  if (/400|409|500|net::ERR_FAILED/.test(message.text())) expected.push(message.text());
   else errors.push(message.text());
 } });
 const fixture = action => fetch(new URL(`/__fixture/wants${action ? `?action=${action}` : ''}`, base), { method: action ? 'POST' : 'GET' }).then(async response => {
@@ -83,6 +83,14 @@ try {
   await page.getByRole('button', { name: '登记想要', exact: true }).click({ clickCount: 2 });
   await visible('结果尚未确认');
   assert.equal(posts, 1);
+  assert.equal(await page.getByRole('button', { name: '筛选清单', exact: true }).isEnabled(), false, 'filter navigation discarded unresolved identity');
+  await page.route('**/api/wants?code=TEST-001&limit=1&offset=0', route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Synthetic read unavailable' }) }));
+  await page.getByRole('button', { name: '刷新清单', exact: true }).click();
+  await visible('仍未解锁原操作');
+  assert.equal(await page.getByRole('button', { name: '筛选清单', exact: true }).isEnabled(), false);
+  assert.equal(await page.getByLabel('搜索想要清单', { exact: true }).isEnabled(), false);
+  assert.equal(await page.getByRole('button', { name: /^全部/ }).isEnabled(), false);
+  await page.unroute('**/api/wants?code=TEST-001&limit=1&offset=0');
   await page.getByRole('button', { name: '刷新清单', exact: true }).click();
   await card('TEST-001').waitFor();
   assert.equal((await fixture()).wants, 2);
@@ -131,7 +139,7 @@ try {
   await visible('还没有登记想要的作品');
   assert.deepEqual(await fixture(), { wants: 0, jobs: 1, assets: 1, adds: 0, feeds: 0 });
   assert.equal(posts, 1);
-  assert.equal(expected.length, 3, 'only the intentional invalid input, conflict and lost response are expected');
+  assert.equal(expected.length, 4, 'only intentional invalid input, conflict, lost response and failed reconciliation are expected');
   // One-use prefill is consumed on cancel/success, not resurrected by reload.
   await page.goto(`${entry}&code=TEST-003`);
   await page.getByRole('button', { name: '取消登记', exact: true }).click();
@@ -155,6 +163,8 @@ try {
   await page.getByRole('navigation', { name: '想要清单分页', exact: true }).waitFor({ state: 'hidden' });
   assert.equal(await page.getByRole('article').count(), 48);
   assert.equal((await fixture()).wants, 49);
+  await page.goBack();
+  await page.waitForURL(url => !url.searchParams.has('view') && !url.searchParams.has('offset'));
   assert.deepEqual(errors, []);
   console.log('PASS: wants add/pause/resume/edit/CAS/read-only reconciliation → explicit resource selection → producer association → real neutral catalog publication → URL/filter/refresh/mobile/dark → remove list only. Browser plugin not available; local Playwright.');
 } finally { await context.close(); await browser.close(); }
