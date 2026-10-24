@@ -13,14 +13,22 @@ import (
 func resourceDownloadFixture(t *testing.T) (*Service, ResourceDownloadSelection) {
 	t.Helper()
 	s := testService(t)
-	if _, err := s.db.UpdateSettings(map[string]any{"qb_host": "http://qb.example.test", "qb_username": "example", "qb_password": "private-secret", "intake_source_directory": "/downloads"}); err != nil {
+	if _, err := s.db.UpdateSettings(map[string]any{"qb_host": "http://qb.example.test", "qb_username": "example", "qb_password": "private-secret"}); err != nil {
 		t.Fatal(err)
 	}
+	resourceDownloadSetting(t, s.db, "intake_source_directory", "/downloads")
 	result, err := s.db.saveResources(context.Background(), javspengine.ResourceSearchResult{Code: "TEST-001", Provider: "javdb", State: "ready", Items: []javspengine.ResourceCandidate{{InfoHash: resourceTestHash, Magnet: "magnet:?xt=urn:btih:" + resourceTestHash, Name: "Example release", Source: "javdb", SourceURL: "https://source.example.test/v/example", Verification: "unverified"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return s, ResourceDownloadSelection{Code: "TEST-001", Provider: "javdb", InfoHash: resourceTestHash, SearchedAt: result.SearchedAt}
+}
+
+func resourceDownloadSetting(t *testing.T, db *Database, key, value string) {
+	t.Helper()
+	if _, err := db.db.Exec("UPDATE settings SET value=? WHERE key=?", encodeJSON(value), key); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestResourceDownloadPersistsIndependentProducerAndFrozenDestination(t *testing.T) {
@@ -32,7 +40,8 @@ func TestResourceDownloadPersistsIndependentProducerAndFrozenDestination(t *test
 	if job.RSSID != 0 || job.Discovery != nil || job.Resource == nil || job.Kind != "torrent" || job.Phase != "discovered" || job.Status != "pending" || job.TorrentHash != resourceTestHash || job.IntakeSourceRoot != "/downloads" || job.Resource.DownloadPath != "/downloads" || job.Resource.Provider != "javdb" || job.Resource.SearchedAt != selection.SearchedAt {
 		t.Fatalf("independent producer lost: %+v", job)
 	}
-	if _, err := s.db.UpdateSettings(map[string]any{"intake_source_directory": "/new-downloads", "qb_password": "another-secret"}); err != nil {
+	resourceDownloadSetting(t, s.db, "intake_source_directory", "/new-downloads")
+	if _, err := s.db.UpdateSettings(map[string]any{"qb_password": "another-secret"}); err != nil {
 		t.Fatal(err)
 	}
 	again, created, err := s.db.EnqueueResourceDownload(context.Background(), selection)
@@ -81,11 +90,11 @@ func TestResourceDownloadRejectsUnconfirmedOrChangedSelection(t *testing.T) {
 			case "provider":
 				input.Provider = "arbitrary"
 			case "missing_destination":
-				_, _ = s.db.UpdateSettings(map[string]any{"intake_source_directory": ""})
+				resourceDownloadSetting(t, s.db, "intake_source_directory", "")
 			case "root_destination":
-				_, _ = s.db.UpdateSettings(map[string]any{"intake_source_directory": "/"})
+				resourceDownloadSetting(t, s.db, "intake_source_directory", "/")
 			case "relative_destination":
-				_, _ = s.db.UpdateSettings(map[string]any{"intake_source_directory": "relative"})
+				resourceDownloadSetting(t, s.db, "intake_source_directory", "relative")
 			case "missing_downloader":
 				_, _ = s.db.UpdateSettings(map[string]any{"qb_host": ""})
 			}
