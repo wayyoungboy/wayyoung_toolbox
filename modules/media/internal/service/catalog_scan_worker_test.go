@@ -106,6 +106,18 @@ func TestCatalogScanPauseCancelsExactAttemptBeforeWaitingForDatabase(t *testing.
 	case <-time.After(2 * time.Second):
 		t.Fatal("pause waited for sole SQLite connection before canceling active I/O")
 	}
+	cleaned := make(chan struct{})
+	go func() {
+		cleanup()
+		close(cleaned)
+	}()
+	select {
+	case <-cleaned:
+		t.Fatal("attempt cleanup outran the in-flight pause persistence")
+	case <-time.After(100 * time.Millisecond):
+		// The database is deliberately held: cleanup must not release this
+		// revision back to pending until the administrative action settles.
+	}
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +128,11 @@ func TestCatalogScanPauseCancelsExactAttemptBeforeWaitingForDatabase(t *testing.
 	}
 	if response.Code != 200 {
 		t.Fatal(response.Code, response.Body.String())
+	}
+	select {
+	case <-cleaned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attempt cleanup remained blocked after pause persisted")
 	}
 	current, err := s.db.catalog.ScanJob(t.Context(), job.ID)
 	if err != nil || current.Status != "paused" {
