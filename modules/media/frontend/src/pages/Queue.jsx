@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { queueActionPrompt, queueStatuses } from '../queue-view';
 import { useRemoteResource } from '../useRemoteResource';
@@ -14,6 +14,11 @@ function QueueDetail({ id, onClose, onSelect, onChanged, onNavigate }) {
   const { data, loading, error, refresh } = useRemoteResource(load, 5000);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const jobID = data?.job?.id;
+  const jobVersion = data?.job?.version;
+  // A newly observed detail revision also invalidates the list snapshot. Do
+  // not wait for its independent poll or refetch on unchanged detail reads.
+  useEffect(() => { if (jobID && jobVersion) onChanged(); }, [jobID, jobVersion, onChanged]);
   const act = async (action, job) => {
     const prompt = queueActionPrompt(action, job);
     if (busy || loading || !window.confirm(prompt)) return;
