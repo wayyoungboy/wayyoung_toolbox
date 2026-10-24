@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -18,15 +19,17 @@ const resourceCacheLimit = 200
 
 type resourceSearchView struct {
 	javspengine.ResourceSearchResult
-	SearchedAt string `json:"searched_at"`
-	Cached     bool   `json:"cached"`
-	Stale      bool   `json:"stale"`
+	SearchedAt  string `json:"searched_at"`
+	AttemptedAt string `json:"attempted_at"`
+	Cached      bool   `json:"cached"`
+	Stale       bool   `json:"stale"`
 }
 
 func (d *Database) initializeResourceSearch() error {
 	_, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS resource_search_cache (
- code TEXT NOT NULL, provider TEXT NOT NULL, result TEXT NOT NULL CHECK(json_valid(result)),
- searched_at TEXT NOT NULL, PRIMARY KEY(code,provider)
+ code TEXT NOT NULL, provider TEXT NOT NULL, result TEXT CHECK(result IS NULL OR json_valid(result)),
+ searched_at TEXT NOT NULL DEFAULT '', last_state TEXT NOT NULL, attempted_at TEXT NOT NULL,
+ PRIMARY KEY(code,provider)
 );`)
 	return err
 }
@@ -41,26 +44,32 @@ func resourceSearchInput(code, provider string) (string, error) {
 
 func (d *Database) cachedResources(ctx context.Context, code, provider string) (resourceSearchView, error) {
 	view := resourceSearchView{ResourceSearchResult: javspengine.ResourceSearchResult{Code: code, Provider: provider, State: "not_searched", Items: []javspengine.ResourceCandidate{}}}
-	var raw string
-	err := d.db.QueryRowContext(ctx, "SELECT result,searched_at FROM resource_search_cache WHERE code=? AND provider=?", code, provider).Scan(&raw, &view.SearchedAt)
+	var raw sql.NullString
+	var state string
+	err := d.db.QueryRowContext(ctx, "SELECT result,searched_at,last_state,attempted_at FROM resource_search_cache WHERE code=? AND provider=?", code, provider).Scan(&raw, &view.SearchedAt, &state, &view.AttemptedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return view, nil
 	}
 	if err != nil {
 		return view, err
 	}
-	if len(raw) > 128<<10 {
+	if len(raw.String) > 128<<10 {
 		return view, errors.New("invalid resource cache size")
 	}
-	if err := json.Unmarshal([]byte(raw), &view.ResourceSearchResult); err != nil {
-		return view, err
+	if raw.Valid {
+		if err := json.Unmarshal([]byte(raw.String), &view.ResourceSearchResult); err != nil {
+			return view, err
+		}
+		view.Cached = true
 	}
-	view.Cached = true
+	view.State = state
+	view.Stale = view.Cached && state != "ready" && state != "empty"
 	return view, nil
 }
 
 func (d *Database) saveResources(ctx context.Context, result javspengine.ResourceSearchResult) (resourceSearchView, error) {
 	view := resourceSearchView{ResourceSearchResult: result, SearchedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	view.AttemptedAt = view.SearchedAt
 	if result.State != "ready" && result.State != "empty" {
 		return view, catalog.ErrInvalid
 	}
@@ -76,22 +85,44 @@ func (d *Database) saveResources(ctx context.Context, result javspengine.Resourc
 		return view, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO resource_search_cache(code,provider,result,searched_at) VALUES(?,?,?,?)
- ON CONFLICT(code,provider) DO UPDATE SET result=excluded.result,searched_at=excluded.searched_at`, result.Code, result.Provider, string(raw), view.SearchedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO resource_search_cache(code,provider,result,searched_at,last_state,attempted_at) VALUES(?,?,?,?,?,?)
+ ON CONFLICT(code,provider) DO UPDATE SET result=excluded.result,searched_at=excluded.searched_at,last_state=excluded.last_state,attempted_at=excluded.attempted_at`, result.Code, result.Provider, string(raw), view.SearchedAt, result.State, view.AttemptedAt); err != nil {
 		return view, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM resource_search_cache WHERE rowid NOT IN
- (SELECT rowid FROM resource_search_cache ORDER BY searched_at DESC,code,provider LIMIT ?)`, resourceCacheLimit); err != nil {
+	if err := trimResourceCache(ctx, tx); err != nil {
 		return view, err
 	}
 	return view, tx.Commit()
+}
+
+func trimResourceCache(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM resource_search_cache WHERE rowid NOT IN
+ (SELECT rowid FROM resource_search_cache ORDER BY attempted_at DESC,code,provider LIMIT ?)`, resourceCacheLimit)
+	return err
+}
+
+func (d *Database) recordResourceFailure(ctx context.Context, result javspengine.ResourceSearchResult) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO resource_search_cache(code,provider,last_state,attempted_at) VALUES(?,?,?,?)
+ ON CONFLICT(code,provider) DO UPDATE SET last_state=excluded.last_state,attempted_at=excluded.attempted_at`, result.Code, result.Provider, result.State, time.Now().UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return err
+	}
+	if err := trimResourceCache(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // GET only reads the last successful result. Reloading/navigating never calls
 // a provider, records a search failure, creates tasks, or submits a download.
 func (s *Service) handleResourceSearchCache(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	query, err := r.URL.Query(), error(nil)
+	query, err := url.ParseQuery(r.URL.RawQuery)
 	for key, values := range query {
 		if (key != "code" && key != "provider") || len(values) != 1 {
 			err = catalog.ErrInvalid
@@ -126,7 +157,7 @@ func (s *Service) handleResourceSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.resourceSearchMu.TryLock() {
-		catalogError(w, catalog.ErrBusy)
+		writeError(w, 409, fmt.Errorf("另一个资源查询正在运行，请稍后再试"))
 		return
 	}
 	defer s.resourceSearchMu.Unlock()
@@ -165,17 +196,14 @@ func (s *Service) handleResourceSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, view)
 		return
 	}
+	if err := s.db.recordResourceFailure(r.Context(), result); err != nil {
+		catalogError(w, err)
+		return
+	}
 	previous, err := s.db.cachedResources(r.Context(), code, payload.Provider)
 	if err != nil {
 		catalogError(w, err)
 		return
 	}
-	view := resourceSearchView{ResourceSearchResult: result}
-	if previous.Cached {
-		view.Items = previous.Items
-		view.SearchedAt = previous.SearchedAt
-		view.Cached = true
-		view.Stale = true
-	}
-	writeJSON(w, 200, view)
+	writeJSON(w, 200, previous)
 }
