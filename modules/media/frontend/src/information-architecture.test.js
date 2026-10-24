@@ -17,7 +17,6 @@ describe('native information architecture', () => {
       'personal',
       'dashboard',
       'subscriptions',
-      'resources',
       'queue',
       'maintenance',
       'settings',
@@ -27,8 +26,7 @@ describe('native information architecture', () => {
       '人物',
       '个人记录',
       '工作台',
-      '订阅来源',
-      '资源搜索',
+      '发现与采集',
       '处理队列',
       '媒体维护',
       '设置',
@@ -46,7 +44,8 @@ describe('native information architecture', () => {
     expect(resolveDestination(null)).toEqual({ page: 'catalog', tab: '' });
     expect(resolveDestination('dashboard')).toEqual({ page: 'dashboard', tab: '' });
     expect(resolveDestination('people')).toEqual({page:'people',tab:''});
-    expect(resolveDestination('resources')).toEqual({page:'resources',tab:''});
+    expect(resolveDestination('resources')).toEqual({page:'subscriptions',tab:'resources'});
+    expect(resolveDestination('subscriptions','resources')).toEqual({page:'subscriptions',tab:'resources'});
     expect(resolveDestination('personal','lists')).toEqual({page:'personal',tab:'lists'});
     expect(resolveDestination('personal','taste')).toEqual({page:'personal',tab:'taste'});
   });

@@ -20,6 +20,7 @@ it('renders a successful resource without pretending to verify size quality or c
   expect(html).not.toContain('<script>');
   expect(html).toContain('rel="noopener noreferrer"');
   expect(html).toContain('referrerPolicy="no-referrer"');
+  expect(html).toContain('<h3 role="status">');
 });
 
 it('distinguishes last successful cached resources from blocked or missing resources', () => {

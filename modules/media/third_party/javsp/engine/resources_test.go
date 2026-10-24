@@ -165,7 +165,7 @@ func TestResourceSearchRejectsInvalidOrDisabledBeforeNetworking(t *testing.T) {
 }
 
 func TestResourceSearchBlocksOffOriginRequestsAndOversizedBodies(t *testing.T) {
-	for _, mode := range []string{"redirect", "detail_link", "too_large", "too_many"} {
+	for _, mode := range []string{"redirect", "detail_link", "too_large", "too_many", "long_link"} {
 		t.Run(mode, func(t *testing.T) {
 			var outside atomic.Int32
 			external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { outside.Add(1) }))
@@ -183,6 +183,9 @@ func TestResourceSearchBlocksOffOriginRequestsAndOversizedBodies(t *testing.T) {
 					link := "/v/test"
 					if mode == "detail_link" {
 						link = external.URL
+					}
+					if mode == "long_link" {
+						link = "/v/" + strings.Repeat("x", 2100)
 					}
 					fmt.Fprintf(w, `<a class="box" href="%s"><div class="video-title"><strong>TEST-001</strong></div></a>`, link)
 					return
@@ -203,7 +206,7 @@ func TestResourceSearchBlocksOffOriginRequestsAndOversizedBodies(t *testing.T) {
 					t.Fatalf("unbounded candidates: %+v", got)
 				}
 			} else if got.State != "unavailable" {
-				t.Fatalf("unsafe response accepted: %+v", got)
+				t.Fatalf("unsafe response accepted: state=%s items=%d", got.State,len(got.Items))
 			}
 			if outside.Load() != 0 {
 				t.Fatal("off-origin request reached server")
