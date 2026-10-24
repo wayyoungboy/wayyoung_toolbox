@@ -2,6 +2,26 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
+it('queues background scans and sends exact lifecycle revisions without replaying failures', async () => {
+  const fetch = vi.fn().mockImplementation(async (url, options) => ({
+    ok: !url.endsWith('/pause'), status: url.endsWith('/pause') ? 409 : 200,
+    json: async () => url.endsWith('/session') ? { csrf: 'scan-token' } : url.endsWith('/pause') ? { error: '状态已变化' } : { items: [] },
+  }));
+  vi.stubGlobal('fetch', fetch);
+  const signal = new AbortController().signal;
+  await api.catalogLibraryScans(3, { signal });
+  expect(fetch.mock.calls[0][0]).toMatch(/\/catalog\/libraries\/3\/scans\?limit=1$/);
+  expect(fetch.mock.calls[0][1].signal).toBe(signal);
+  await api.catalogStartScan(3);
+  await expect(api.catalogScanAction(7, 4, 'pause')).rejects.toMatchObject({ status: 409 });
+  const writes = fetch.mock.calls.filter(([, options]) => options.method);
+  expect(writes).toHaveLength(2);
+  expect(writes[0][0]).toMatch(/\/libraries\/3\/scans$/);
+  expect(writes[1][0]).toMatch(/\/scans\/7\/pause$/);
+  expect(JSON.parse(writes[1][1].body)).toEqual({ version: 4 });
+  expect(writes.every(([, options]) => options.headers['X-Catalog-CSRF'] === 'scan-token')).toBe(true);
+  expect(fetch.mock.calls.some(([url]) => url.endsWith('/scan'))).toBe(false);
+});
 it('reads opt-in catalog automation and saves the exact revision without scanning or replaying a conflict', async () => {
   const fetch = vi.fn().mockImplementation(async (url, options) => ({
     ok: !options?.method || options.method !== 'PUT', status: 409,
